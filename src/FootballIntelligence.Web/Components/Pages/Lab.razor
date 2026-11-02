@@ -14,6 +14,7 @@
         <button class="btn" @onclick='() => Ops.Enqueue("research_full")'>Run research</button>
         <button class="btn" @onclick='() => Ops.Enqueue("train_inplay")'>Retrain in-play</button>
         <button class="btn" @onclick='() => Ops.Enqueue("player_study")'>Player study</button>
+        <button class="btn danger" @onclick='() => Ops.Enqueue("rollback")' title="Restore the previous champion recorded in the champion history">Roll back champion</button>
     </div>
 </div>
 
@@ -53,7 +54,7 @@
                 <span class="sub">6 primary leagues (EPL, Championship, La Liga, Bundesliga, Serie A, Ligue 1) · identical match set · lower is better except accuracy</span>
             </div>
             <div class="table-wrap">
-                <table class="data">
+                <table class="data compact">
                     <thead><tr><th>Model</th><th>Status</th><th>Train window</th><th>Test period</th><th class="num">n</th><th class="num">Log loss</th><th class="num">Brier</th><th class="num">RPS</th><th class="num">ECE</th><th class="num">Accuracy</th><th class="num">Goal MAE</th><th class="num">Total MAE</th><th class="num">Score NLL</th><th class="num">O2.5 LL</th></tr></thead>
                     <tbody>
                         @foreach (var r in runs)
@@ -63,8 +64,8 @@
                             <tr style="@(name == championName ? "background:var(--accent-dim)" : "")">
                                 <td><a href="lab?model=@name" @onclick="() => Select(name)" @onclick:preventDefault>@Fmt.ModelLabel(name)</a></td>
                                 <td>@if (name == championName) { <span class="badge ok">champion</span> } else if (name == "bookmaker_close") { <span class="badge info">benchmark</span> }</td>
-                                <td class="small dim">@r.TrainWindow</td>
-                                <td class="small dim">@r.TestPeriod</td>
+                                <td class="small dim">@ShortWindow(r.TrainWindow)</td>
+                                <td class="small dim">@ShortPeriod(r.TestPeriod)</td>
                                 <td class="num">@r.NMatches.ToString("N0")</td>
                                 <td class="num"><b>@Fmt.Num(M(m, "log_loss"), 4)</b></td>
                                 <td class="num">@Fmt.Num(M(m, "brier"), 4)</td>
@@ -168,6 +169,14 @@
                     <div class="spread small"><span>@Fmt.ModelLabel(name)</span><span class="mono">@Fmt.Pct(w, 1)</span></div>
                     <div class="meter" style="margin-bottom:6px"><div style="width:@Fmt.Pct(w, 1)"></div></div>
                 }
+                @if (championHistory.Count > 0)
+                {
+                    <h3 style="margin:14px 0 6px">Champion history</h3>
+                    @foreach (var h in championHistory)
+                    {
+                        <div class="small"><span class="faint">@Fmt.Local(h.At)</span> · <b>@Fmt.ModelLabel(h.Champion)</b> <span class="dim">@h.Reason</span></div>
+                    }
+                }
                 <div class="small faint">Weights are re-fitted each season on the previous three seasons' out-of-sample predictions (score log-likelihood of the joint Dixon-Coles distribution), so the ensemble never sees the season it predicts.</div>
             </div>
             <div class="card">
@@ -238,6 +247,7 @@ else
     private List<(string, double)> importance = [];
     private List<ModelVersionRow> versions = [];
     private List<ExperimentRow> experiments = [];
+    private List<(string At, string Champion, string Reason)> championHistory = [];
 
     protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange;
 
@@ -249,6 +259,10 @@ else
 
     private void SetTab(string t) { tab = t; Load(); }
     private void Select(string m) { selectedModel = m; Load(); }
+
+    private static string ShortWindow(string? w) => w is null ? "—" : w.StartsWith("rolling") ? "all prior matches, weekly refit" : w.StartsWith("walk-forward") ? "all prior matches, frozen" : w;
+
+    private static string ShortPeriod(string? p) => p is null ? "—" : string.Join(" → ", p.Split(" to ").Select(x => x.Length >= 7 ? x[..7] : x));
 
     private static double? M(JsonElement m, string key) => m.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : null;
 
@@ -311,6 +325,8 @@ else
             var imp = Research.KvJson("gbm_importance");
             importance = imp?.EnumerateArray().Select(x => (x.GetProperty("feature").GetString() ?? "", x.GetProperty("gain_share").GetDouble())).ToList() ?? [];
             versions = Research.Versions();
+            var hist = Research.KvJson("champion_history");
+            championHistory = hist?.EnumerateArray().Select(h => (h.GetProperty("at").GetString() ?? "", h.GetProperty("champion").GetString() ?? "", h.GetProperty("reason").GetString() ?? "")).ToList() ?? [];
         }
         else if (tab == "experiments")
         {

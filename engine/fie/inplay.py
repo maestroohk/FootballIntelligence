@@ -55,6 +55,7 @@ class InPlayModel:
         self.beta = None
         self.columns = None
         self.half_end = (47.0, 94.5)
+        self.second_half_scale = 1.0
 
     def feature_names(self):
         return [f"t{k}" for k in range(len(TIME_BINS))] + BASE_FEATURES + (EVIDENCE_FEATURES if self.use_evidence else [])
@@ -83,6 +84,8 @@ class InPlayModel:
         return [{"name": n, "beta": float(b), "se": float(s), "multiplier": float(math.exp(b))} for n, b, s in zip(self.columns, self.beta, self.se)]
 
     def rate(self, lambda_pm, period, clock, f):
+        if period == 2:
+            lambda_pm = lambda_pm * self.second_half_scale
         if self.mode == "constant":
             return lambda_pm
         z = self.beta[time_bin(period, clock)]

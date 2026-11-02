@@ -15,7 +15,7 @@
     <div class="center">
         <div class="small dim">@Fmt.CompetitionName(match.Competition) · @match.Season/@((match.Season + 1) % 100)</div>
         <div class="big-score">@(match.Fthg is null ? "vs" : $"{match.Fthg} – {match.Ftag}")</div>
-        <div class="small dim">@match.MatchDate @(match.Kickoff is null ? "" : match.Kickoff + " UK")@(match.Hthg is not null ? $" · HT {match.Hthg}–{match.Htag}" : "")</div>
+        <div class="small dim">@match.MatchDate @(match.Kickoff is null ? "" : match.Kickoff + " local")@(match.Hthg is not null ? $" · HT {match.Hthg}–{match.Htag}" : "")</div>
         <div class="row" style="justify-content:center;margin-top:8px">
             <span class="badge @(match.Status == "scheduled" ? "info" : "")">@match.Status</span>
             @if (match.Purpose == "forward") { <span class="badge ok">forward prediction · stored before kick-off</span> }
@@ -35,7 +35,7 @@ else
         <div class="card">
             <div class="card-head">
                 <h2>Outcome probabilities</h2>
-                <span class="sub">@Fmt.ModelLabel(match.ModelVersion) · data cutoff @match.DataCutoff · stored @Fmt.Local(match.PredictionCreated)</span>
+                <span class="sub">@Fmt.ModelLabel(match.ModelVersion) · @(match.Purpose == "forward" ? $"ratings fitted on data before {match.DataCutoff}" : "walk-forward: ratings refitted weekly on prior matches only") · stored @Fmt.Local(match.PredictionCreated)</span>
             </div>
             <ProbBar Home="mk.PHome" Draw="mk.PDraw" Away="mk.PAway" Legend="true" HomeLabel="@match.HomeName" AwayLabel="@match.AwayName" />
             <div class="grid g4" style="margin-top:16px">
@@ -85,6 +85,11 @@ else
                 }
             </div>
             <div class="small faint" style="margin-top:12px">Outcome entropy @Fmt.Num(mk.OutcomeEntropy, 3) nats (max 1.099). @UncertaintyNote()</div>
+            <div class="row" style="margin-top:8px">
+                <span class="badge @(history.Home >= 20 ? "ok" : "warn")">@match.HomeName: @history.Home matches in prior year</span>
+                <span class="badge @(history.Away >= 20 ? "ok" : "warn")">@match.AwayName: @history.Away matches in prior year</span>
+            </div>
+            @if (history.Home < 20 || history.Away < 20) { <div class="small warn" style="margin-top:4px">Limited recent data for at least one team: ratings rely more on the prior and the forecast is less certain than its probabilities suggest.</div> }
         </div>
     </div>
 
@@ -223,6 +228,7 @@ else
     private List<MatchRow> h2h = [];
     private List<LineupRow> lineup = [];
     private List<(string Kind, string Text)> explain = [];
+    private (long Home, long Away) history;
     private (double Attack, double Defence, int Rank, int Of)? strengthHome;
     private (double Attack, double Defence, int Rank, int Of)? strengthAway;
 
@@ -245,6 +251,7 @@ else
         homeForm = Football.Form(match.HomeTeamId, match.MatchDate, 6);
         awayForm = Football.Form(match.AwayTeamId, match.MatchDate, 6);
         h2h = Football.HeadToHead(match.HomeTeamId, match.AwayTeamId, match.MatchDate, 6);
+        history = (Football.MatchesInPriorYear(match.HomeTeamId, match.MatchDate), Football.MatchesInPriorYear(match.AwayTeamId, match.MatchDate));
         var sb = Football.StatsBombMatchFor(Id);
         lineup = sb is null ? [] : Football.Lineup(sb.Value);
         LoadStrengths();
@@ -276,8 +283,12 @@ else
         var root = JsonDocument.Parse(match.Markets).RootElement;
         if (root.TryGetProperty("components", out var comps))
         {
-            var parts = comps.EnumerateArray().Select(c => $"{Fmt.ModelLabel(c.GetProperty("model").GetString())} {c.GetProperty("lh").GetDouble():F2}–{c.GetProperty("la").GetDouble():F2} (weight {c.GetProperty("weight").GetDouble():P0})");
-            explain.Add(("info", "Expected goals are a learned weighted geometric mean of component models: " + string.Join("; ", parts) + "."));
+            var all = comps.EnumerateArray().ToList();
+            var parts = all.Where(c => c.GetProperty("weight").GetDouble() >= 0.01)
+                .Select(c => $"{Fmt.ModelLabel(c.GetProperty("model").GetString())} {c.GetProperty("lh").GetDouble():F2}–{c.GetProperty("la").GetDouble():F2} (weight {c.GetProperty("weight").GetDouble():P0})");
+            var zero = all.Where(c => c.GetProperty("weight").GetDouble() < 0.01).Select(c => $"{Fmt.ModelLabel(c.GetProperty("model").GetString())} {c.GetProperty("lh").GetDouble():F2}–{c.GetProperty("la").GetDouble():F2}");
+            explain.Add(("info", "Expected goals are a learned weighted geometric mean of component models: " + string.Join("; ", parts) + "."
+                + (zero.Any() ? " Zero-weight components shown for reference: " + string.Join("; ", zero) + "." : "")));
         }
         if (root.TryGetProperty("dc_terms", out var dc))
         {
@@ -288,8 +299,8 @@ else
             foreach (var side in new[] { "home", "away" })
             {
                 if (!gc.TryGetProperty(side, out var arr)) continue;
-                var items = arr.EnumerateArray().Take(4).Select(x => $"{x.GetProperty("feature").GetString()} {x.GetProperty("value").GetDouble():+0.000;-0.000}");
-                explain.Add(("info", $"LightGBM {(side == "home" ? match.HomeName : match.AwayName)} goal-rate drivers (SHAP, log scale): " + string.Join(", ", items) + "."));
+                var items = arr.EnumerateArray().Take(4).Select(x => $"{FeatureLabel(x.GetProperty("feature").GetString() ?? "", match)} ({(Math.Exp(x.GetProperty("value").GetDouble()) - 1):+0%;-0%})");
+                explain.Add(("info", $"Largest LightGBM effects on {(side == "home" ? match.HomeName : match.AwayName)}'s expected goals: " + string.Join(", ", items) + "."));
             }
         }
         if (strengthHome is not null && strengthAway is not null)
@@ -298,6 +309,20 @@ else
             explain.Add(("ok", $"Current overall strength difference (attack+defence): {edge:+0.00;-0.00} in favour of {(edge >= 0 ? match.HomeName : match.AwayName)}."));
         }
         explain.Add(("warn", "No player availability, weather or travel inputs are used: these sources are not integrated."));
+    }
+
+    private static string FeatureLabel(string f, MatchRow m)
+    {
+        var team = f.StartsWith("h_") ? m.HomeName : f.StartsWith("a_") ? m.AwayName : "";
+        var key = f.Length > 2 && f[1] == '_' ? f[2..] : f;
+        return key switch
+        {
+            "elo_diff" => "Elo rating gap", "elo_h" => $"{m.HomeName} Elo", "elo_a" => $"{m.AwayName} Elo", "tier" => "division level",
+            "gf" => $"{team} recent goals scored", "ga" => $"{team} recent goals conceded", "sf" => $"{team} recent shots", "sa" => $"{team} recent shots conceded",
+            "tf" => $"{team} recent shots on target", "ta" => $"{team} recent shots on target conceded", "xf" => $"{team} recent shot-xG", "xa" => $"{team} recent shot-xG conceded",
+            "rest" => $"{team} rest days", "m28" => $"{team} matches in last 28 days", "promoted" => $"{team} newly promoted", "n" => $"{team} matches on record",
+            _ => f,
+        };
     }
 
     private string UncertaintyNote() => mk is null ? "" : mk.PHome > 0.6 || mk.PAway > 0.6 ? "Clear favourite, but upsets of this size happen regularly." : "Open match: no outcome is strongly favoured.";

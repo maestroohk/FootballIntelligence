@@ -130,7 +130,7 @@ def _score_nll(lh, la, rho, hg, ag):
     return total
 
 
-def fit_ensemble_weights(components, frame_rows):
+def fit_ensemble_weights(components, frame_rows, spread=False):
     logs_h = np.column_stack([np.log(c["lh"].to_numpy()) for c in components])
     logs_a = np.column_stack([np.log(c["la"].to_numpy()) for c in components])
     hg = frame_rows["hg"].to_numpy()
@@ -138,12 +138,17 @@ def fit_ensemble_weights(components, frame_rows):
     k = logs_h.shape[1]
     from scipy.stats import poisson
 
-    def objective(theta):
+    def rates(theta):
         w = np.exp(theta[:k]) / np.exp(theta[:k]).sum()
         scale = theta[k]
         rho = np.tanh(theta[k + 1]) * 0.3
-        lh = np.exp(logs_h @ w + scale)
-        la = np.exp(logs_a @ w + scale)
+        s = np.exp(theta[k + 2]) if spread else 1.0
+        eh, ea = logs_h @ w, logs_a @ w
+        mid, half = (eh + ea) / 2, (eh - ea) / 2
+        return np.exp(mid + s * half + scale), np.exp(mid - s * half + scale), rho, w, scale, s
+
+    def objective(theta):
+        lh, la, rho, *_ = rates(theta)
         ll = poisson.logpmf(hg, lh) + poisson.logpmf(ag, la)
         tau = np.ones_like(lh)
         tau = np.where((hg == 0) & (ag == 0), 1 - lh * la * rho, tau)
@@ -152,12 +157,20 @@ def fit_ensemble_weights(components, frame_rows):
         tau = np.where((hg == 1) & (ag == 1), 1 - rho, tau)
         return -(ll + np.log(np.clip(tau, 1e-9, None))).sum()
 
-    res = minimize(objective, np.zeros(k + 2), method="Nelder-Mead", options={"maxiter": 4000, "xatol": 1e-5, "fatol": 1e-4})
-    w = np.exp(res.x[:k]) / np.exp(res.x[:k]).sum()
-    return {"weights": w.tolist(), "scale": float(res.x[k]), "rho": float(np.tanh(res.x[k + 1]) * 0.3)}
+    res = minimize(objective, np.zeros(k + 2 + (1 if spread else 0)), method="Nelder-Mead", options={"maxiter": 6000, "xatol": 1e-5, "fatol": 1e-4})
+    _, _, rho, w, scale, s = rates(res.x)
+    return {"weights": w.tolist(), "scale": float(scale), "rho": float(rho), "spread": float(s)}
 
 
-def run_ensemble(component_oos, names, frame, name="ensemble", first_season=2012, lookback=3):
+def combine_rates(keyed, ids, params):
+    eh = sum(w * np.log(c.loc[ids, "lh"].to_numpy()) for w, c in zip(params["weights"], keyed))
+    ea = sum(w * np.log(c.loc[ids, "la"].to_numpy()) for w, c in zip(params["weights"], keyed))
+    s = params.get("spread", 1.0)
+    mid, half = (eh + ea) / 2, (eh - ea) / 2
+    return np.exp(mid + s * half + params["scale"]), np.exp(mid - s * half + params["scale"])
+
+
+def run_ensemble(component_oos, names, frame, name="ensemble", first_season=2012, lookback=3, spread=False):
     keyed = [c.set_index("match_id") for c in component_oos]
     common = keyed[0].index
     for c in keyed[1:]:
@@ -169,12 +182,11 @@ def run_ensemble(component_oos, names, frame, name="ensemble", first_season=2012
         train = base[(base["season"] < season) & (base["season"] >= season - lookback) & (base["status"] == "finished")]
         target = base[base["season"] == season]
         comps_train = [c.loc[train["match_id"]] for c in keyed]
-        params = fit_ensemble_weights(comps_train, train)
-        fitted[int(season)] = {"weights": dict(zip(names, params["weights"])), "scale": params["scale"], "rho": params["rho"]}
-        lh = np.exp(sum(w * np.log(c.loc[target["match_id"], "lh"].to_numpy()) for w, c in zip(params["weights"], keyed)) + params["scale"])
-        la = np.exp(sum(w * np.log(c.loc[target["match_id"], "la"].to_numpy()) for w, c in zip(params["weights"], keyed)) + params["scale"])
+        params = fit_ensemble_weights(comps_train, train, spread=spread)
+        fitted[int(season)] = {"weights": dict(zip(names, params["weights"])), "scale": params["scale"], "rho": params["rho"], "spread": params["spread"]}
+        lh, la = combine_rates(keyed, target["match_id"], params)
         o = pd.DataFrame({"match_id": target["match_id"].to_numpy(), "lh": lh, "la": la, "rho": params["rho"], "both_known": True,
-                          "fit_cutoff": pd.Timestamp(f"{season}-07-01")})
+                          "fit_cutoff": keyed[0].loc[target["match_id"], "fit_cutoff"].to_numpy()})
         outs.append(backtest.finalise(o, frame, name))
     return backtest.attach(pd.concat(outs, ignore_index=True), frame), fitted
 

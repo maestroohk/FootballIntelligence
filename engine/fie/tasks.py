@@ -31,8 +31,12 @@ def ingest_history(ctx, seasons=None, codes=None):
 
 @handler("ingest_fixtures")
 def ingest_fixtures(ctx):
+    from . import ingest_openfootball
     ctx.stage("downloading upcoming fixtures")
-    return ingest_fdco.ingest_fixtures(ctx.con)
+    out = {"football-data.co.uk": ingest_fdco.ingest_fixtures(ctx.con)}
+    ctx.stage("downloading OpenFootball season fixtures")
+    out["openfootball"] = ingest_openfootball.ingest(ctx.con)
+    return out
 
 
 @handler("ingest_statsbomb")
@@ -172,6 +176,10 @@ def research_full(ctx, refresh=False, configs=None):
     importance = research.run_gbm_importance(features, use_dc=False)
     db.set_kv(con, "gbm_importance", importance)
     selection = select_champion(results, comparisons, best_dc, best_xg)
+    history = db.get_kv(con, "champion_history", [])
+    if not history or history[-1]["champion"] != selection["champion"]:
+        history.append({"at": db.now(), "champion": selection["champion"], "reason": selection["reasons"][-1]})
+        db.set_kv(con, "champion_history", history)
     db.set_kv(con, "research_summary", {"results": results, "best": {"elo": best_elo, "dc": best_dc, "xg": best_xg}, "selection": selection,
                                          "xg_proxy": coef, "finished_at": db.now()})
     register_versions(con, results, selection, best_dc, best_xg, best_elo)
@@ -277,7 +285,14 @@ def daily_cycle(ctx, trigger="manual"):
     except Exception as exc:
         ctx.log(f"fixtures failed: {exc}", "warning")
         fx = None
-    out = {"results": {k: v for k, v in res.items() if k != "failed"}, "fixtures": fx}
+    ctx.stage("ingesting OpenFootball season fixtures")
+    try:
+        from . import ingest_openfootball
+        of = ingest_openfootball.ingest(ctx.con)
+    except Exception as exc:
+        ctx.log(f"openfootball failed: {exc}", "warning")
+        of = None
+    out = {"results": {k: v for k, v in res.items() if k != "failed"}, "fixtures": fx, "openfootball": of}
     out["evaluation"] = evaluate_forward(ctx)
     out["prediction"] = predict_upcoming(ctx)
     from .live import poll_live_provider
@@ -324,3 +339,55 @@ def train_inplay(ctx):
 
 def version_name(champ):
     return f"{champ}@v1"
+
+
+from . import experiments
+
+
+@handler("final_test")
+def final_test(ctx, force=False):
+    con = ctx.con
+    previous = db.get_kv(con, "final_test_run")
+    if previous and not force:
+        raise RuntimeError(f"final test already evaluated at {previous['at']}; re-running it invites tuning on the test period (pass force only for audits)")
+    summary = db.get_kv(con, "research_summary")
+    champ = summary["selection"]["champion"]
+    names = ["frequency", summary["best"]["elo"], "poisson", "dixon_coles", summary["best"]["xg"], "gbm_features", "gbm_stacked", "logistic", "ensemble", "bookmaker_close"]
+    oos = {n: research.load_cached(f"oos_{n}") for n in names}
+    ctx.stage("evaluating frozen models on the final test period")
+    con.execute("DELETE FROM backtest_runs WHERE split='final_test'")
+    results = {}
+    common = None
+    for n, o in oos.items():
+        ids = set(o.loc[(o["status"] == "finished") & (o["season"].map(backtest.split_of) == "final_test") & (o["competition"].isin(PRIMARY)), "match_id"])
+        common = ids if common is None else common & ids
+    for n, o in oos.items():
+        sub = o[o["match_id"].isin(common)]
+        rep = research.store_backtest(con, n, sub, "final_test", PRIMARY, "walk-forward; all choices frozen on validation", "untouched until this run")
+        results[n] = rep["overall"] if rep else None
+    ctx.stage("paired comparisons")
+    comparisons = {}
+    for a, b in ((summary["best"]["elo"], champ), ("dixon_coles", champ), ("poisson", "dixon_coles"), (summary["best"]["xg"], champ), ("gbm_features", champ), (champ, "bookmaker_close")):
+        for metric in ("log_loss", "rps") + (("score_nll",) if b != "bookmaker_close" else ()):
+            comparisons[f"{a} vs {b} [{metric}]"] = backtest.compare(oos[a][oos[a]["match_id"].isin(common)], oos[b][oos[b]["match_id"].isin(common)], "final_test", PRIMARY, metric)
+    db.set_kv(con, "final_test_comparisons", comparisons)
+    db.set_kv(con, "final_test_run", {"at": db.now(), "champion": champ, "n": len(common), "results": results})
+    return {"n": len(common), "log_loss": {k: round(v["log_loss"], 4) for k, v in results.items() if v}}
+
+
+@handler("rollback")
+def rollback(ctx):
+    con = ctx.con
+    history = db.get_kv(con, "champion_history", [])
+    if len(history) < 2:
+        raise RuntimeError("no previous champion to roll back to")
+    current = history.pop()
+    previous = history[-1]
+    summary = db.get_kv(con, "research_summary")
+    summary["selection"] = {"champion": previous["champion"], "reasons": summary["selection"]["reasons"] + [f"rolled back from {current['champion']} at {db.now()}"]}
+    db.set_kv(con, "research_summary", summary)
+    db.set_kv(con, "champion_history", history)
+    con.execute("UPDATE model_versions SET status='challenger' WHERE status='champion'")
+    con.execute("UPDATE model_versions SET status='champion' WHERE version=?", (f"{previous['champion']}@v1",))
+    db.notify(con, "warning", "Champion rolled back", f"{current['champion']} -> {previous['champion']}")
+    return {"from": current["champion"], "to": previous["champion"]}

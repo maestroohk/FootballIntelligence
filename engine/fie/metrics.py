@@ -29,7 +29,9 @@ def rps_rows(p, y):
 
 
 def reliability(prob, hit, bins=10):
-    prob, hit = np.asarray(prob), np.asarray(hit)
+    prob, hit = np.asarray(prob, dtype=float), np.asarray(hit, dtype=float)
+    ok = np.isfinite(prob) & np.isfinite(hit)
+    prob, hit = prob[ok], hit[ok]
     edges = np.linspace(0, 1, bins + 1)
     idx = np.clip(np.digitize(prob, edges) - 1, 0, bins - 1)
     out = []

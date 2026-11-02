@@ -65,8 +65,7 @@ def apply_ensemble(oos, comps, w, frame, match_ids):
     ids = pd.Index(match_ids)
     for k in keyed:
         ids = ids.intersection(k.index)
-    lh = np.exp(sum(w["weights"][n] * np.log(k.loc[ids, "lh"].to_numpy()) for n, k in zip(comps, keyed)) + w["scale"])
-    la = np.exp(sum(w["weights"][n] * np.log(k.loc[ids, "la"].to_numpy()) for n, k in zip(comps, keyed)) + w["scale"])
+    lh, la = research.combine_rates(keyed, ids, {"weights": [w["weights"][n] for n in comps], "scale": w["scale"], "spread": w.get("spread", 1.0)})
     cut = keyed[0].loc[ids, "fit_cutoff"].to_numpy()
     o = pd.DataFrame({"match_id": ids.to_numpy(), "lh": lh, "la": la, "rho": w["rho"], "both_known": True, "fit_cutoff": cut})
     return backtest.attach(backtest.finalise(o, frame, "ensemble"), frame)

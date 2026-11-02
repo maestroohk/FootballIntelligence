@@ -25,7 +25,7 @@
 <div class="card">
     <div class="card-head"><h2>Connected providers</h2><span class="sub">status from actual requests</span></div>
     <table class="data">
-        <thead><tr><th>Provider</th><th>Status</th><th>Last success</th><th>Last attempt</th><th class="num">Requests</th><th>Rate limit</th><th>Last error</th></tr></thead>
+        <thead><tr><th>Provider</th><th>Status</th><th>Last success</th><th>Last attempt</th><th class="num">Requests (total)</th><th>Rate limit</th><th>Last error</th></tr></thead>
         <tbody>
             @foreach (var p in providers)
             {
@@ -36,7 +36,7 @@
                     <td class="dim">@Fmt.Ago(p.LastAttempt)</td>
                     <td class="num">@p.RequestsToday</td>
                     <td class="small dim">@(p.RateLimit ?? "—")</td>
-                    <td class="small bad" style="max-width:340px">@p.LastError</td>
+                    <td class="small @(p.Status == "ok" ? "faint" : "bad")" style="max-width:340px">@(p.Status == "ok" && p.LastError is not null ? $"resolved earlier: {p.LastError}" : p.LastError)</td>
                 </tr>
             }
         </tbody>

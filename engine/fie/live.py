@@ -19,7 +19,9 @@ def load_live_model(con):
     if not row:
         raise RuntimeError("no trained in-play model; run the train_inplay job first")
     params = json.loads(row["params"])
-    return InPlayModel.from_json(params["model"]), params
+    model = InPlayModel.from_json(params["model"])
+    model.second_half_scale = float(params.get("second_half_scale", 1.0))
+    return model, params
 
 
 class LiveMatch:

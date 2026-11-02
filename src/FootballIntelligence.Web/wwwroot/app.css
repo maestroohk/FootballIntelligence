@@ -69,7 +69,8 @@ h3 { font-size: 14px; color: var(--text-dim); text-transform: uppercase; letter-
 .g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .g-main-side { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
 
-.card { background: var(--panel); border: 1px solid var(--border-soft); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--border-soft); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; min-width: 0; overflow-x: auto; }
+table.data.compact td, table.data.compact th { white-space: nowrap; padding: 7px 8px; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .card-head .sub { color: var(--text-faint); font-size: 12px; }
 

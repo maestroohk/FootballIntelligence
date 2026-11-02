@@ -1,4 +1,5 @@
-﻿<!DOCTYPE html>
+﻿@inject IWebHostEnvironment Env
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -6,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
     <ResourcePreloader />
-    <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="app.css?v=@CssVersion" />
     <ImportMap />
     <HeadOutlet @rendermode="InteractiveServer" />
 </head>
@@ -18,3 +19,7 @@
 </body>
 
 </html>
+
+@code {
+    private string CssVersion => File.GetLastWriteTimeUtc(Path.Combine(Env.WebRootPath, "app.css")).Ticks.ToString();
+}
