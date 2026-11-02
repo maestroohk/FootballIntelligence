@@ -365,3 +365,9 @@ Learned multipliers (hazard model):
 - Hypothesis: The Nelder-Mead fit of ensemble weights can stop at different local optima when only the floating-point summation order of the training rows changes; deterministic ordering plus multi-start L-BFGS should make the fit reproducible without hurting accuracy.
 - Result: Season 2017 example: Nelder-Mead objective 38,587.30 vs multi-start L-BFGS 38,585.69 (different weights). New fit is identical after shuffling input rows (max rate difference 0.0). Validation log loss diff +0.00005 (CI -0.00004..+0.00014), score NLL +0.00022 (CI -0.00009..+0.00059); final-test predictions unchanged (same weights for 2023-2026).
 - Decision: adopt for reproducibility as ensemble@v3 (accuracy unchanged)
+
+### Provider xG and field tilt beyond the champion (StatsBomb 2015/16)
+
+- Hypothesis: Teams whose recent StatsBomb xG exceeds their goals (for and against) have been unlucky and should regress upwards; adjusting the champion's goal rates by the log ratio of recent xG to recent goals (and by field-tilt difference) should improve held-out forecasts.
+- Result: Fitted on 587 matches before 2016-01-15, tested on 730. xG/goals adjustment: coefficient +0.21, log loss 0.9666 -> 0.9673 (diff -0.0007, CI -0.0039..+0.0025), score NLL diff -0.0057 (CI -0.0121..+0.0008). Adding field tilt (coefficient +0.06): log loss diff +0.0001 (CI -0.0031..+0.0035).
+- Decision: not adopted: no credible gain on one season of provider xG (the champion already uses shots on target)

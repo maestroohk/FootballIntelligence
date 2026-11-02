@@ -219,7 +219,8 @@ def gpu_benchmark(con):
 @handler("experiments")
 def run_experiments(ctx, names=None):
     available = {"market": market_information, "draws": draw_calibration, "monte_carlo": monte_carlo_error,
-                 "ht_recalibration": halftime_recalibration, "gpu": gpu_benchmark, "inplay_windows": inplay_windows, "stoppage_era": stoppage_era_check}
+                 "ht_recalibration": halftime_recalibration, "gpu": gpu_benchmark, "inplay_windows": inplay_windows, "stoppage_era": stoppage_era_check,
+                 "provider_xg": provider_xg_study}
     out = {}
     for name in names or list(available):
         ctx.stage(f"experiment: {name}")
@@ -462,4 +463,85 @@ def stoppage_era_check(con):
            ", ".join(f"{s}: {v['actual_2h_goals']:.2f} vs {v['pred_2h_goals']:.2f}" for s, v in out.items()),
            "flag for future recalibration on post-2023 data once more seasons are available" if np.mean(late) - np.mean(early) > 0.03 else "no era effect detected", out)
     db.set_kv(con, "experiment_stoppage_era", out)
+    return out
+
+
+
+def _team_match_metrics(con):
+    q = """
+        WITH sides AS (
+            SELECT sb_match_id, match_id, match_date, 'home' side, home_team_id team FROM sb_matches WHERE match_id IS NOT NULL
+            UNION ALL SELECT sb_match_id, match_id, match_date, 'away', away_team_id FROM sb_matches WHERE match_id IS NOT NULL)
+        SELECT s.sb_match_id, s.match_id, s.match_date, s.side, s.team,
+               (SELECT COALESCE(SUM(xg), 0) FROM sb_events e WHERE e.sb_match_id=s.sb_match_id AND e.kind='shot' AND e.side=s.side AND COALESCE(e.detail,'')<>'Penalty') xg_for,
+               (SELECT COALESCE(SUM(xg), 0) FROM sb_events e WHERE e.sb_match_id=s.sb_match_id AND e.kind='shot' AND e.side<>s.side AND COALESCE(e.detail,'')<>'Penalty') xg_against,
+               (SELECT COUNT(*) FROM sb_events e WHERE e.sb_match_id=s.sb_match_id AND e.kind='goal' AND e.side=s.side) goals_for,
+               (SELECT COUNT(*) FROM sb_events e WHERE e.sb_match_id=s.sb_match_id AND e.kind='goal' AND e.side<>s.side) goals_against,
+               (SELECT CAST(SUM(CASE WHEN m.side=s.side THEN m.final_third_passes END) AS REAL) / NULLIF(SUM(m.final_third_passes), 0) FROM sb_team_minutes m WHERE m.sb_match_id=s.sb_match_id) tilt
+        FROM sides s"""
+    return pd.read_sql_query(q, con)
+
+
+def provider_xg_study(con, split_date="2016-01-15", window=8, min_prior=5):
+    tm = _team_match_metrics(con).sort_values(["match_date", "sb_match_id"])
+    rows = []
+    hist = {}
+    for date, day in tm.groupby("match_date", sort=True):
+        for r in day.itertuples():
+            h = hist.get(r.team, [])[-window:]
+            if len(h) >= min_prior:
+                arr = np.array(h)
+                rows.append({"match_id": r.match_id, "side": r.side, "xgf": arr[:, 0].mean(), "xga": arr[:, 1].mean(), "gf": arr[:, 2].mean(),
+                             "ga": arr[:, 3].mean(), "tilt": np.nanmean(arr[:, 4]), "n": len(h)})
+        for r in day.itertuples():
+            hist.setdefault(r.team, []).append((r.xg_for, r.xg_against, r.goals_for, r.goals_against, r.tilt if r.tilt is not None else np.nan))
+    f = pd.DataFrame(rows)
+    wide = f.pivot_table(index="match_id", columns="side", values=["xgf", "xga", "gf", "ga", "tilt"], aggfunc="first")
+    wide.columns = [f"{a}_{b}" for a, b in wide.columns]
+    oos = research.load_cached("oos_ensemble")
+    d = oos[oos["status"] == "finished"].merge(wide.reset_index(), on="match_id").dropna(subset=["xgf_home", "xgf_away", "lh"]).sort_values("date")
+    eps = 0.2
+    d["x_home"] = np.log((d["xgf_home"] + d["xga_away"] + eps) / (d["gf_home"] + d["ga_away"] + eps))
+    d["x_away"] = np.log((d["xgf_away"] + d["xga_home"] + eps) / (d["gf_away"] + d["ga_home"] + eps))
+    d["t_home"] = d["tilt_home"] - d["tilt_away"]
+    from scipy.stats import poisson as _poisson
+
+    def rates(frame, theta, use_tilt):
+        bh = theta[0] * frame["x_home"].to_numpy() + (theta[1] * frame["t_home"].to_numpy() if use_tilt else 0)
+        ba = theta[0] * frame["x_away"].to_numpy() - (theta[1] * frame["t_home"].to_numpy() if use_tilt else 0)
+        return frame["lh"].to_numpy() * np.exp(bh), frame["la"].to_numpy() * np.exp(ba)
+
+    def nll(theta, frame, use_tilt):
+        lh, la = rates(frame, theta, use_tilt)
+        return -(_poisson.logpmf(frame["hg"], lh) + _poisson.logpmf(frame["ag"], la)).sum()
+
+    train = d[d["date"] < pd.Timestamp(split_date)]
+    test = d[d["date"] >= pd.Timestamp(split_date)]
+    out = {"n_train": int(len(train)), "n_test": int(len(test))}
+    for label, use_tilt in (("xg_vs_goals", False), ("xg_vs_goals_plus_tilt", True)):
+        theta = minimize(lambda t: nll(t, train, use_tilt), [0.0, 0.0], method="Nelder-Mead").x
+        lh0, la0 = rates(test, [0.0, 0.0], False)
+        lh1, la1 = rates(test, theta, use_tilt)
+        rho = test["rho"].to_numpy()
+        y = metrics.outcome_index(test["hg"], test["ag"])
+
+        def losses(lh, la):
+            p = np.array([outcome_probs(dixon_coles_matrix(a, b, r)) for a, b, r in zip(lh, la, rho)])
+            sp = np.array([dixon_coles_matrix(a, b, r)[min(int(h), 10), min(int(g), 10)] for a, b, r, h, g in zip(lh, la, rho, test["hg"], test["ag"])])
+            return metrics.log_loss_rows(p, y), -np.log(np.clip(sp, 1e-12, 1))
+
+        b1, bs = losses(lh0, la0)
+        c1, cs = losses(lh1, la1)
+        out[label] = {"theta": [float(t) for t in theta], "log_loss_cmp": metrics.paired_bootstrap(b1, c1), "score_nll_cmp": metrics.paired_bootstrap(bs, cs),
+                      "base_log_loss": float(b1.mean()), "new_log_loss": float(c1.mean())}
+    a, b = out["xg_vs_goals"], out["xg_vs_goals_plus_tilt"]
+    adopted = a["log_loss_cmp"]["ci_low"] > 0 and a["score_nll_cmp"]["ci_low"] > 0
+    record(con, "Provider xG and field tilt beyond the champion (StatsBomb 2015/16)",
+           "Teams whose recent StatsBomb xG exceeds their goals (for and against) have been unlucky and should regress upwards; adjusting the champion's goal rates by the log ratio of recent xG to recent goals (and by field-tilt difference) should improve held-out forecasts.",
+           f"Fitted on {out['n_train']} matches before {split_date}, tested on {out['n_test']}. xG/goals adjustment: coefficient {a['theta'][0]:+.2f}, log loss {a['base_log_loss']:.4f} -> {a['new_log_loss']:.4f} "
+           f"(diff {a['log_loss_cmp']['mean_diff']:+.4f}, CI {a['log_loss_cmp']['ci_low']:+.4f}..{a['log_loss_cmp']['ci_high']:+.4f}), score NLL diff {a['score_nll_cmp']['mean_diff']:+.4f} "
+           f"(CI {a['score_nll_cmp']['ci_low']:+.4f}..{a['score_nll_cmp']['ci_high']:+.4f}). Adding field tilt (coefficient {b['theta'][1]:+.2f}): log loss diff {b['log_loss_cmp']['mean_diff']:+.4f} "
+           f"(CI {b['log_loss_cmp']['ci_low']:+.4f}..{b['log_loss_cmp']['ci_high']:+.4f}).",
+           "adopt where provider xG exists" if adopted else "not adopted: no credible gain on one season of provider xG (the champion already uses shots on target)", out)
+    db.set_kv(con, "experiment_provider_xg", out)
     return out
