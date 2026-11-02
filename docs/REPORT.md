@@ -9,7 +9,7 @@ Session: 2 November 2026, started 21:14 (UTC+3), target end 05:14. All figures b
 | Local application (ASP.NET Core Blazor Server + Python engine) | Working | `src/FootballIntelligence.Web`, `engine/fie`; start instructions in `README.md` |
 | Pre-match engine (1X2, expected goals, full scoreline matrix, BTTS, clean sheets, O/U 0.5–4.5, goal in each half, expected goal difference, uncertainty indicators) | Working; all markets derived from one joint distribution, checked by tests | Match analysis page, `scoreline.py` |
 | Live engine | Working in **historical replay** (clearly labelled simulation) and as a football-data.org score-based adapter that is **untested against the real API** because no key was available (covered by mocked tests) | Live tracker, `live.py`, `inplay.py` |
-| Historical datasets and ingestion | 95,046 finished matches in 11 divisions (2005/06–2026/27), 1,551 StatsBomb event matches, 1,696 future fixtures from OpenFootball; incremental and resumable | `ingest_fdco.py`, `ingest_statsbomb.py`, `ingest_openfootball.py` |
+| Historical datasets and ingestion | 133,769 finished matches in 18 divisions across 11 countries (2005/06–2026/27), 1,551 StatsBomb event matches, about 2,100 future fixtures (football-data.co.uk and OpenFootball); incremental and resumable | `ingest_fdco.py`, `ingest_statsbomb.py`, `ingest_openfootball.py` |
 | Model evaluation dashboard | Working | Model lab, Performance |
 | Backtesting, calibration and reliability analysis | Walk-forward validation 2012/13–2022/23 (26,057 matches) and an untouched final test 2023/24–2026/27 (7,515 matches) | `backtest.py`, `RESULTS.md` |
 | Background jobs | Durable SQLite queue, bounded concurrency (2 jobs, 4 threads, below-normal priority), heartbeats, progress, ETA, cancel/retry, logs, recovery after restart, in-app notifications | Jobs page, `jobs.py` |
@@ -40,6 +40,8 @@ Key paired comparisons (block bootstrap over league-seasons, 95% CI, positive = 
 - Ensemble vs bookmaker closing odds: the bookmaker is better by 0.0136 (validation) and 0.0176 (final test). The model does not beat the market.
 - Over 2.5 goals log loss: ensemble 0.6774 vs bookmaker 0.6696 on the final test.
 
+Generalisation: seven divisions added after the model freeze (Eredivisie, Primeira Liga, Pro League, Scottish Premiership and Championship, Süper Lig, Super League Greece; 26,176 matches from 2012/13) were never used for selection, ensemble weighting or LightGBM training. The ranking held: ensemble 0.9751, LightGBM 0.9772, Elo 0.9795, Dixon–Coles 0.9813, frequency 1.0698, bookmaker 0.9583. Ensemble vs Dixon–Coles +0.0062 [+0.0047, +0.0078]; vs LightGBM +0.0022 [+0.0012, +0.0031].
+
 Calibration: the champion's draw rate is unbiased on validation (25.5% predicted vs 25.5% observed). It is slightly under-confident (temperature exponent 1.07 in both periods); final-test class-wise ECE rose to 0.014 from 0.008. A spread correction reduced validation log loss by only 0.0002 and was not promoted.
 
 ## 3. Live / in-play model
@@ -56,6 +58,8 @@ Calibration: the champion's draw rate is unbiased on validation (25.5% predicted
 ## 4. Features and experiments: what helped and what did not
 
 Helped (adopted): LightGBM on engineered features (Elo gap carries 62% of gain; recent shots and goals, promotion flags, rest days the rest); learned rate-level ensemble; Dixon–Coles correction (small); one-year half-life time decay; Elo K=15 over K=20/30; in-play score-state and red-card multipliers; top-flight second-half recalibration; exact enumeration over Monte Carlo.
+
+Dynamic ratings: an online (match-by-match) Poisson rating with a small learning rate beat weekly Dixon–Coles on its own (validation log loss 0.9971 vs 0.9984, best of seven settings, so slightly optimistic); pi-ratings did not beat Elo (0.9997 vs 0.9990). Feeding both to LightGBM improved LightGBM (+0.0006 log loss [+0.0001, +0.0012], +0.0021 scoreline NLL [+0.0013, +0.0029]), but an ensemble built on it did not beat the champion (+0.0001 [−0.0002, +0.0004]), so the champion was kept.
 
 Did not help (rejected): shot-based xG proxy as a training response (25% neutral, 50–75% worse and miscalibrated); stronger ridge; slower or faster decay; stacked-GBM in the ensemble (no gain); spread calibration (negligible); in-match xG evidence; starting-XI quality adjustment (+0.0009 log loss, CI −0.0001..+0.0019, n = 730 — promising but not proven); model information beyond the opening market (blend weight on the model ≈ 0); GPU training (no speed-up at this data size: LightGBM CPU 0.73 s vs XGBoost CUDA 5.4 s).
 
@@ -75,6 +79,9 @@ Every experiment with its hypothesis, numbers and decision is in the experiment 
 10. Static assets (CSS and the Blazor script) were served empty/500 because static web assets were not enabled — fixed; stylesheet cache-busting added.
 11. Second-half replay timeline used the average first-half length instead of the actual one; full-time snapshot still showed a residual goal probability — fixed.
 12. Reliability parsing failed on missing over/under odds — made null-safe; bookmaker O/U metrics now computed on matches with odds.
+13. The match key (competition, season, home, away) silently merged repeated meetings in leagues with splits or play-offs (Scotland, Belgium, Greece): 4,377 matches lost and 4,079 false "result corrected" alerts when the new leagues were first ingested. Fixed with date-aware matching (finished matches match on the exact date; date tolerance only for unplayed fixtures), a non-unique index, re-ingestion and a regression test. The original 11 divisions were unaffected (95,046 finished matches before and after).
+14. The table migration renamed `matches` and SQLite rewrote foreign keys in `odds`, `predictions`, `sb_matches` and a trigger to point at the temporary name. Repaired in place (integrity and foreign-key checks clean) and the migration now uses legacy rename semantics.
+15. A ±4-day matching window merged two genuine Scottish Championship meetings a few days apart — tightened to exact dates for finished matches.
 
 ## 6. Data-provider limitations
 
@@ -92,7 +99,7 @@ Every experiment with its hypothesis, numbers and decision is in the experiment 
 - Tactical analysis is descriptive (shots, corners, fouls; possession, PPDA, pressures for StatsBomb matches) — no formation-matchup model.
 - No Bayesian hierarchical, bivariate Poisson, pi-rating or true state-space model (see future work).
 - Forward predictions exist for 82 fixtures so far; forward performance tracking will only become meaningful after results arrive.
-- Only the six primary leagues are evaluated; other ingested divisions are used for strength linkage and receive predictions but are not separately validated.
+- Model selection used the six primary leagues; seven further divisions were evaluated as an out-of-sample generalisation test; second and third tiers of the original countries are used for strength linkage and receive predictions but are not separately validated.
 
 ## 8. Prioritised plan
 
@@ -100,5 +107,5 @@ Every experiment with its hypothesis, numbers and decision is in the experiment 
 2. Obtain confirmed lineups for current fixtures and re-test the starting-XI adjustment on a larger sample (multiple seasons of event data).
 3. Add pi-ratings and a state-space (Kalman) strength model as ensemble components; test a bivariate Poisson.
 4. Calibrate the ensemble's slight under-confidence with a method evaluated on future seasons only.
-5. Extend coverage (Eredivisie, Primeira Liga, Champions League) with the shared GBM retrained and re-validated.
+5. Add the Champions League and other cross-league competitions, which need a common cross-country strength scale (e.g. linking through European results or club Elo).
 6. Build a market-informed product variant (blend with opening odds) separately from the pure model, since the market currently dominates.

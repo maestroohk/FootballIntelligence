@@ -30,9 +30,9 @@ Concise notes on the methods and data sources considered, what was implemented, 
 
 | Source | Licence / terms | Coverage used | Reliability | Live? | Decision |
 |---|---|---|---|---|---|
-| football-data.co.uk | "My data is free"; no redistribution terms published | 11 divisions in 5 countries, 2005/06–2026/27: results, HT scores, shots, SOT, corners, fouls, cards, referee, opening and closing odds | High; 0 score mismatches against StatsBomb (1,551 matches) and OpenFootball (345 matches) | No | Primary historical source |
+| football-data.co.uk | "My data is free"; no redistribution terms published | 18 divisions in 11 countries, 2005/06–2026/27: results, HT scores, shots, SOT, corners, fouls, cards, referee, opening and closing odds | High; 0 score mismatches against StatsBomb (1,551 matches) and OpenFootball (470 matches) | No | Primary historical source |
 | StatsBomb Open Data | Free for research, attribution to StatsBomb required | 2015/16 Premier League, La Liga, Serie A, Ligue 1 (full), Bundesliga (34 matches); event data with shot xG, lineups, substitutions, cards | High | No | In-play model training, replay, player profiles |
-| OpenFootball (football.json) | Public domain | 2026/27 fixture lists for the six primary leagues | Fixtures reliable; results lag | No | Future fixtures |
+| OpenFootball (football.json) | Public domain | 2026/27 fixture lists for the six primary leagues plus the Eredivisie and Primeira Liga | Fixtures reliable; results lag | No | Future fixtures |
 | football-data.org | Free tier with API key (10 req/min) | Live scores, fixtures | Good | Scores only on free tier | Adapter implemented; inactive without `FOOTBALL_DATA_API_KEY` |
 | ClubElo | Free API | Club Elo history | — | No | Returned HTTP 502 during this session; own Elo implemented instead |
 | Understat | No API; terms do not grant scraping rights | xG 2014+ | — | No | Unreachable from this machine; not used |

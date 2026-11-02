@@ -48,7 +48,21 @@ cd engine && ../.venv/Scripts/python -m fie run train_inplay
 cd engine && ../.venv/Scripts/python -m fie run experiments
 ```
 
-`ingest_history` downloads about 240 CSV files (~5 minutes). `ingest_statsbomb` streams 1,551 event files and keeps only compact tables (~15 minutes). `research_full` runs every walk-forward model with three worker processes (~25 minutes on a 4-thread budget).
+```bash
+cd engine && ../.venv/Scripts/python -m fie run final_test
+```
+
+```bash
+cd engine && ../.venv/Scripts/python -m fie run expand_coverage
+```
+
+```bash
+cd engine && ../.venv/Scripts/python -m fie run build_report
+```
+
+`research_full` and the shared models train on the original 11 divisions; `expand_coverage` adds ratings and predictions for the seven further divisions without retraining the champion. `final_test` refuses to run twice unless forced.
+
+`ingest_history` downloads about 400 CSV files for 18 divisions (~10 minutes). `ingest_statsbomb` streams 1,551 event files and keeps only compact tables (~15 minutes). `research_full` runs every walk-forward model with three worker processes (~25 minutes on a 4-thread budget).
 
 ## Run the application
 
