@@ -30,7 +30,9 @@ Session: 2 November 2026, started 21:14 (UTC+3), target end 05:14. All figures b
 | **Learned ensemble (champion, `ensemble@v3`)** | components as above; weights on previous 3 seasons | **0.9947** | **0.9949** | **0.5940** | **0.0142** | **0.897** | **2.8996** |
 | Bookmaker closing odds (benchmark) | market | 0.9811 | 0.9773 | 0.5825 | 0.0101 | — | — |
 
-Validation period 2012-08-10 to 2023-06-04; final test 2023-08-04 to 2026-11-01. Current-season (2026/27) rows are refreshed by the forward cycle, so final-test figures that include them can move in the fourth decimal between runs (Elo moved from 0.9990 to 0.9988). The final test was first run once after every modelling choice was frozen; it was re-computed twice more without any model choice being made from it: to add BTTS and over/under metrics, and as an audit after the reproducibility refit of the ensemble weights (`ensemble@v3`), which left the final-test predictions unchanged.
+Validation period 2012-08-10 to 2023-06-04; final test 2023-08-04 to 2026-11-01. Current-season (2026/27) rows are refreshed by the forward cycle, so final-test figures that include them can move in the fourth decimal between runs (Elo moved from 0.9990 to 0.9988). The final test was first run once after every modelling choice was frozen; it was re-computed three more times without any model choice being made from it: to add BTTS and over/under metrics, and as audits after the reproducibility fixes (ensemble weights, Elo outcome mapping), which left the champion's final-test predictions unchanged.
+
+Reproducibility: an isolated run that recomputed every model from the raw match table (separate database copy and cache) reproduced all 17 models' validation results within 2e-8 log loss and the champion's predictions exactly.
 
 Key paired comparisons (block bootstrap over league-seasons, 95% CI, positive = second model better):
 

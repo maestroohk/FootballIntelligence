@@ -21,5 +21,7 @@ Session start: 2026-11-02 21:14 (UTC+3). Target completion: 2026-11-03 05:14. Ti
 | 23:06–23:10 | Integrity | Kick-off guard for forward predictions; 14 late rows flagged and excluded; mobile layout and Players index fixes. |
 | 23:09–23:13 | In-play | Leader-holds calibration; cumulative xG chart; full UI replay re-verified. |
 | 23:13–23:25 | Versioning | Found that the published ensemble predictions came from an earlier fit; traced the cause to Nelder–Mead landing on different local optima after row-order changes; switched to deterministic multi-start L-BFGS (`ensemble@v3`), re-published, re-ran the final-test audit (identical figures). |
+| 23:26–23:45 | Tactics / experiments | Re-parsed StatsBomb events to keep shot play patterns; team tactical profiles page; provider-xG experiment (no gain); goal-count calibration on the performance page; unused-code cleanup; pinned requirements. |
+| 23:45–00:00 | Reproducibility | Isolated from-scratch rerun of all models; champion reproduced exactly; Elo K=20/30 drift traced to order-sensitive Nelder–Mead in the outcome mapping and fixed; all 17 models now agree within 2e-8. |
 
-The final test was computed three times in total: once after the model freeze (22:10), once to add BTTS and over/under metrics (22:35), and once as an audit after the reproducibility refit (23:22). No model choice was made from final-test numbers; the champion and its components were fixed on validation.
+The final test was computed four times in total: once after the model freeze (22:10), once to add BTTS and over/under metrics (22:35), and as audits after the reproducibility fixes (23:22 and 00:00). No model choice was made from final-test numbers; the champion and its components were fixed on validation.
