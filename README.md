@@ -19,7 +19,7 @@ python -m venv .venv
 ```
 
 ```bash
-.venv/Scripts/python -m pip install numpy scipy pandas scikit-learn lightgbm pytest requests
+.venv/Scripts/python -m pip install -r engine/requirements.txt
 ```
 
 Build the database and models (each command runs one job in the foreground; the same jobs can be queued from the dashboard):
@@ -88,7 +88,7 @@ Open http://localhost:5281. The web app starts the Python worker automatically (
 ## Tests
 
 ```bash
-cd engine && ../.venv/Scripts/python -m pytest -q tests
+.venv/Scripts/python -m pytest -q
 ```
 
 The tests cover probability invariants and market consistency, Dixon–Coles mass preservation, parameter recovery, walk-forward leakage, in-play monotonicity and score/red-card responses, live-feed duplicates, out-of-order delivery and corrections, and immutability of stored predictions.
