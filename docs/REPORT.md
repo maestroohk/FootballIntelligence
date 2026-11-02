@@ -20,22 +20,22 @@ Session: 2 November 2026, started 21:14 (UTC+3), target end 05:14. All figures b
 | Model | Training window | Validation log loss (n = 26,057) | Final-test log loss (n = 7,515) | Final-test Brier | Final-test ECE | Final-test goal MAE | Final-test scoreline NLL |
 |---|---|---:|---:|---:|---:|---:|---:|
 | Frequency baseline | previous 5 seasons, same league | 1.0708 | 1.0743 | 0.6501 | 0.0030 | 0.964 | 3.0137 |
-| Elo (K = 15) | updated every match; mapping refit per season | 0.9990 | 0.9990 | 0.5968 | 0.0088 | 0.905 | 2.9238 |
+| Elo (K = 15) | updated every match; mapping refit per season | 0.9990 | 0.9988 | 0.5967 | 0.0072 | 0.906 | 2.9228 |
 | Poisson (Maher) | ~3 years, time-weighted, weekly refit | 0.9988 | 0.9998 | 0.5972 | 0.0159 | 0.901 | 2.9101 |
 | Dixon–Coles | ~3 years, time-weighted, weekly refit | 0.9984 | 0.9990 | 0.5969 | 0.0123 | 0.901 | 2.9100 |
 | DC + shot-based xG proxy (25%) | as Dixon–Coles | 0.9989 | 0.9993 | 0.5970 | 0.0182 | 0.892 | 2.9146 |
 | LightGBM (features) | 2007/08 to previous season, refit per season | 0.9953 | 0.9951 | 0.5943 | 0.0134 | 0.898 | 2.9026 |
 | LightGBM stacked on DC | as above | 0.9949 | 0.9940 | 0.5935 | 0.0139 | 0.898 | 2.8998 |
 | Multinomial logistic (1X2 only) | as above | 0.9954 | 0.9942 | 0.5938 | 0.0084 | — | — |
-| **Learned ensemble (champion, `ensemble@v3`)** | components as above; weights on previous 3 seasons | **0.9947** | **0.9949** | **0.5940** | **0.0143** | **0.897** | **2.8996** |
+| **Learned ensemble (champion, `ensemble@v3`)** | components as above; weights on previous 3 seasons | **0.9947** | **0.9949** | **0.5940** | **0.0142** | **0.897** | **2.8996** |
 | Bookmaker closing odds (benchmark) | market | 0.9811 | 0.9773 | 0.5825 | 0.0101 | — | — |
 
-Validation period 2012-08-10 to 2023-06-04; final test 2023-08-04 to 2026-11-01. The final test was first run once after every modelling choice was frozen; it was re-computed twice more without any model choice being made from it: to add BTTS and over/under metrics, and as an audit after the reproducibility refit of the ensemble weights (`ensemble@v3`), which left the final-test predictions unchanged.
+Validation period 2012-08-10 to 2023-06-04; final test 2023-08-04 to 2026-11-01. Current-season (2026/27) rows are refreshed by the forward cycle, so final-test figures that include them can move in the fourth decimal between runs (Elo moved from 0.9990 to 0.9988). The final test was first run once after every modelling choice was frozen; it was re-computed twice more without any model choice being made from it: to add BTTS and over/under metrics, and as an audit after the reproducibility refit of the ensemble weights (`ensemble@v3`), which left the final-test predictions unchanged.
 
 Key paired comparisons (block bootstrap over league-seasons, 95% CI, positive = second model better):
 
 - Ensemble vs Dixon–Coles: validation +0.0036 log loss [+0.0028, +0.0045]; final test +0.0041 [+0.0022, +0.0060]. The improvement replicated out of sample.
-- Ensemble vs Elo K=15: final test +0.0041 [+0.0029, +0.0052].
+- Ensemble vs Elo K=15: final test +0.0039 [+0.0026, +0.0051].
 - Dixon–Coles vs Poisson: validation +0.0004 [−0.0000, +0.0009]; final test +0.0008 [+0.0002, +0.0015]. Small.
 - Ensemble vs bookmaker closing odds: the bookmaker is better by 0.0136 (validation) and 0.0176 (final test). The model does not beat the market.
 - Over 2.5 goals log loss: ensemble 0.6774 vs bookmaker 0.6696 on the final test.
