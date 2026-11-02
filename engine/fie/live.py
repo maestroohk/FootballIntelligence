@@ -14,13 +14,14 @@ RED_CARDS = ("Red Card", "Second Yellow")
 STATE_TRIGGERS = ("goal", "red_card", "substitution", "correction")
 
 
-def load_live_model(con):
+def load_live_model(con, tier=1):
     row = con.execute("SELECT params FROM live_model WHERE status='champion' ORDER BY created_at DESC LIMIT 1").fetchone()
     if not row:
         raise RuntimeError("no trained in-play model; run the train_inplay job first")
     params = json.loads(row["params"])
     model = InPlayModel.from_json(params["model"])
-    model.second_half_scale = float(params.get("second_half_scale", 1.0))
+    by_tier = params.get("second_half_scale_by_tier") or {}
+    model.second_half_scale = float(by_tier.get("1" if tier == 1 else "2+", params.get("second_half_scale", 1.0)))
     return model, params
 
 
@@ -290,7 +291,21 @@ FOOTBALL_DATA_ORG = "https://api.football-data.org/v4"
 FDO_COMPETITIONS = {"PL": "E0", "ELC": "E1", "PD": "SP1", "BL1": "D1", "SA": "I1", "FL1": "F1", "CL": "CL"}
 
 
-def poll_live_provider(con):
+def _match_for_provider(con, code, home_name, away_name, date_str):
+    from .config import COMPETITIONS
+    from .identity import resolve_team
+    country = COMPETITIONS[code][1]
+    pool = [(r["team_id"], r["name"]) for r in con.execute(
+        "SELECT DISTINCT t.team_id, t.name FROM matches m JOIN teams t ON t.team_id IN (m.home_team_id, m.away_team_id) WHERE m.competition=?", (code,))]
+    h, _ = resolve_team(con, home_name, "football-data.org", country, pool, min_score=0.8)
+    a, _ = resolve_team(con, away_name, "football-data.org", country, pool, min_score=0.8)
+    if h is None or a is None:
+        return None
+    return con.execute("SELECT m.match_id, m.competition FROM matches m WHERE m.home_team_id=? AND m.away_team_id=? AND m.match_date BETWEEN date(?, '-1 day') AND date(?, '+1 day')",
+                       (h, a, date_str, date_str)).fetchone()
+
+
+def poll_live_provider(con, model=None, params=None):
     key = os.environ.get("FOOTBALL_DATA_API_KEY")
     if not key:
         con.execute("INSERT INTO provider_health(provider, last_attempt, status, last_error) VALUES(?,?,?,?) ON CONFLICT(provider) DO UPDATE SET last_attempt=excluded.last_attempt, status=excluded.status, last_error=excluded.last_error",
@@ -303,21 +318,67 @@ def poll_live_provider(con):
         db.provider_event(con, "football-data.org live", True, rate_limit=f"{remaining} requests left this minute" if remaining else None)
     except Exception as exc:
         db.provider_event(con, "football-data.org live", False, str(exc)[:300])
+        con.execute("UPDATE live_sessions SET status='stale' WHERE mode='live' AND status='running'")
         return {"status": "error", "error": str(exc)}
-    matches = resp.json().get("matches", [])
     tracked = []
-    for mt in matches:
+    seen = set()
+    for mt in resp.json().get("matches", []):
         code = FDO_COMPETITIONS.get(mt.get("competition", {}).get("code"))
         if not code:
             continue
         ext = f"fdo-{mt['id']}"
-        row = con.execute("SELECT live_id FROM live_sessions WHERE provider='football-data.org' AND sb_match_id IS NULL AND home_name=? AND away_name=? AND status='running'",
-                          (mt["homeTeam"]["name"], mt["awayTeam"]["name"])).fetchone()
-        score = mt.get("score", {}).get("fullTime", {})
+        seen.add(ext)
+        score = mt.get("score", {}).get("fullTime", {}) or {}
+        hg, ag = score.get("home") or 0, score.get("away") or 0
+        minute = mt.get("minute")
+        row = con.execute("SELECT * FROM live_sessions WHERE provider='football-data.org' AND prematch LIKE ?", (f'%"{ext}"%',)).fetchone()
         if row is None:
-            con.execute("INSERT INTO live_sessions(mode, provider, home_name, away_name, status, created_at, minute, home_goals, away_goals, prematch) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                        ("live", "football-data.org", mt["homeTeam"]["name"], mt["awayTeam"]["name"], "running", db.now(), mt.get("minute"), score.get("home"), score.get("away"), db.dumps({"external_id": ext})))
-        else:
-            con.execute("UPDATE live_sessions SET last_update_at=?, home_goals=?, away_goals=?, minute=? WHERE live_id=?", (db.now(), score.get("home"), score.get("away"), mt.get("minute"), row["live_id"]))
+            ours = None
+            if code in ("E0", "E1", "SP1", "D1", "I1", "F1"):
+                ours = _match_for_provider(con, code, mt["homeTeam"]["name"], mt["awayTeam"]["name"], (mt.get("utcDate") or db.now())[:10])
+            pre = None
+            if ours is not None:
+                pre = con.execute("SELECT lambda_home, lambda_away, model_version FROM predictions WHERE match_id=? AND lambda_home IS NOT NULL ORDER BY CASE purpose WHEN 'forward' THEN 0 ELSE 1 END, prediction_id DESC LIMIT 1",
+                                  (ours["match_id"],)).fetchone()
+            prematch = {"external_id": ext}
+            if pre is not None:
+                prematch.update({"lambda_home": pre["lambda_home"], "lambda_away": pre["lambda_away"], "model_version": pre["model_version"]})
+            con.execute("INSERT INTO live_sessions(mode, provider, match_id, home_name, away_name, status, created_at, minute, home_goals, away_goals, prematch) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                        ("live", "football-data.org", ours["match_id"] if ours else None, mt["homeTeam"]["name"], mt["awayTeam"]["name"], "running", db.now(), None, 0, 0, db.dumps(prematch)))
+            row = con.execute("SELECT * FROM live_sessions WHERE live_id=last_insert_rowid()").fetchone()
         tracked.append(ext)
+        prematch = json.loads(row["prematch"])
+        con.execute("UPDATE live_sessions SET last_event_at=?, status='running' WHERE live_id=?", (db.now(), row["live_id"]))
+        if "lambda_home" not in prematch:
+            con.execute("UPDATE live_sessions SET minute=?, home_goals=?, away_goals=?, last_update_at=? WHERE live_id=?", (minute, hg, ag, db.now(), row["live_id"]))
+            continue
+        if model is None:
+            model, params = load_live_model(con, tier=1 if code in ("E0", "SP1", "D1", "I1", "F1") else 2)
+        lm = LiveMatch(con, row["live_id"], model, params, prematch["lambda_home"], prematch["lambda_away"])
+        clock = float(min(minute or 0, 130))
+        period = 2 if clock > 45 else 1
+        if mt.get("status") == "PAUSED":
+            period, clock = 2, 45.0
+        events, reasons = [], []
+        current = lm.state(period, clock)
+        for side, new in (("home", hg), ("away", ag)):
+            have = current[f"{side}_goals"]
+            for n in range(have, new):
+                events.append({"id": f"{ext}-goal-{side}-{n + 1}", "seq": int(clock * 100) + n, "period": period, "clock": max(clock - 0.5, 0.0),
+                               "kind": "goal", "side": side, "payload": {"approximate_time": True}})
+                reasons.append(f"Goal for {side} (score {hg}-{ag} at about {int(clock)} min; provider gives no exact goal time)")
+            if new < have:
+                last = con.execute("SELECT provider_event_id FROM live_events WHERE live_id=? AND kind='goal' AND side=? AND superseded=0 ORDER BY period DESC, clock DESC LIMIT 1",
+                                   (row["live_id"], side)).fetchone()
+                if last:
+                    events.append({"id": f"{ext}-corr-{last[0]}", "period": period, "clock": clock, "kind": "correction", "side": side, "payload": {"supersedes": last[0]}})
+                    reasons.append(f"Provider score correction: {side} goal removed")
+        accepted = lm.ingest(events) if events else []
+        last_clock = row["minute"] if row["minute"] is not None else -1
+        if accepted or clock - last_clock >= 1:
+            trigger = "goal" if any(e["kind"] == "goal" for e in accepted) else "correction" if accepted else "interval"
+            lm.snapshot(period, clock, trigger, reasons)
+    for row in con.execute("SELECT live_id, prematch FROM live_sessions WHERE provider='football-data.org' AND status='running'").fetchall():
+        if json.loads(row["prematch"]).get("external_id") not in seen:
+            con.execute("UPDATE live_sessions SET status='ended_or_unavailable' WHERE live_id=?", (row["live_id"],))
     return {"status": "ok", "tracked": tracked}

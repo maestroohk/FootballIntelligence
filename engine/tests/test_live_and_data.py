@@ -100,3 +100,68 @@ def test_walk_forward_training_data_precedes_predictions():
     merged = out.merge(frame[["match_id", "date"]], on="match_id")
     assert (merged["fit_cutoff"] <= merged["date"]).all()
     assert len(merged) > 0
+
+
+class _Resp:
+    def __init__(self, payload, headers=None):
+        self._payload = payload
+        self.headers = headers or {}
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._payload
+
+
+def test_live_provider_reports_missing_key(con, monkeypatch):
+    from fie import live
+    monkeypatch.delenv("FOOTBALL_DATA_API_KEY", raising=False)
+    assert live.poll_live_provider(con)["status"] == "not_configured"
+    row = con.execute("SELECT status, last_error FROM provider_health WHERE provider='football-data.org live'").fetchone()
+    assert row["status"] == "not_configured" and "not set" in row["last_error"]
+
+
+def test_live_provider_tracks_and_updates_matches(con, monkeypatch):
+    from fie import live
+    monkeypatch.setenv("FOOTBALL_DATA_API_KEY", "test-key")
+    payload = {"matches": [{"id": 1, "competition": {"code": "PL"}, "homeTeam": {"name": "Arsenal FC"}, "awayTeam": {"name": "Chelsea FC"},
+                            "minute": 30, "score": {"fullTime": {"home": 1, "away": 0}}},
+                           {"id": 2, "competition": {"code": "XYZ"}, "homeTeam": {"name": "A"}, "awayTeam": {"name": "B"}, "score": {"fullTime": {}}}]}
+    monkeypatch.setattr(live.requests, "get", lambda *a, **k: _Resp(payload, {"X-Requests-Available-Minute": "9"}))
+    assert live.poll_live_provider(con)["tracked"] == ["fdo-1"]
+    payload["matches"][0]["score"]["fullTime"] = {"home": 1, "away": 1}
+    payload["matches"][0]["minute"] = 70
+    live.poll_live_provider(con)
+    rows = con.execute("SELECT * FROM live_sessions WHERE provider='football-data.org'").fetchall()
+    assert len(rows) == 1 and (rows[0]["home_goals"], rows[0]["away_goals"], rows[0]["minute"]) == (1, 1, 70)
+    assert con.execute("SELECT rate_limit FROM provider_health WHERE provider='football-data.org live'").fetchone()[0].startswith("9")
+
+
+
+def test_live_provider_produces_forecasts_from_score_changes(con, monkeypatch):
+    from fie import live
+    monkeypatch.setenv("FOOTBALL_DATA_API_KEY", "test-key")
+    con.execute("INSERT INTO competitions VALUES('E0','PL','ENG',1)")
+    con.execute("INSERT INTO teams(team_id, name, country) VALUES(1,'Arsenal','ENG'),(2,'Chelsea','ENG')")
+    con.execute("INSERT INTO matches(match_id, competition, season, match_date, home_team_id, away_team_id, status, source, first_seen, updated_at) VALUES(9,'E0',2026,'2026-11-07',1,2,'scheduled','t',?,?)", (db.now(), db.now()))
+    con.execute("INSERT INTO predictions(match_id, model_version, purpose, created_at, data_cutoff, p_home, p_draw, p_away, lambda_home, lambda_away) VALUES(9,'m','forward',?,'2026-11-01',.5,.25,.25,1.6,1.0)", (db.now(),))
+    model = _model()
+    params = {"minutes_per_match": 94.0, "half_end": (47.0, 94.0)}
+    payload = {"matches": [{"id": 7, "utcDate": "2026-11-07T15:00:00Z", "status": "IN_PLAY", "competition": {"code": "PL"}, "homeTeam": {"name": "Arsenal FC"},
+                            "awayTeam": {"name": "Chelsea FC"}, "minute": 20, "score": {"fullTime": {"home": 0, "away": 0}}}]}
+    monkeypatch.setattr(live.requests, "get", lambda *a, **k: _Resp(payload))
+    live.poll_live_provider(con, model, params)
+    s0 = con.execute("SELECT * FROM live_snapshots ORDER BY snapshot_id DESC LIMIT 1").fetchone()
+    assert s0 is not None
+    payload["matches"][0].update({"minute": 55, "score": {"fullTime": {"home": 1, "away": 0}}})
+    live.poll_live_provider(con, model, params)
+    s1 = con.execute("SELECT * FROM live_snapshots ORDER BY snapshot_id DESC LIMIT 1").fetchone()
+    assert s1["trigger"] == "goal" and s1["home_goals"] == 1 and s1["p_home"] > s0["p_home"]
+    payload["matches"][0].update({"minute": 57, "score": {"fullTime": {"home": 0, "away": 0}}})
+    live.poll_live_provider(con, model, params)
+    s2 = con.execute("SELECT * FROM live_snapshots ORDER BY snapshot_id DESC LIMIT 1").fetchone()
+    assert s2["home_goals"] == 0 and s2["trigger"] == "correction"
+    payload["matches"] = []
+    live.poll_live_provider(con, model, params)
+    assert con.execute("SELECT status FROM live_sessions WHERE provider='football-data.org'").fetchone()[0] == "ended_or_unavailable"

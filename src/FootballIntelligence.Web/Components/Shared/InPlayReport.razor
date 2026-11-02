@@ -8,7 +8,7 @@ else
 {
     var m = metrics.Value;
     <div class="grid g4" id="inplay">
-        <Kpi Label="Active in-play model" Value="@model.Version.Replace("inplay-", "")" Note="@($"variant: {m.GetProperty("selected").GetString()} · second-half scale ×{SecondHalfScale:F2}")" />
+        <Kpi Label="Active in-play model" Value="@model.Version.Replace("inplay-", "")" Note="@($"variant: {m.GetProperty("selected").GetString()} · top-flight 2nd-half scale ×{SecondHalfScale:F2}")" />
         <Kpi Label="Training / test matches" Value="@($"{m.GetProperty("n_train_matches").GetInt64()} / {m.GetProperty("n_test_matches").GetInt64()}")" Note="@($"chronological split at {m.GetProperty("split_date").GetString()}")" />
         <Kpi Label="Half lengths (avg)" Value="@($"{m.GetProperty("half_end")[0].GetDouble():F1}' / {m.GetProperty("half_end")[1].GetDouble():F1}'")" Note="StatsBomb 2015/16 incl. stoppage" />
         <Kpi Label="Half-time test sample" Value="@m.GetProperty("halftime_eval").GetProperty("n").GetInt64().ToString("N0")" Note="football-data.co.uk HT scores, 2016/17–2022/23" />
@@ -116,7 +116,16 @@ else
             .Select(p => new Reliability.BinSet(Label(p.Name), colors.GetValueOrDefault(p.Name, "var(--info)"), Reliability.Parse(p.Value))).ToList();
     }
 
-    private double SecondHalfScale => model is null ? 1 : JsonDocument.Parse(model.Params).RootElement.TryGetProperty("second_half_scale", out var v) ? v.GetDouble() : 1;
+    private double SecondHalfScale
+    {
+        get
+        {
+            if (model is null) return 1;
+            var root = JsonDocument.Parse(model.Params).RootElement;
+            if (root.TryGetProperty("second_half_scale_by_tier", out var t) && t.TryGetProperty("1", out var s1)) return s1.GetDouble();
+            return root.TryGetProperty("second_half_scale", out var v) ? v.GetDouble() : 1;
+        }
+    }
 
     private IEnumerable<(string, (double Beta, double Se)?, (double Beta, double Se)?)> Coefs()
     {

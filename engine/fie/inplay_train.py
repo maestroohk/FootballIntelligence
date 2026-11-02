@@ -20,6 +20,7 @@ def load_sb(con, prematch):
 
 
 def match_timeline(ev):
+    ev = ev[ev["side"].isin(["home", "away"])]
     goals = ev[ev["kind"] == "goal"].sort_values(["period", "clock"])
     reds = ev[(ev["kind"] == "card") & (ev["detail"].isin(RED_CARDS))]
     shots = ev[ev["kind"] == "shot"]

@@ -55,7 +55,7 @@
             </div>
             <div class="table-wrap">
                 <table class="data compact">
-                    <thead><tr><th>Model</th><th>Status</th><th>Train window</th><th>Test period</th><th class="num">n</th><th class="num">Log loss</th><th class="num">Brier</th><th class="num">RPS</th><th class="num">ECE</th><th class="num">Accuracy</th><th class="num">Goal MAE</th><th class="num">Total MAE</th><th class="num">Score NLL</th><th class="num">O2.5 LL</th></tr></thead>
+                    <thead><tr><th>Model</th><th>Status</th><th>Train window</th><th>Test period</th><th class="num">n</th><th class="num">Log loss</th><th class="num">Brier</th><th class="num">RPS</th><th class="num">ECE</th><th class="num">Accuracy</th><th class="num">Goal MAE</th><th class="num">Total MAE</th><th class="num">Score NLL</th><th class="num">O2.5 LL</th><th class="num">O2.5 ECE</th><th class="num">BTTS LL</th></tr></thead>
                     <tbody>
                         @foreach (var r in runs)
                         {
@@ -76,6 +76,8 @@
                                 <td class="num">@Fmt.Num(M(m, "total_goals_mae"), 3)</td>
                                 <td class="num">@Fmt.Num(M(m, "score_nll"), 4)</td>
                                 <td class="num">@Fmt.Num(M(m, "over25_log_loss"), 4)</td>
+                                <td class="num">@Fmt.Num(M(m, "over25_ece"), 4)</td>
+                                <td class="num">@Fmt.Num(M(m, "btts_log_loss"), 4)</td>
                             </tr>
                         }
                     </tbody>

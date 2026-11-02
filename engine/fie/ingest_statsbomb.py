@@ -47,6 +47,7 @@ def parse_match(meta, events):
     home_name = meta["home_team"]["home_team_name"]
     away_name = meta["away_team"]["away_team_name"]
     side_of = {home_name: "home", away_name: "away"}
+    side_by_id = {meta["home_team"]["home_team_id"]: "home", meta["away_team"]["away_team_id"]: "away"}
     compact = []
     minutes = defaultdict(lambda: defaultdict(float))
     players = {}
@@ -63,7 +64,7 @@ def parse_match(meta, events):
     for ev in events:
         etype = ev["type"]["name"]
         team = ev.get("team", {}).get("name")
-        side = side_of.get(team, "unknown")
+        side = side_by_id.get(ev.get("team", {}).get("id"), side_of.get(team, "unknown"))
         period = ev["period"]
         if period > 2:
             continue
@@ -73,9 +74,9 @@ def parse_match(meta, events):
         pname = ev.get("player", {}).get("name")
         loc = ev.get("location")
         ps = stats[pid] if pid else None
-        poss_team = ev.get("possession_team", {}).get("name")
-        if poss_team in side_of and ev.get("duration"):
-            minutes[(side_of[poss_team], period, ev["minute"])]["possession_seconds"] += float(ev["duration"])
+        poss_side = side_by_id.get(ev.get("possession_team", {}).get("id"))
+        if poss_side and ev.get("duration"):
+            minutes[(poss_side, period, ev["minute"])]["possession_seconds"] += float(ev["duration"])
         if etype == "Starting XI":
             formations[side] = str(ev["tactics"].get("formation"))
             for p in ev["tactics"]["lineup"]:

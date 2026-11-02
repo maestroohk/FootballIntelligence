@@ -72,9 +72,9 @@ def market_information(con):
 
 
 def halftime_recalibration(con):
+    import json
     from .inplay import InPlayModel
     row = con.execute("SELECT params FROM live_model WHERE status='champion' ORDER BY created_at DESC LIMIT 1").fetchone()
-    import json
     params = json.loads(row["params"])
     model = InPlayModel.from_json(params["model"])
     mpm = params["minutes_per_match"]
@@ -82,57 +82,56 @@ def halftime_recalibration(con):
     oos = research.load_cached("oos_ensemble")
     ht = pd.read_sql_query("SELECT match_id, hthg, htag FROM matches WHERE hthg IS NOT NULL", con)
     d = oos[(oos["status"] == "finished")].dropna(subset=["lh"]).merge(ht, on="match_id")
-    train = d[(d["season"] >= 2012) & (d["season"] <= 2015)]
-    test = d[(d["season"] >= 2016) & (d["season"] <= 2022)]
 
-    def second_half_rates(frame, scale):
+    def forecasts(frame, scale):
+        model.second_half_scale = scale
         out = []
         for r in frame.itertuples():
             st = {"period": 2, "clock": 45.0, "home_goals": int(r.hthg), "away_goals": int(r.htag), "reds_home": 0, "reds_away": 0,
                   "xg_home": None, "xg_away": None, "exp_home_so_far": None, "exp_away_so_far": None, "recent_xg_home": None, "recent_xg_away": None}
-            fc = model.forecast(st, r.lh * scale / mpm, r.la * scale / mpm, half_end)
+            fc = model.forecast(st, r.lh / mpm, r.la / mpm, half_end)
             out.append((fc["p_home"], fc["p_draw"], fc["p_away"], fc["p_another_goal"]))
         return np.array(out)
 
-    sample = train.sample(min(len(train), 6000), random_state=1)
-    hit_tr = ((sample["hg"] + sample["ag"]) > (sample["hthg"] + sample["htag"])).to_numpy()
-    y_tr = metrics.outcome_index(sample["hg"], sample["ag"])
-    best = None
-    grid = [0.96, 1.0, 1.04, 1.08, 1.12]
-    scores = {}
-    for scale in grid:
-        r = second_half_rates(sample, scale)
-        ll = metrics.log_loss_rows(r[:, :3], y_tr).mean()
+    def losses(frame, r):
+        y = metrics.outcome_index(frame["hg"], frame["ag"])
+        hit = ((frame["hg"] + frame["ag"]) > (frame["hthg"] + frame["htag"])).to_numpy()
         pm = np.clip(r[:, 3], 1e-9, 1 - 1e-9)
-        gl = -(hit_tr * np.log(pm) + (1 - hit_tr) * np.log(1 - pm)).mean()
-        scores[scale] = {"log_loss_1x2": float(ll), "another_goal_ll": float(gl), "mean_p_more": float(pm.mean()), "freq": float(hit_tr.mean())}
-        if best is None or gl + ll < best[1]:
-            best = (scale, gl + ll)
-    scale = best[0]
-    test_s = test.sample(min(len(test), 12000), random_state=2)
-    y = metrics.outcome_index(test_s["hg"], test_s["ag"])
-    hit = ((test_s["hg"] + test_s["ag"]) > (test_s["hthg"] + test_s["htag"])).to_numpy()
-    base = second_half_rates(test_s, 1.0)
-    cal = second_half_rates(test_s, scale)
-    def gl(r):
-        pm = np.clip(r[:, 3], 1e-9, 1 - 1e-9)
-        return -(hit * np.log(pm) + (1 - hit) * np.log(1 - pm))
-    cmp_goal = metrics.paired_bootstrap(gl(base), gl(cal))
-    cmp_1x2 = metrics.paired_bootstrap(metrics.log_loss_rows(base[:, :3], y), metrics.log_loss_rows(cal[:, :3], y))
-    result = {"grid": {str(k): v for k, v in scores.items()}, "selected_scale": scale, "n_train": int(len(sample)), "n_test": int(len(test_s)),
-              "test_base": {"mean_p_more": float(base[:, 3].mean()), "ece": metrics.ece(base[:, 3], hit)},
-              "test_calibrated": {"mean_p_more": float(cal[:, 3].mean()), "ece": metrics.ece(cal[:, 3], hit)}, "observed": float(hit.mean()),
-              "another_goal_cmp": cmp_goal, "result_1x2_cmp": cmp_1x2}
-    adopt = scale != 1.0 and cmp_goal["ci_low"] > 0 and cmp_1x2["mean_diff"] >= 0
+        return metrics.log_loss_rows(r[:, :3], y), -(hit * np.log(pm) + (1 - hit) * np.log(1 - pm)), hit
+
+    groups = {"1": d["tier"] == 1, "2+": d["tier"] >= 2}
+    result = {}
+    scales = {}
+    lines = []
+    for label, mask in groups.items():
+        train = d[mask & (d["season"] >= 2012) & (d["season"] <= 2015)].sample(frac=1, random_state=1).head(5000)
+        test = d[mask & (d["season"] >= 2016) & (d["season"] <= 2022)].sample(frac=1, random_state=2).head(8000)
+        grid = {}
+        for scale in (0.96, 1.0, 1.04, 1.08, 1.12, 1.16):
+            l1, lg, _ = losses(train, forecasts(train, scale))
+            grid[scale] = float(l1.mean() + lg.mean())
+        best = min(grid, key=grid.get)
+        base = forecasts(test, 1.0)
+        cal = forecasts(test, best)
+        b1, bg, hit = losses(test, base)
+        c1, cg, _ = losses(test, cal)
+        cmp_goal = metrics.paired_bootstrap(bg, cg)
+        cmp_1x2 = metrics.paired_bootstrap(b1, c1)
+        adopt = best != 1.0 and cmp_goal["ci_low"] > 0 and cmp_1x2["mean_diff"] >= 0
+        scales[label] = best if adopt else 1.0
+        result[label] = {"grid": {str(k): v for k, v in grid.items()}, "selected": best, "adopted": adopt, "n_train": int(len(train)), "n_test": int(len(test)),
+                         "observed": float(hit.mean()), "base_mean_p": float(base[:, 3].mean()), "cal_mean_p": float(cal[:, 3].mean()),
+                         "base_ece": metrics.ece(base[:, 3], hit), "cal_ece": metrics.ece(cal[:, 3], hit), "another_goal_cmp": cmp_goal, "result_1x2_cmp": cmp_1x2}
+        lines.append(f"tier {label}: scale x{best:.2f} (train n={len(train)}), test n={len(test)}: P(2nd-half goal) {base[:, 3].mean():.3f} -> {cal[:, 3].mean():.3f} vs observed {hit.mean():.3f}, "
+                     f"ECE {result[label]['base_ece']:.3f} -> {result[label]['cal_ece']:.3f}, another-goal LL {cmp_goal['mean_diff']:+.4f} (CI {cmp_goal['ci_low']:+.4f}..{cmp_goal['ci_high']:+.4f}), "
+                     f"1X2 LL {cmp_1x2['mean_diff']:+.4f} (CI {cmp_1x2['ci_low']:+.4f}..{cmp_1x2['ci_high']:+.4f}){' adopted' if adopt else ' not adopted'}")
     record(con, "Second-half rate recalibration from half-time data",
-           "The hazard model (fitted on 1,551 StatsBomb matches) under-predicts second-half goals at half-time; a single second-half rate scale fitted on 2012-2015 football-data HT/FT results will improve calibration on 2016-2022.",
-           f"Selected scale x{scale:.2f} on n={result['n_train']} (2012-15). Test n={result['n_test']} (2016-22): P(2nd-half goal) mean {result['test_base']['mean_p_more']:.3f} -> {result['test_calibrated']['mean_p_more']:.3f} vs observed {result['observed']:.3f}; "
-           f"ECE {result['test_base']['ece']:.3f} -> {result['test_calibrated']['ece']:.3f}; another-goal LL diff {cmp_goal['mean_diff']:+.4f} (CI {cmp_goal['ci_low']:+.4f}..{cmp_goal['ci_high']:+.4f}); 1X2 LL diff {cmp_1x2['mean_diff']:+.4f} (CI {cmp_1x2['ci_low']:+.4f}..{cmp_1x2['ci_high']:+.4f}).",
-           "adopt: second-half scale applied in live forecasts" if adopt else "reject: no credible improvement", result)
+           "The hazard model (fitted on StatsBomb 2015/16 top-flight matches) mis-states second-half scoring at half-time; a second-half rate scale per tier group, fitted on 2012-2015 football-data HT/FT results, will improve calibration on 2016-2022.",
+           "; ".join(lines), "adopt per-tier scales where credible: " + ", ".join(f"tier {k} x{v:.2f}" for k, v in scales.items()), result)
     db.set_kv(con, "experiment_ht_recalibration", result)
-    if adopt:
-        params["second_half_scale"] = scale
-        con.execute("UPDATE live_model SET params=? WHERE status='champion'", (db.dumps(params),))
+    params["second_half_scale_by_tier"] = scales
+    params.pop("second_half_scale", None)
+    con.execute("UPDATE live_model SET params=? WHERE status='champion'", (db.dumps(params),))
     return result
 
 
@@ -220,7 +219,7 @@ def gpu_benchmark(con):
 @handler("experiments")
 def run_experiments(ctx, names=None):
     available = {"market": market_information, "draws": draw_calibration, "monte_carlo": monte_carlo_error,
-                 "ht_recalibration": halftime_recalibration, "gpu": gpu_benchmark}
+                 "ht_recalibration": halftime_recalibration, "gpu": gpu_benchmark, "inplay_windows": inplay_windows, "stoppage_era": stoppage_era_check}
     out = {}
     for name in names or list(available):
         ctx.stage(f"experiment: {name}")
@@ -360,3 +359,83 @@ def record_research(con):
     record(con, "Multinomial logistic regression baseline", "A linear model on the same features gives a strong 1X2-only baseline.",
            f"Log loss {r['logistic']['log_loss']:.4f}; logistic vs DC {cmp('logistic vs dixon_coles [log_loss]')} (negative = logistic better).",
            "keep as research baseline only (no score distribution)", {})
+
+
+def inplay_windows(con, split_date="2016-02-01"):
+    import json as _json
+    from . import inplay_train
+    from .live import load_live_model
+    model, params = load_live_model(con)
+    mpm, half_end = params["minutes_per_match"], tuple(params["half_end"])
+    oos = research.load_cached("oos_ensemble")
+    matches, grouped = inplay_train.load_sb(con, oos[["match_id", "lh", "la"]])
+    test = matches[matches["match_date"] >= split_date]
+    rows = []
+    for m in test.itertuples():
+        if m.sb_match_id not in grouped.groups:
+            continue
+        goals, reds, shots = inplay_train.match_timeline(grouped.get_group(m.sb_match_id))
+        g = goals[["period", "clock", "side"]].to_numpy()
+        for period, start, stop in ((1, 5, 45), (2, 50, 90)):
+            for clock in range(start, stop, 5):
+                st = inplay_train.state_at(goals, reds, shots, period, float(clock), m.lh, m.la, mpm)
+                fc = model.forecast(st, m.lh / mpm, m.la / mpm, half_end)
+                after = g[(g[:, 0] > period) | ((g[:, 0] == period) & (g[:, 1] >= clock))] if len(g) else g
+                elapsed_clock = lambda r: r[1] if r[0] == period else r[1] + (45 if period == 1 else 0)
+                in10 = any((r[0] == period and r[1] < clock + 10) for r in after)
+                nxt = after[0][2] if len(after) else "none"
+                rows.append({"clock": clock, "period": period, "p10": fc["p_goal_10"], "hit10": int(in10),
+                             "p_next": (fc["p_next_home"], fc["p_next_away"], fc["p_no_more"]), "next": {"home": 0, "away": 1, "none": 2}[nxt]})
+    df = pd.DataFrame(rows)
+    p10 = df["p10"].to_numpy()
+    hit = df["hit10"].to_numpy()
+    pn = np.array(df["p_next"].tolist())
+    yn = df["next"].to_numpy()
+    base_rate = hit.mean()
+    ll10 = -(hit * np.log(np.clip(p10, 1e-9, 1)) + (1 - hit) * np.log(np.clip(1 - p10, 1e-9, 1))).mean()
+    ll10_base = -(hit * np.log(base_rate) + (1 - hit) * np.log(1 - base_rate)).mean()
+    result = {"n_checkpoints": int(len(df)), "n_matches": int(df.shape[0] // 16),
+              "goal_10min": {"mean_p": float(p10.mean()), "freq": float(base_rate), "ece": metrics.ece(p10, hit), "log_loss": float(ll10),
+                             "log_loss_constant_base_rate": float(ll10_base), "reliability": metrics.reliability(p10, hit)},
+              "next_goal": {"log_loss": float(metrics.log_loss_rows(pn, yn).mean()), "accuracy": float((pn.argmax(axis=1) == yn).mean()),
+                            "mean_p": pn.mean(axis=0).tolist(), "freq": np.bincount(yn, minlength=3).tolist()}}
+    record(con, "In-play short-horizon and next-goal calibration (held-out replay)",
+           "The hazard model's 10-minute goal probabilities and next-scorer probabilities should be calibrated on held-out StatsBomb matches, beating a constant base rate.",
+           f"{result['n_checkpoints']} checkpoints every 5 minutes: P(goal in next 10') mean {p10.mean():.3f} vs observed {base_rate:.3f}, ECE {result['goal_10min']['ece']:.3f}, "
+           f"log loss {ll10:.4f} vs constant base rate {ll10_base:.4f}; next-goal (home/away/none) log loss {result['next_goal']['log_loss']:.4f}, accuracy {result['next_goal']['accuracy']:.3f}.",
+           "keep (calibrated)" if result["goal_10min"]["ece"] < 0.03 else "investigate calibration", result)
+    db.set_kv(con, "experiment_inplay_windows", result)
+    return result
+
+
+def stoppage_era_check(con):
+    from .live import load_live_model
+    model, params = load_live_model(con)
+    mpm, half_end = params["minutes_per_match"], tuple(params["half_end"])
+    oos = research.load_cached("oos_ensemble")
+    ht = pd.read_sql_query("SELECT match_id, hthg, htag FROM matches WHERE hthg IS NOT NULL", con)
+    d = oos[oos["status"] == "finished"].dropna(subset=["lh"]).merge(ht, on="match_id")
+    d = d[d["competition"].isin(PRIMARY_COMPETITIONS)]
+    out = {}
+    for season in range(2016, 2027):
+        g = d[d["season"] == season]
+        if len(g) > 2500:
+            g = g.sample(2500, random_state=season)
+        preds = []
+        for r in g.itertuples():
+            st = {"period": 2, "clock": 45.0, "home_goals": int(r.hthg), "away_goals": int(r.htag), "reds_home": 0, "reds_away": 0,
+                  "xg_home": None, "xg_away": None, "exp_home_so_far": None, "exp_away_so_far": None, "recent_xg_home": None, "recent_xg_away": None}
+            preds.append(model.forecast(st, r.lh / mpm, r.la / mpm, half_end)["exp_remaining"])
+        actual = (g["hg"] + g["ag"] - g["hthg"] - g["htag"]).to_numpy()
+        first = (g["hthg"] + g["htag"]).to_numpy()
+        out[int(season)] = {"n": int(len(g)), "pred_2h_goals": float(np.mean(preds)), "actual_2h_goals": float(actual.mean()),
+                            "actual_1h_goals": float(first.mean()), "pre_match_total": float((g["lh"] + g["la"]).mean())}
+    early = [v["actual_2h_goals"] - v["pred_2h_goals"] for s, v in out.items() if s <= 2022]
+    late = [v["actual_2h_goals"] - v["pred_2h_goals"] for s, v in out.items() if s >= 2023]
+    record(con, "Second-half goals before and after the 2023 stoppage-time change (analysis only)",
+           "Longer added time since 2023/24 should raise second-half goals relative to a model fitted on 2015/16 half lengths. This uses final-test seasons for diagnosis only, not for tuning.",
+           f"Mean (actual - predicted) second-half goals: 2016-2022 {np.mean(early):+.3f}, 2023-2026 {np.mean(late):+.3f}. Per season: " +
+           ", ".join(f"{s}: {v['actual_2h_goals']:.2f} vs {v['pred_2h_goals']:.2f}" for s, v in out.items()),
+           "flag for future recalibration on post-2023 data once more seasons are available" if np.mean(late) - np.mean(early) > 0.03 else "no era effect detected", out)
+    db.set_kv(con, "experiment_stoppage_era", out)
+    return out

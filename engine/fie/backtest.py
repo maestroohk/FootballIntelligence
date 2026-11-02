@@ -159,7 +159,10 @@ def evaluate(oos, split=None, competitions=None, seasons=None, extra_mask=None):
         return None
     p = d[["p_home", "p_draw", "p_away"]].to_numpy()
     y = metrics.outcome_index(d["hg"], d["ag"])
-    return metrics.summarise(p, y, d["lh"], d["la"], d["hg"].to_numpy(), d["ag"].to_numpy(), d["score_p"].to_numpy(), d["over25"].to_numpy())
+    btts = None
+    if d["lh"].notna().all():
+        btts = np.array([dixon_coles_matrix(a, b, r)[1:, 1:].sum() for a, b, r in zip(d["lh"], d["la"], d["rho"].fillna(0.0))])
+    return metrics.summarise(p, y, d["lh"], d["la"], d["hg"].to_numpy(), d["ag"].to_numpy(), d["score_p"].to_numpy(), d["over25"].to_numpy(), btts)
 
 
 def row_losses(oos):

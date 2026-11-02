@@ -65,7 +65,7 @@ def goal_rows(lh, la, hg, ag, score_p=None):
     return out
 
 
-def summarise(p, y, lh=None, la=None, hg=None, ag=None, score_p=None, over25=None):
+def summarise(p, y, lh=None, la=None, hg=None, ag=None, score_p=None, over25=None, btts=None):
     p = np.asarray(p, dtype=float)
     y = np.asarray(y)
     res = {
@@ -84,11 +84,20 @@ def summarise(p, y, lh=None, la=None, hg=None, ag=None, score_p=None, over25=Non
         res["total_goals_mae"] = float(g["total_mae_rows"].mean())
         if score_p is not None:
             res["score_nll"] = float(g["score_nll_rows"].mean())
-    if over25 is not None and hg is not None:
-        hit = (np.asarray(hg) + np.asarray(ag)) > 2.5
-        o = np.clip(np.asarray(over25), EPS, 1 - EPS)
-        res["over25_log_loss"] = float(-(hit * np.log(o) + (1 - hit) * np.log(1 - o)).mean())
-        res["over25_ece"] = ece(o, hit)
+    for name, prob, outcome in (("over25", over25, None if hg is None else (np.asarray(hg) + np.asarray(ag)) > 2.5),
+                                 ("btts", btts, None if hg is None else (np.asarray(hg) > 0) & (np.asarray(ag) > 0))):
+        if prob is None or outcome is None:
+            continue
+        prob = np.asarray(prob, dtype=float)
+        ok = np.isfinite(prob)
+        if ok.sum() < 0.9 * len(prob):
+            continue
+        o = np.clip(prob[ok], EPS, 1 - EPS)
+        hit = outcome[ok]
+        res[f"{name}_log_loss"] = float(-(hit * np.log(o) + (1 - hit) * np.log(1 - o)).mean())
+        res[f"{name}_brier"] = float(((o - hit) ** 2).mean())
+        res[f"{name}_ece"] = ece(o, hit)
+        res[f"{name}_n"] = int(ok.sum())
     return res
 
 
