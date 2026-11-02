@@ -127,9 +127,10 @@ input.input, select.input { background: var(--bg-elev); border: 1px solid var(--
 .prob-bar .a { background: var(--away); }
 .prob-legend { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); margin-top: 6px; }
 
-.match-line { display: grid; grid-template-columns: 74px 1fr 60px 1fr 220px; gap: 12px; align-items: center; padding: 10px 6px; border-bottom: 1px solid var(--border-soft); }
+.match-line { display: grid; grid-template-columns: 64px minmax(0,1fr) 48px minmax(0,1fr) minmax(170px, 210px); gap: 12px; align-items: center; padding: 10px 6px; border-bottom: 1px solid var(--border-soft); }
 .match-line:last-child { border-bottom: none; }
-.match-line .team { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.match-line .team { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-wrap: nowrap; min-width: 0; }
+.match-line .team a { overflow: hidden; text-overflow: ellipsis; }
 .match-line .team.home { text-align: right; }
 .match-line .score { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; background: var(--panel-2); border-radius: 6px; padding: 3px 0; }
 
@@ -180,6 +181,9 @@ input.input, select.input { background: var(--bg-elev); border: 1px solid var(--
 #blazor-error-ui { background: #3a1820; color: #ffd7dc; bottom: 0; display: none; left: 0; padding: .6rem 1.25rem .7rem; position: fixed; width: 100%; z-index: 1000; }
 #blazor-error-ui .dismiss { cursor: pointer; position: absolute; right: .75rem; top: .5rem; }
 
+@media (max-width: 1400px) {
+    .g-main-side { grid-template-columns: minmax(0, 1fr) 320px; }
+}
 @media (max-width: 1100px) {
     .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .g3, .g-main-side { grid-template-columns: 1fr; }

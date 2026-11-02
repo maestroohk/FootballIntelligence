@@ -20,7 +20,7 @@
 <div class="grid g4">
     <Kpi Label="Champion model" Value="@Fmt.ModelLabel(champion)" Note="@championNote" />
     <Kpi Label="Validation log loss" Value="@Fmt.Num(championVal?.GetProperty("log_loss").GetDouble(), 4)" Note="@($"vs bookmaker close {Fmt.Num(bookVal?.GetProperty("log_loss").GetDouble(), 4)} · n={championVal?.GetProperty("n").GetInt64()}")" />
-    <Kpi Label="Upcoming predictions" Value="@upcoming.Count(u => u.PHome is not null).ToString()" Note="@($"{upcoming.Count} scheduled fixtures in database")" />
+    <Kpi Label="Forward predictions" Value="@upcoming.Count(u => u.PHome is not null).ToString()" Note="@($"stored for the next 10 days · {upcoming.Count} future fixtures known")" />
     <Kpi Label="Live feeds" Value="@(liveProvider?.Status == "ok" ? "Connected" : "Unavailable")" Color="@(liveProvider?.Status == "ok" ? "var(--ok)" : "var(--warn)")"
          Note="@(liveProvider?.LastError ?? "Historical replay available in Live tracker")" />
 </div>
@@ -35,12 +35,27 @@
         {
             <div class="empty">No scheduled fixtures. Run the update cycle to fetch the latest fixture list.</div>
         }
-        @foreach (var m in upcoming.Take(14))
+        @foreach (var day in upcoming.Take(24).GroupBy(m => m.MatchDate))
         {
-            <MatchLine Match="m" />
+            <h3 style="margin:12px 0 2px">@DayLabel(day.Key)</h3>
+            @foreach (var m in day) { <MatchLine Match="m" /> }
         }
+        <div class="row" style="margin-top:8px"><a href="matches" class="small">All upcoming fixtures →</a></div>
     </div>
     <div class="stack" style="gap:16px">
+        <div class="card">
+            <div class="card-head"><h2>Model performance</h2><a href="lab" class="small">Details →</a></div>
+            <table class="data">
+                <thead><tr><th></th><th class="num">n</th><th class="num">Log loss</th><th class="num">ECE</th></tr></thead>
+                <tbody>
+                    @foreach (var (label, el) in perfRows)
+                    {
+                        <tr><td class="small">@label.Split('|')[0]<div class="faint">@label.Split('|')[1]</div></td><td class="num small">@el.GetProperty("n").GetInt64().ToString("N0")</td><td class="num">@el.GetProperty("log_loss").GetDouble().ToString("F4")</td><td class="num small">@el.GetProperty("ece").GetDouble().ToString("F4")</td></tr>
+                    }
+                </tbody>
+            </table>
+            <div class="small faint" style="margin-top:6px">Six primary leagues. Lower is better. Bookmaker closing odds are an external benchmark.</div>
+        </div>
         <div class="card">
             <div class="card-head"><h2>Strongest model confidence</h2><span class="sub">highest single-outcome probability</span></div>
             @foreach (var m in upcoming.Where(u => u.PHome is not null).OrderByDescending(u => Math.Max(u.PHome!.Value, Math.Max(u.PDraw!.Value, u.PAway!.Value))).Take(6))
@@ -98,12 +113,13 @@
     private string championNote = "";
     private JsonElement? championVal;
     private JsonElement? bookVal;
+    private List<(string, JsonElement)> perfRows = [];
 
     protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange || previous.MaxSnapshotId != next.MaxSnapshotId;
 
     protected override void Load()
     {
-        upcoming = Football.Upcoming(60);
+        upcoming = Football.Upcoming(500);
         recent = Football.Recent(10);
         live = Ops.LiveSessions(10).Where(l => l.Status == "running").ToList();
         providers = Ops.Providers();
@@ -114,7 +130,24 @@
         var book = Research.Backtest("bookmaker_close", "validation");
         bookVal = book is null ? null : JsonDocument.Parse(book.Metrics).RootElement.Clone();
         championNote = champRun is null ? "Run the research job to select a champion" : $"validation {champRun.TestPeriod}";
+        perfRows = [];
+        foreach (var (split, label) in new[] { ("validation", "validation 2012–23"), ("final_test", "final test 2023–26") })
+        {
+            foreach (var model in new[] { champion?.Split('@')[0] ?? "ensemble", "dixon_coles", "bookmaker_close" })
+            {
+                var run = Research.Backtest(model, split);
+                if (run is not null) perfRows.Add(($"{Fmt.ModelLabel(model).Replace(" (benchmark)", "")}|{label}", JsonDocument.Parse(run.Metrics).RootElement.Clone()));
+            }
+        }
     }
 
     private void Enqueue(string kind) => Ops.Enqueue(kind);
+
+    private static string DayLabel(string date)
+    {
+        var d = DateTime.Parse(date, System.Globalization.CultureInfo.InvariantCulture);
+        var today = DateTime.Today;
+        var name = d == today ? "Today" : d == today.AddDays(1) ? "Tomorrow" : d.ToString("dddd", System.Globalization.CultureInfo.InvariantCulture);
+        return $"{name} · {d:dd MMM}";
+    }
 }

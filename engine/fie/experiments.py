@@ -307,6 +307,13 @@ def player_study(con, split_date="2016-01-15"):
     cmp_ll = metrics.paired_bootstrap(ll0, ll1)
     cmp_s = metrics.paired_bootstrap(s0, s1)
     corr = float(np.corrcoef(d["delta_home"], d["hg"] - d["lh"])[0, 1])
+    rotation = (test["delta_home"].abs() + test["delta_away"].abs()).to_numpy()
+    cut = np.quantile(rotation, [1 / 3, 2 / 3])
+    bands = {}
+    for label, mask in (("usual XIs (lowest third of deviation)", rotation <= cut[0]), ("moderate rotation", (rotation > cut[0]) & (rotation <= cut[1])),
+                        ("heavy rotation (top third)", rotation > cut[1])):
+        bands[label] = {"n": int(mask.sum()), "team_only_log_loss": float(ll0[mask].mean()), "xi_adjusted_log_loss": float(ll1[mask].mean()),
+                        "team_only_score_nll": float(s0[mask].mean()), "xi_adjusted_score_nll": float(s1[mask].mean())}
     adopted = cmp_ll["ci_low"] > 0 and cmp_s["ci_low"] > 0
     summary = (f"Tested on {len(test)} held-out 2015/16 matches (fitted on {len(train)} earlier ones). The starting XI's prior xG+xA index, relative to the team's usual XI, "
                f"gets coefficient {beta:+.2f} on log goal rate; 1X2 log loss change {cmp_ll['mean_diff']:+.4f} (95% CI {cmp_ll['ci_low']:+.4f}..{cmp_ll['ci_high']:+.4f}), "
@@ -314,7 +321,11 @@ def player_study(con, split_date="2016-01-15"):
                + ("Adopted for matches with confirmed lineups." if adopted else "Not adopted: the evidence is not strong enough on this sample, so forecasts stay team-level."))
     result = {"beta": beta, "n_train": int(len(train)), "n_test": int(len(test)), "cmp_log_loss": cmp_ll, "cmp_score_nll": cmp_s,
               "corr_delta_residual": corr, "delta_sd": float(d["delta_home"].std()), "adopted": bool(adopted), "summary": summary,
-              "missing_share_mean": float(d["missing_share_home"].mean())}
+              "missing_share_mean": float(d["missing_share_home"].mean()), "by_rotation": bands}
+    record(con, "Forecast quality under lineup uncertainty",
+           "Team-only forecasts implicitly assume a typical lineup, so they should be worse when the confirmed XI deviates strongly from the team's usual XI; an XI adjustment should help most there.",
+           "; ".join(f"{k}: n={v['n']}, team-only LL {v['team_only_log_loss']:.4f}, XI-adjusted {v['xi_adjusted_log_loss']:.4f}" for k, v in bands.items()),
+           "analysis only (small samples; see the XI experiment for the adoption decision)", bands)
     record(con, "Confirmed starting XI quality vs team-only forecasts",
            "If confirmed lineups carry information beyond team-level ratings, adjusting pre-match goal rates by the starting XI's prior xG+xA per 90 (shrunk toward positional means, relative to the team's recent XIs) will improve held-out forecasts.",
            summary, "adopt" if adopted else "reject (insufficient evidence)", result)

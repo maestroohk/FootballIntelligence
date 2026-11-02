@@ -1,0 +1,320 @@
+# Measured results
+
+Generated from the database by the `build_report` job; every number below is computed from stored out-of-sample predictions.
+
+Champion: **ensemble**. Selection log: dixon_coles is the baseline champion; ensemble beats dixon_coles on score NLL (diff 0.0098, 95% CI 0.0081..0.0115); dc_xg25 not promoted over ensemble: score NLL diff -0.0108, CI -0.0127..-0.0090.
+
+## Validation (2012/13–2022/23, six primary leagues, walk-forward)
+
+| Model | Training window | Test period | Matches | Log loss | Brier | RPS | ECE | Accuracy | Goal MAE | Total-goals MAE | Score NLL | O2.5 log loss | BTTS log loss |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Bookmaker closing odds (benchmark) | market closing odds (benchmark, not a model) | 2012-08-10 to 2023-06-04 | 26,053 | 0.9811 | 0.5844 | 0.1989 | 0.0054 | 0.522 | — | — | — | — | — |
+| Learned ensemble (champion) | component models refit as listed; blend weights fitted on the previous 3 seasons | 2012-08-10 to 2023-06-04 | 26,057 | 0.9947 | 0.5937 | 0.2031 | 0.0083 | 0.514 | 0.896 | 1.301 | 2.8832 | 0.6808 | 0.6884 |
+| LightGBM stacked on DC | all matches from 2007/08 to the previous season, refit each season | 2012-08-10 to 2023-06-04 | 26,057 | 0.9949 | 0.5938 | 0.2031 | 0.0062 | 0.513 | 0.896 | 1.303 | 2.8853 | 0.6822 | 0.6890 |
+| LightGBM features | all matches from 2007/08 to the previous season, refit each season | 2012-08-10 to 2023-06-04 | 26,057 | 0.9953 | 0.5941 | 0.2032 | 0.0067 | 0.512 | 0.896 | 1.304 | 2.8875 | 0.6826 | 0.6895 |
+| Multinomial logistic | all matches from 2007/08 to the previous season, refit each season | 2012-08-10 to 2023-06-04 | 26,057 | 0.9954 | 0.5938 | 0.2031 | 0.0071 | 0.515 | — | — | — | — | — |
+| Dixon-Coles | time-weighted matches from the previous ~3 years, refit weekly | 2012-08-10 to 2023-06-04 | 26,057 | 0.9984 | 0.5963 | 0.2042 | 0.0077 | 0.510 | 0.902 | 1.306 | 2.8929 | 0.6854 | 0.6913 |
+| Poisson (Maher) | time-weighted matches from the previous ~3 years, refit weekly | 2012-08-10 to 2023-06-04 | 26,057 | 0.9988 | 0.5964 | 0.2042 | 0.0117 | 0.510 | 0.902 | 1.306 | 2.8934 | 0.6854 | 0.6918 |
+| DC + shot-xG 25% | time-weighted matches from the previous ~3 years, refit weekly | 2012-08-10 to 2023-06-04 | 26,057 | 0.9989 | 0.5967 | 0.2043 | 0.0173 | 0.511 | 0.894 | 1.298 | 2.8940 | 0.6872 | 0.6916 |
+| Elo K=15 | updated after every match; outcome/goal mapping refit each season on the 4 prior seasons | 2012-08-10 to 2023-06-04 | 26,057 | 0.9990 | 0.5965 | 0.2044 | 0.0100 | 0.512 | 0.902 | 1.324 | 2.8998 | 0.6891 | 0.6930 |
+| Dixon-Coles slow decay | time-weighted matches from the previous ~3 years, refit weekly | 2012-08-10 to 2023-06-04 | 26,057 | 0.9991 | 0.5968 | 0.2045 | 0.0076 | 0.508 | 0.903 | 1.306 | 2.8939 | 0.6855 | 0.6910 |
+| Dixon-Coles fast decay | time-weighted matches from the previous ~3 years, refit weekly | 2012-08-10 to 2023-06-04 | 26,057 | 0.9993 | 0.5969 | 0.2045 | 0.0071 | 0.511 | 0.903 | 1.307 | 2.8957 | 0.6863 | 0.6921 |
+| Elo K=20 | updated after every match; outcome/goal mapping refit each season on the 4 prior seasons | 2012-08-10 to 2023-06-04 | 26,057 | 1.0001 | 0.5973 | 0.2047 | 0.0106 | 0.510 | 0.903 | 1.325 | 2.9012 | 0.6894 | 0.6929 |
+| Dixon-Coles ridge 3 | time-weighted matches from the previous ~3 years, refit weekly | 2012-08-10 to 2023-06-04 | 26,057 | 1.0012 | 0.5982 | 0.2051 | 0.0101 | 0.508 | 0.903 | 1.305 | 2.8950 | 0.6846 | 0.6907 |
+| DC + shot-xG 50% | time-weighted matches from the previous ~3 years, refit weekly | 2012-08-10 to 2023-06-04 | 26,057 | 1.0022 | 0.5990 | 0.2051 | 0.0296 | 0.511 | 0.891 | 1.302 | 2.9069 | 0.6950 | 0.6944 |
+| Elo K=30 | updated after every match; outcome/goal mapping refit each season on the 4 prior seasons | 2012-08-10 to 2023-06-04 | 26,057 | 1.0031 | 0.5994 | 0.2057 | 0.0120 | 0.508 | 0.904 | 1.326 | 2.9050 | 0.6900 | 0.6927 |
+| DC + shot-xG 75% | time-weighted matches from the previous ~3 years, refit weekly | 2012-08-10 to 2023-06-04 | 26,057 | 1.0089 | 0.6037 | 0.2069 | 0.0406 | 0.510 | 0.893 | 1.315 | 2.9339 | 0.7100 | 0.7002 |
+| Frequency baseline | previous 5 seasons of the same league | 2012-08-10 to 2023-06-04 | 26,057 | 1.0708 | 0.6476 | 0.2289 | 0.0078 | 0.443 | 0.961 | 1.327 | 2.9987 | 0.6911 | 0.6922 |
+
+## Final test (2023/24–2026/27 to date, untouched until all choices were frozen)
+
+First evaluated at 2026-11-02T19:36:08.358258Z.
+
+| Model | Training window | Test period | Matches | Log loss | Brier | RPS | ECE | Accuracy | Goal MAE | Total-goals MAE | Score NLL | O2.5 log loss | BTTS log loss |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Bookmaker closing odds (benchmark) | market closing odds (benchmark, not a model) | 2023-08-04 to 2026-11-01 | 7,515 | 0.9773 | 0.5825 | 0.1974 | 0.0101 | 0.531 | — | — | — | 0.6696 | — |
+| LightGBM stacked on DC | all matches from 2007/08 to the previous season, refit each season | 2023-08-04 to 2026-11-01 | 7,515 | 0.9940 | 0.5935 | 0.2026 | 0.0139 | 0.511 | 0.898 | 1.299 | 2.8998 | 0.6775 | 0.6849 |
+| Multinomial logistic | all matches from 2007/08 to the previous season, refit each season | 2023-08-04 to 2026-11-01 | 7,515 | 0.9942 | 0.5938 | 0.2026 | 0.0084 | 0.513 | — | — | — | — | — |
+| Learned ensemble (champion) | component models refit as listed; blend weights fitted on the previous 3 seasons | 2023-08-04 to 2026-11-01 | 7,515 | 0.9949 | 0.5940 | 0.2028 | 0.0143 | 0.512 | 0.897 | 1.297 | 2.8996 | 0.6774 | 0.6848 |
+| LightGBM features | all matches from 2007/08 to the previous season, refit each season | 2023-08-04 to 2026-11-01 | 7,515 | 0.9951 | 0.5943 | 0.2029 | 0.0134 | 0.513 | 0.898 | 1.301 | 2.9026 | 0.6785 | 0.6857 |
+| Elo K=15 | updated after every match; outcome/goal mapping refit each season on the 4 prior seasons | 2023-08-04 to 2026-11-01 | 7,515 | 0.9990 | 0.5968 | 0.2040 | 0.0088 | 0.511 | 0.905 | 1.326 | 2.9238 | 0.6906 | 0.6921 |
+| Dixon-Coles | time-weighted matches from the previous ~3 years, refit weekly | 2023-08-04 to 2026-11-01 | 7,515 | 0.9990 | 0.5969 | 0.2042 | 0.0123 | 0.509 | 0.901 | 1.298 | 2.9100 | 0.6810 | 0.6878 |
+| DC + shot-xG 25% | time-weighted matches from the previous ~3 years, refit weekly | 2023-08-04 to 2026-11-01 | 7,515 | 0.9993 | 0.5970 | 0.2043 | 0.0182 | 0.513 | 0.892 | 1.295 | 2.9146 | 0.6860 | 0.6909 |
+| Poisson (Maher) | time-weighted matches from the previous ~3 years, refit weekly | 2023-08-04 to 2026-11-01 | 7,515 | 0.9998 | 0.5972 | 0.2043 | 0.0159 | 0.509 | 0.901 | 1.298 | 2.9101 | 0.6810 | 0.6882 |
+| Frequency baseline | previous 5 seasons of the same league | 2023-08-04 to 2026-11-01 | 7,515 | 1.0743 | 0.6501 | 0.2298 | 0.0030 | 0.434 | 0.964 | 1.321 | 3.0137 | 0.6893 | 0.6893 |
+
+## Paired comparisons, validation
+
+| Comparison (A vs B) | Metric | n | Mean A − B | 95% CI | Verdict |
+|---|---|---:|---:|---|---|
+| Frequency baseline vs Elo K=15 | log_loss | 26,057 | +0.0719 | +0.0631 .. +0.0808 | B better |
+| Frequency baseline vs Elo K=15 | rps | 26,057 | +0.0246 | +0.0216 .. +0.0276 | B better |
+| Frequency baseline vs Elo K=15 | score_nll | 26,057 | +0.0989 | +0.0856 .. +0.1127 | B better |
+| Elo K=15 vs Poisson (Maher) | log_loss | 26,057 | +0.0002 | -0.0013 .. +0.0016 | inconclusive |
+| Elo K=15 vs Poisson (Maher) | rps | 26,057 | +0.0001 | -0.0003 .. +0.0005 | inconclusive |
+| Elo K=15 vs Poisson (Maher) | score_nll | 26,057 | +0.0065 | +0.0026 .. +0.0106 | B better |
+| Poisson (Maher) vs Dixon-Coles | log_loss | 26,057 | +0.0004 | -0.0000 .. +0.0009 | inconclusive |
+| Poisson (Maher) vs Dixon-Coles | rps | 26,057 | +0.0000 | -0.0000 .. +0.0001 | inconclusive |
+| Poisson (Maher) vs Dixon-Coles | score_nll | 26,057 | +0.0004 | -0.0001 .. +0.0010 | inconclusive |
+| Dixon-Coles vs DC + shot-xG 25% | log_loss | 26,057 | -0.0006 | -0.0012 .. +0.0000 | inconclusive |
+| Dixon-Coles vs DC + shot-xG 25% | rps | 26,057 | -0.0001 | -0.0002 .. +0.0001 | inconclusive |
+| Dixon-Coles vs DC + shot-xG 25% | score_nll | 26,057 | -0.0011 | -0.0026 .. +0.0005 | inconclusive |
+| DC + shot-xG 25% vs LightGBM features | log_loss | 26,057 | +0.0036 | +0.0022 .. +0.0051 | B better |
+| DC + shot-xG 25% vs LightGBM features | rps | 26,057 | +0.0011 | +0.0006 .. +0.0015 | B better |
+| DC + shot-xG 25% vs LightGBM features | score_nll | 26,057 | +0.0065 | +0.0040 .. +0.0091 | B better |
+| Dixon-Coles vs LightGBM stacked on DC | log_loss | 26,057 | +0.0034 | +0.0023 .. +0.0047 | B better |
+| Dixon-Coles vs LightGBM stacked on DC | rps | 26,057 | +0.0011 | +0.0007 .. +0.0015 | B better |
+| Dixon-Coles vs LightGBM stacked on DC | score_nll | 26,057 | +0.0077 | +0.0056 .. +0.0097 | B better |
+| Dixon-Coles vs Learned ensemble (champion) | log_loss | 26,057 | +0.0036 | +0.0028 .. +0.0045 | B better |
+| Dixon-Coles vs Learned ensemble (champion) | rps | 26,057 | +0.0011 | +0.0009 .. +0.0014 | B better |
+| Dixon-Coles vs Learned ensemble (champion) | score_nll | 26,057 | +0.0098 | +0.0081 .. +0.0115 | B better |
+| DC + shot-xG 25% vs Learned ensemble (champion) | log_loss | 26,057 | +0.0042 | +0.0032 .. +0.0053 | B better |
+| DC + shot-xG 25% vs Learned ensemble (champion) | rps | 26,057 | +0.0012 | +0.0010 .. +0.0015 | B better |
+| DC + shot-xG 25% vs Learned ensemble (champion) | score_nll | 26,057 | +0.0108 | +0.0090 .. +0.0127 | B better |
+| Multinomial logistic vs Dixon-Coles | log_loss | 26,057 | -0.0030 | -0.0046 .. -0.0014 | A better |
+| Multinomial logistic vs Dixon-Coles | rps | 26,057 | -0.0011 | -0.0015 .. -0.0007 | A better |
+| Learned ensemble (champion) vs Bookmaker closing odds (benchmark) | log_loss | 26,053 | +0.0136 | +0.0115 .. +0.0156 | B better |
+| Learned ensemble (champion) vs Bookmaker closing odds (benchmark) | rps | 26,053 | +0.0042 | +0.0036 .. +0.0048 | B better |
+
+## Paired comparisons, final test
+
+| Comparison (A vs B) | Metric | n | Mean A − B | 95% CI | Verdict |
+|---|---|---:|---:|---|---|
+| Elo K=15 vs Learned ensemble (champion) | log_loss | 7,515 | +0.0041 | +0.0029 .. +0.0052 | B better |
+| Elo K=15 vs Learned ensemble (champion) | rps | 7,515 | +0.0013 | +0.0008 .. +0.0016 | B better |
+| Elo K=15 vs Learned ensemble (champion) | score_nll | 7,515 | +0.0242 | +0.0166 .. +0.0336 | B better |
+| Dixon-Coles vs Learned ensemble (champion) | log_loss | 7,515 | +0.0041 | +0.0022 .. +0.0060 | B better |
+| Dixon-Coles vs Learned ensemble (champion) | rps | 7,515 | +0.0014 | +0.0009 .. +0.0020 | B better |
+| Dixon-Coles vs Learned ensemble (champion) | score_nll | 7,515 | +0.0104 | +0.0065 .. +0.0142 | B better |
+| Poisson (Maher) vs Dixon-Coles | log_loss | 7,515 | +0.0008 | +0.0002 .. +0.0015 | B better |
+| Poisson (Maher) vs Dixon-Coles | rps | 7,515 | +0.0001 | +0.0000 .. +0.0001 | B better |
+| Poisson (Maher) vs Dixon-Coles | score_nll | 7,515 | +0.0001 | -0.0004 .. +0.0007 | inconclusive |
+| DC + shot-xG 25% vs Learned ensemble (champion) | log_loss | 7,515 | +0.0044 | +0.0026 .. +0.0062 | B better |
+| DC + shot-xG 25% vs Learned ensemble (champion) | rps | 7,515 | +0.0015 | +0.0009 .. +0.0021 | B better |
+| DC + shot-xG 25% vs Learned ensemble (champion) | score_nll | 7,515 | +0.0150 | +0.0099 .. +0.0210 | B better |
+| LightGBM features vs Learned ensemble (champion) | log_loss | 7,515 | +0.0002 | -0.0006 .. +0.0011 | inconclusive |
+| LightGBM features vs Learned ensemble (champion) | rps | 7,515 | +0.0001 | -0.0001 .. +0.0003 | inconclusive |
+| LightGBM features vs Learned ensemble (champion) | score_nll | 7,515 | +0.0031 | +0.0020 .. +0.0040 | B better |
+| Learned ensemble (champion) vs Bookmaker closing odds (benchmark) | log_loss | 7,515 | +0.0176 | +0.0148 .. +0.0208 | B better |
+| Learned ensemble (champion) vs Bookmaker closing odds (benchmark) | rps | 7,515 | +0.0054 | +0.0045 .. +0.0064 | B better |
+
+## Champion by league, final test
+
+| League | Matches | Log loss | RPS | ECE | Accuracy | Goal MAE |
+|---|---:|---:|---:|---:|---:|---:|
+| D1 | 990 | 0.9822 | 0.1990 | 0.0303 | 0.518 | 0.989 |
+| E0 | 1,229 | 0.9869 | 0.2020 | 0.0190 | 0.516 | 0.930 |
+| E1 | 1,812 | 1.0403 | 0.2168 | 0.0096 | 0.460 | 0.862 |
+| F1 | 998 | 0.9944 | 0.2069 | 0.0181 | 0.529 | 0.951 |
+| I1 | 1,238 | 0.9754 | 0.1928 | 0.0332 | 0.534 | 0.850 |
+| SP1 | 1,248 | 0.9668 | 0.1928 | 0.0382 | 0.543 | 0.846 |
+
+## Champion calibration, final test
+
+| Top-outcome probability | Matches | Mean predicted | Hit rate | Log loss |
+|---|---:|---:|---:|---:|
+| (0.0, 0.4] | 1,216 | 0.381 | 0.358 | 1.0939 |
+| (0.4, 0.5] | 3,012 | 0.447 | 0.452 | 1.0657 |
+| (0.5, 0.6] | 1,771 | 0.545 | 0.543 | 0.9981 |
+| (0.6, 0.7] | 1,023 | 0.644 | 0.678 | 0.8388 |
+| (0.7, 1.0] | 493 | 0.760 | 0.799 | 0.6307 |
+
+| Outcome | Bin | Matches | Mean predicted | Observed |
+|---|---|---:|---:|---:|
+| home | 0.1–0.2 | 419 | 0.163 | 0.117 |
+| home | 0.2–0.3 | 1,059 | 0.253 | 0.236 |
+| home | 0.3–0.4 | 1,622 | 0.353 | 0.342 |
+| home | 0.4–0.5 | 1,983 | 0.447 | 0.449 |
+| home | 0.5–0.6 | 1,180 | 0.546 | 0.535 |
+| home | 0.6–0.7 | 802 | 0.645 | 0.690 |
+| home | 0.7–0.8 | 312 | 0.741 | 0.782 |
+| home | 0.8–0.9 | 105 | 0.833 | 0.848 |
+| draw | 0.1–0.2 | 805 | 0.170 | 0.155 |
+| draw | 0.2–0.3 | 6,587 | 0.256 | 0.268 |
+| away | 0.0–0.1 | 279 | 0.074 | 0.057 |
+| away | 0.1–0.2 | 1,354 | 0.155 | 0.123 |
+| away | 0.2–0.3 | 2,128 | 0.254 | 0.247 |
+| away | 0.3–0.4 | 1,837 | 0.344 | 0.336 |
+| away | 0.4–0.5 | 1,029 | 0.447 | 0.458 |
+| away | 0.5–0.6 | 591 | 0.544 | 0.560 |
+| away | 0.6–0.7 | 221 | 0.639 | 0.638 |
+
+## Ensemble weights by season
+
+| Season | dixon_coles | dc_xg25 | elo_k15 | gbm_features | scale | ρ |
+|---|---:|---:|---:|---:|---:|---:|
+| 2012 | 0.00 | 0.42 | 0.25 | 0.33 | +0.020 | -0.074 |
+| 2013 | 0.00 | 0.37 | 0.25 | 0.38 | +0.019 | -0.069 |
+| 2014 | 0.13 | 0.20 | 0.20 | 0.46 | +0.011 | -0.053 |
+| 2015 | 0.19 | 0.16 | 0.15 | 0.51 | +0.008 | -0.042 |
+| 2016 | 0.37 | 0.00 | 0.14 | 0.50 | +0.002 | -0.049 |
+| 2017 | 0.39 | 0.00 | 0.09 | 0.52 | +0.006 | -0.069 |
+| 2018 | 0.24 | 0.16 | 0.08 | 0.52 | +0.016 | -0.069 |
+| 2019 | 0.00 | 0.43 | 0.00 | 0.57 | +0.032 | -0.066 |
+| 2020 | 0.00 | 0.36 | 0.00 | 0.64 | +0.029 | -0.054 |
+| 2021 | 0.00 | 0.32 | 0.00 | 0.68 | +0.032 | -0.053 |
+| 2022 | 0.00 | 0.23 | 0.00 | 0.77 | +0.030 | -0.050 |
+| 2023 | 0.00 | 0.22 | 0.00 | 0.78 | +0.019 | -0.043 |
+| 2024 | 0.00 | 0.25 | 0.00 | 0.75 | +0.020 | -0.042 |
+| 2025 | 0.00 | 0.32 | 0.00 | 0.68 | +0.019 | -0.031 |
+| 2026 | 0.00 | 0.34 | 0.00 | 0.66 | +0.030 | -0.036 |
+
+## In-play model
+
+Model `inplay-2026-11-02T19:25:29`; training/test split at 2016-02-01 (915 / 636 StatsBomb matches); average half ends 46.3' and 93.8'; second-half scale by tier {'1': 1.04, '2+': 1.0}.
+
+Checkpoint evaluation on held-out matches (final-result log loss / 'another goal' log loss / 'another goal' ECE):
+
+| Model | 1H 15' | 1H 30' | 2H 45' | 2H 60' | 2H 75' | 2H 85' |
+|---|---:|---:|---:|---:|---:|---:|
+| constant_rate | 0.920 / 0.305 / 0.023 | 0.890 / 0.411 / 0.029 | 0.766 / 0.517 / 0.056 | 0.665 / 0.647 / 0.047 | 0.513 / 0.698 / 0.063 | 0.291 / 0.551 / 0.028 |
+| extrapolation | 1.620 / 0.756 / 0.373 | 1.438 / 0.755 / 0.289 | 1.073 / 0.718 / 0.222 | 0.877 / 0.813 / 0.200 | 0.625 / 0.782 / 0.166 | 0.334 / 0.578 / 0.075 |
+| hazard | 0.919 / 0.304 / 0.024 | 0.887 / 0.410 / 0.030 | 0.760 / 0.511 / 0.048 | 0.652 / 0.640 / 0.017 | 0.503 / 0.690 / 0.033 | 0.286 / 0.549 / 0.005 |
+| hazard_evidence | 0.923 / 0.305 / 0.021 | 0.889 / 0.410 / 0.024 | 0.759 / 0.506 / 0.033 | 0.652 / 0.638 / 0.019 | 0.503 / 0.692 / 0.035 | 0.287 / 0.550 / 0.009 |
+
+Half-time forecasts on football-data.co.uk HT scores (2016/17–2022/23, all 11 divisions):
+
+| Model | Matches | 1X2 log loss | P(2nd-half goal) predicted | observed | ECE |
+|---|---:|---:|---:|---:|---:|
+| constant_rate | 30,950 | 0.8407 | 0.734 | 0.777 | 0.042 |
+| extrapolation | 30,950 | 1.2112 | 0.623 | 0.777 | 0.236 |
+| hazard | 30,950 | 0.8383 | 0.754 | 0.777 | 0.022 |
+
+| Comparison (A vs B) | Metric | n | Mean A − B | 95% CI | Verdict |
+|---|---|---:|---:|---|---|
+| hazard vs hazard_evidence | 1X2 log loss, held-out SB | 3,816 | -0.0007 | -0.0029 .. +0.0015 | inconclusive |
+| constant_rate vs hazard | 1X2 log loss, held-out SB | 3,816 | +0.0061 | +0.0002 .. +0.0123 | B better |
+| extrapolation vs hazard | 1X2 log loss, held-out SB | 3,816 | +0.3268 | +0.2724 .. +0.3817 | B better |
+| constant_rate vs hazard | 1X2 log loss, half-time | 30,950 | +0.0024 | +0.0020 .. +0.0029 | B better |
+| extrapolation vs hazard | 1X2 log loss, half-time | 30,950 | +0.3730 | +0.3606 .. +0.3850 | B better |
+
+Learned multipliers (hazard model):
+
+| Term | Multiplier | s.e. of log |
+|---|---:|---:|
+| t0 | ×0.759 | 0.059 |
+| t1 | ×0.973 | 0.055 |
+| t2 | ×0.904 | 0.059 |
+| t3 | ×0.933 | 0.174 |
+| t4 | ×0.938 | 0.061 |
+| t5 | ×1.003 | 0.059 |
+| t6 | ×1.031 | 0.074 |
+| t7 | ×1.106 | 0.109 |
+| lead1 | ×1.069 | 0.063 |
+| lead2 | ×1.024 | 0.082 |
+| trail1 | ×1.068 | 0.067 |
+| trail2 | ×1.123 | 0.093 |
+| lead_late | ×0.929 | 0.099 |
+| trail_late | ×1.088 | 0.105 |
+| man_up | ×1.759 | 0.081 |
+| man_down | ×0.587 | 0.137 |
+
+## Experiment log
+
+### Does the model add information beyond opening odds?
+
+- Hypothesis: If the model captures information the market misses, a log-linear blend of model and de-vigged opening odds (weights fitted on prior seasons only) will beat the opening odds alone.
+- Result: Validation 2013-2022 (n=23678): opening market 0.9821, model 0.9938, blend 0.9822; market-blend diff -0.0000 (95% CI -0.0001..+0.0000); mean model weight 0.00.
+- Decision: reject: no measurable information beyond the opening market
+
+### Draw calibration of the champion
+
+- Hypothesis: Poisson-family models are known to under-predict draws; check whether the Dixon-Coles dependence term and learned ensemble remove the bias.
+- Result: Validation n=26057: mean predicted draw 0.255 vs observed 0.255 (gap +0.001). League gaps: D1 -0.004, E0 +0.008, E1 +0.002, F1 -0.001, I1 -0.007, SP1 +0.003
+- Decision: no change needed
+
+### Monte Carlo simulation vs exact scoreline enumeration
+
+- Hypothesis: For a fixed pair of goal rates, Monte Carlo adds sampling error without adding information; exact enumeration should be faster and error-free. Monte Carlo is only worth it when mixing over uncertain inputs (lineups, scenarios).
+- Result: Exact markets: 0.29 ms/match. Monte Carlo RMSE on P(home) at 10k sims up to 0.0058 (~0.6 pp) at 0.5 ms/match; 100k sims needed for <0.2 pp.
+- Decision: adopt exact enumeration for single-scenario forecasts; use mixtures of exact matrices for scenario uncertainty
+
+### GPU vs CPU for gradient boosting
+
+- Hypothesis: The tabular training set (~70k rows, 26 features) is too small for GPU acceleration to pay off.
+- Result: rows=67333, lightgbm_cpu_4threads_s=0.73, xgboost_cpu_s=4.22, xgboost_cuda_s=5.39
+- Decision: no meaningful GPU benefit (speed-up x0.78); fastest is lightgbm_cpu_4threads_s; keep CPU training with 4 threads
+
+### Spread calibration of the ensemble (challenger v2)
+
+- Hypothesis: Validation reliability showed the geometric-mean ensemble is slightly under-confident (temperature exponent 1.066); learning a spread multiplier on the home-away log-rate difference (fitted per season on the previous three seasons) should sharpen forecasts while keeping a coherent score distribution.
+- Result: Validation n=26057: log loss 0.9947 -> 0.9945 (diff +0.0002, CI +0.0001..+0.0004); ECE 0.0083 -> 0.0078; scoreline NLL diff +0.00001 (CI -0.00016..+0.00020). Fitted spread 0.97-1.05 (below 1 only in the 2020-21 empty-stadium seasons).
+- Decision: reject for promotion: statistically detectable 1X2 gain is practically negligible and the scoreline criterion is not met
+
+### Elo K-factor
+
+- Hypothesis: A lower K (slower updates) should suit league football where single results are noisy.
+- Result: Validation n=26057 log loss: K=15 0.9990, K=20 1.0001, K=30 1.0031.
+- Decision: adopt K=15 as the Elo baseline
+
+### Dixon-Coles low-score correction vs independent Poisson
+
+- Hypothesis: The Dixon-Coles dependence term should improve draw and low-score probabilities.
+- Result: Log loss diff (Poisson - DC) +0.0004 (95% CI -0.0000..+0.0009); scoreline NLL +0.0004 (95% CI -0.0001..+0.0010); ECE 0.0117 -> 0.0077.
+- Decision: adopt (small but consistent calibration benefit; on the final test the log loss gain was +0.0008, CI +0.0002..+0.0015)
+
+### Time-decay half-life for team strengths
+
+- Hypothesis: Exponential down-weighting of old matches should beat both slower and faster decay.
+- Result: Scoreline NLL: xi=0.0010 2.8939, xi=0.0019 2.8929, xi=0.0030 2.8957; ridge 3.0 2.8950.
+- Decision: adopt xi=0.0019/day (half-life about one year) and ridge 1.0
+
+### Shot-based expected-goals proxy as a response
+
+- Hypothesis: Shots on target carry less noise than goals, so blending a shot-based xG proxy into the strength fit should improve forecasts.
+- Result: Log loss: 0% 0.9984, 25% 0.9989, 50% 1.0022, 75% 1.0089; ECE rises to 0.0406 at 75%. Goal MAE improves slightly (0.902 -> 0.894).
+- Decision: reject as a standalone model; retained as an ensemble component where it earns weight
+
+### Gradient boosting on engineered features
+
+- Hypothesis: LightGBM with Elo, rolling form, shot volumes, rest and promotion flags should capture non-linear effects the rating models miss.
+- Result: Log loss 0.9953 vs DC 0.9984; DC-xG vs GBM diff +0.0036 (95% CI +0.0022..+0.0051). Stacked on DC rates: 0.9949.
+- Decision: adopt as ensemble component
+
+### Learned ensemble of goal-rate models
+
+- Hypothesis: A geometric blend of component goal rates with weights learned on prior seasons should beat every component while keeping a coherent score distribution.
+- Result: vs DC: log loss +0.0036 (95% CI +0.0028..+0.0045), scoreline NLL +0.0098 (95% CI +0.0081..+0.0115). vs bookmaker close: +0.0136 (95% CI +0.0115..+0.0156) (bookmaker better).
+- Decision: adopt as champion
+
+### Multinomial logistic regression baseline
+
+- Hypothesis: A linear model on the same features gives a strong 1X2-only baseline.
+- Result: Log loss 0.9954; logistic vs DC -0.0030 (95% CI -0.0046..-0.0014) (negative = logistic better).
+- Decision: keep as research baseline only (no score distribution)
+
+### Second-half rate recalibration from half-time data
+
+- Hypothesis: The hazard model (fitted on StatsBomb 2015/16 top-flight matches) mis-states second-half scoring at half-time; a second-half rate scale per tier group, fitted on 2012-2015 football-data HT/FT results, will improve calibration on 2016-2022.
+- Result: tier 1: scale x1.04 (train n=5000), test n=8000: P(2nd-half goal) 0.773 -> 0.786 vs observed 0.800, ECE 0.028 -> 0.015, another-goal LL +0.0016 (CI +0.0009..+0.0022), 1X2 LL +0.0009 (CI +0.0006..+0.0013) adopted; tier 2+: scale x1.08 (train n=5000), test n=8000: P(2nd-half goal) 0.742 -> 0.768 vs observed 0.760, ECE 0.018 -> 0.011, another-goal LL +0.0007 (CI -0.0007..+0.0020), 1X2 LL +0.0005 (CI -0.0002..+0.0012) not adopted
+- Decision: adopt per-tier scales where credible: tier 1 x1.04, tier 2+ x1.00
+
+### In-play short-horizon and next-goal calibration (held-out replay)
+
+- Hypothesis: The hazard model's 10-minute goal probabilities and next-scorer probabilities should be calibrated on held-out StatsBomb matches, beating a constant base rate.
+- Result: 10176 checkpoints every 5 minutes: P(goal in next 10') mean 0.247 vs observed 0.250, ECE 0.004, log loss 0.5595 vs constant base rate 0.5628; next-goal (home/away/none) log loss 0.9360, accuracy 0.546.
+- Decision: keep (calibrated)
+
+### Second-half goals before and after the 2023 stoppage-time change (analysis only)
+
+- Hypothesis: Longer added time since 2023/24 should raise second-half goals relative to a model fitted on 2015/16 half lengths. This uses final-test seasons for diagnosis only, not for tuning.
+- Result: Mean (actual - predicted) second-half goals: 2016-2022 +0.004, 2023-2026 -0.001. Per season: 2016: 1.60 vs 1.49, 2017: 1.50 vs 1.53, 2018: 1.58 vs 1.53, 2019: 1.55 vs 1.54, 2020: 1.48 vs 1.50, 2021: 1.53 vs 1.53, 2022: 1.46 vs 1.55, 2023: 1.57 vs 1.58, 2024: 1.51 vs 1.57, 2025: 1.53 vs 1.53, 2026: 1.69 vs 1.62
+- Decision: no era effect detected
+
+### Ensemble including the stacked LightGBM model
+
+- Hypothesis: The stacked LightGBM (features plus Dixon-Coles rates) was the strongest single validation model; adding it to the ensemble components should improve the ensemble.
+- Result: Validation n=26057: log loss 0.9947 -> 0.9947 (diff -0.0000, CI -0.0002..+0.0001); scoreline NLL 2.8832 -> 2.8833 (diff -0.0001, CI -0.0005..+0.0001).
+- Decision: reject: no credible improvement over the current ensemble
+
+### Forecast quality under lineup uncertainty
+
+- Hypothesis: Team-only forecasts implicitly assume a typical lineup, so they should be worse when the confirmed XI deviates strongly from the team's usual XI; an XI adjustment should help most there.
+- Result: usual XIs (lowest third of deviation): n=244, team-only LL 0.9768, XI-adjusted 0.9760; moderate rotation: n=243, team-only LL 0.9600, XI-adjusted 0.9600; heavy rotation (top third): n=243, team-only LL 0.9630, XI-adjusted 0.9609
+- Decision: analysis only (small samples; see the XI experiment for the adoption decision)
+
+### Confirmed starting XI quality vs team-only forecasts
+
+- Hypothesis: If confirmed lineups carry information beyond team-level ratings, adjusting pre-match goal rates by the starting XI's prior xG+xA per 90 (shrunk toward positional means, relative to the team's recent XIs) will improve held-out forecasts.
+- Result: Tested on 730 held-out 2015/16 matches (fitted on 661 earlier ones). The starting XI's prior xG+xA index, relative to the team's usual XI, gets coefficient +0.14 on log goal rate; 1X2 log loss change +0.0009 (95% CI -0.0001..+0.0019), scoreline NLL change +0.0015 (CI -0.0003..+0.0031). Not adopted: the evidence is not strong enough on this sample, so forecasts stay team-level.
+- Decision: reject (insufficient evidence)

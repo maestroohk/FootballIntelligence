@@ -391,3 +391,4 @@ def rollback(ctx):
     con.execute("UPDATE model_versions SET status='champion' WHERE version=?", (f"{previous['champion']}@v1",))
     db.notify(con, "warning", "Champion rolled back", f"{current['champion']} -> {previous['champion']}")
     return {"from": current["champion"], "to": previous["champion"]}
+from . import report
