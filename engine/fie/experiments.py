@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-from . import backtest, db, metrics, research
+from . import db, metrics, research
 from .config import PRIMARY_COMPETITIONS, VALIDATION_SEASONS
 from .jobs import handler
 from .scoreline import dixon_coles_matrix, markets, outcome_probs
@@ -279,7 +279,6 @@ def player_study(con, split_date="2016-01-15"):
     oos = research.load_cached("oos_ensemble")
     d = oos[oos["status"] == "finished"].merge(wide.reset_index(), on="match_id").dropna(subset=["delta_home", "delta_away", "lh"])
     d = d.sort_values("date")
-    hg, ag = d["hg"].to_numpy(), d["ag"].to_numpy()
 
     def adjusted(frame, beta, gamma):
         lh = frame["lh"].to_numpy() * np.exp(beta * frame["delta_home"].to_numpy())
@@ -374,7 +373,6 @@ def record_research(con):
 
 
 def inplay_windows(con, split_date="2016-02-01"):
-    import json as _json
     from . import inplay_train
     from .live import load_live_model
     model, params = load_live_model(con)
@@ -393,7 +391,6 @@ def inplay_windows(con, split_date="2016-02-01"):
                 st = inplay_train.state_at(goals, reds, shots, period, float(clock), m.lh, m.la, mpm)
                 fc = model.forecast(st, m.lh / mpm, m.la / mpm, half_end)
                 after = g[(g[:, 0] > period) | ((g[:, 0] == period) & (g[:, 1] >= clock))] if len(g) else g
-                elapsed_clock = lambda r: r[1] if r[0] == period else r[1] + (45 if period == 1 else 0)
                 in10 = any((r[0] == period and r[1] < clock + 10) for r in after)
                 nxt = after[0][2] if len(after) else "none"
                 fh_final = int((g[:, 2] == "home").sum()) if len(g) else 0

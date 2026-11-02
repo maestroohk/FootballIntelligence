@@ -1,12 +1,7 @@
-import json
-import os
-import time
-
-import numpy as np
 import pandas as pd
 
 from . import backtest, db, ingest_fdco, ingest_statsbomb, metrics, research
-from .config import FINAL_TEST_SEASONS, FORWARD_SEASON, PRIMARY_COMPETITIONS, VALIDATION_SEASONS
+from .config import PRIMARY_COMPETITIONS
 from .jobs import Cancelled, handler
 
 MODEL_VERSIONS = {"ensemble": "v3"}
@@ -283,7 +278,6 @@ def evaluate_forward(ctx):
 
 @handler("daily_cycle")
 def daily_cycle(ctx, trigger="manual"):
-    from datetime import datetime
     ctx.stage("ingesting current-season results")
     res = ingest_fdco.ingest_history(ctx.con, seasons=[CURRENT_SEASON_PUBLISH], progress=lambda d, t, s: ctx.progress(d, t, s))
     ctx.stage("ingesting fixtures")

@@ -188,9 +188,9 @@ def test_repeated_meetings_and_rescheduled_fixtures(con):
 
 
 def test_forward_predictions_require_future_kickoff(con):
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     from fie import forward
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     soon = now + timedelta(hours=1)
     later = now + timedelta(days=2)
     assert not forward.safely_before_kickoff(soon.strftime("%Y-%m-%d"), soon.strftime("%H:%M"))

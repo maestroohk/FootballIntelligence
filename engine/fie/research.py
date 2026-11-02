@@ -1,6 +1,4 @@
-import json
 import os
-import time
 from pathlib import Path
 
 import numpy as np
@@ -8,7 +6,7 @@ import pandas as pd
 from scipy.optimize import minimize
 
 from . import backtest, db, metrics
-from .config import CORE_COMPETITIONS, DATA, PRIMARY_COMPETITIONS, THREADS
+from .config import CORE_COMPETITIONS, DATA, THREADS
 from .features import FEATURE_COLUMNS, apply_xg_proxy, fit_xg_proxy, load_matches, team_form_features
 from .scoreline import dixon_coles_matrix
 

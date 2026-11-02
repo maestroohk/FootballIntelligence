@@ -238,7 +238,7 @@ def ingest_fixtures(con):
     except Exception as exc:
         db.provider_event(con, SOURCE + " fixtures", False, str(exc)[:300])
         raise
-    path = RAW / "fdco" / "fixtures" / f"fixtures_{datetime.utcnow():%Y%m%d}.csv"
+    path = RAW / "fdco" / "fixtures" / f"fixtures_{datetime.now():%Y%m%d}.csv"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(resp.content)
     frame = _read_csv(resp.content)

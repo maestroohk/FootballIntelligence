@@ -49,7 +49,6 @@ def team_form_features(frame, half_life=8.0):
     state = defaultdict(lambda: {"n": 0})
     last_date = {}
     recent = defaultdict(deque)
-    last_tier = {}
     season_tier = {}
     keys = ["gf", "ga", "sf", "sa", "tf", "ta", "xf", "xa"]
     cols = defaultdict(list)

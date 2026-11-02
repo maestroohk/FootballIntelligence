@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from fie import metrics
-from fie.inplay import InPlayModel, TIME_BINS
+from fie.inplay import InPlayModel
 from fie.ratings import StrengthModel
 from fie.scoreline import check_consistency, dixon_coles_matrix, markets, poisson_matrix
 

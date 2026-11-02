@@ -1,6 +1,4 @@
-import json
 import math
-from collections import defaultdict
 
 import numpy as np
 import pandas as pd
@@ -34,7 +32,6 @@ def state_at(goals, reds, shots, period, clock, lam_h, lam_a, minutes_per_match)
     g = before(goals)
     r = before(reds)
     s = before(shots)
-    elapsed = clock if period == 1 else clock + (0 if clock >= 45 else 0)
     elapsed_play = min(clock, 47) if period == 1 else (47 + clock - 45)
     recent = s[(s["period"] == period) & (s["clock"] >= clock - 10)]
     return {
@@ -103,7 +100,6 @@ def checkpoint_eval(models, matches, grouped, minutes_per_match, half_end):
                     fc = extrapolation_forecast(st, m.lh, m.la, half_end)
                 else:
                     fc = model.forecast(st, m.lh / minutes_per_match, m.la / minutes_per_match, half_end)
-                tot = fc.get("total_goals")
                 recs.append({"sb_match_id": m.sb_match_id, "model": name, "checkpoint": f"{'1H' if period == 1 else '2H'} {int(clock)}'",
                              "p_home": fc["p_home"], "p_draw": fc["p_draw"], "p_away": fc["p_away"], "y": y,
                              "p_more": fc["p_another_goal"], "more": more, "final_total": fh + fa})
@@ -183,7 +179,6 @@ def train_and_evaluate(con, prematch, split_date="2016-02-01", progress=None):
 
 def halftime_eval(oos, inplay_model, minutes_per_match, half_end, seasons):
     d = oos[(oos["status"] == "finished") & oos["season"].isin(seasons)].dropna(subset=["lh"])
-    from .config import DB_PATH
     con = db.connect()
     ht = pd.read_sql_query("SELECT match_id, hthg, htag, hr, ar FROM matches WHERE hthg IS NOT NULL", con)
     d = d.merge(ht, on="match_id")

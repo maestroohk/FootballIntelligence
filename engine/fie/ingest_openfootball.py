@@ -2,7 +2,7 @@ import requests
 
 from . import db
 from .config import COMPETITIONS, CURRENT_SEASON
-from .identity import normalise, resolve_team
+from .identity import resolve_team
 
 SOURCE = "OpenFootball"
 BASE = "https://raw.githubusercontent.com/openfootball/football.json/master"

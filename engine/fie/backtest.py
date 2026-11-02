@@ -3,8 +3,8 @@ import pandas as pd
 
 from . import metrics
 from .config import FINAL_TEST_SEASONS, FORWARD_SEASON, VALIDATION_SEASONS
-from .ratings import Elo, OnlinePoisson, PiRatings, StrengthModel, matrix_probs, ordered_logit_fit, ordered_logit_predict, poisson_link_fit
-from .scoreline import dixon_coles_matrix, outcome_probs, poisson_matrix
+from .ratings import Elo, OnlinePoisson, PiRatings, StrengthModel, ordered_logit_fit, ordered_logit_predict, poisson_link_fit
+from .scoreline import dixon_coles_matrix, outcome_probs
 
 PREDICT_FROM = pd.Timestamp("2007-07-01")
 
