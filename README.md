@@ -7,6 +7,28 @@ A football forecasting and live match-intelligence system: walk-forward evaluate
 - `data/` – SQLite database (`football.db`), raw CSV cache and model caches (git-ignored).
 - `docs/` – `RESEARCH.md` (methods and sources) and `REPORT.md` (measured results, experiments, limitations).
 
+## Architecture
+
+```
+football-data.co.uk ─┐                                   ┌─ Blazor Server dashboard (SignalR circuit pushes
+StatsBomb Open Data ─┼─> ingestion (identity, provenance) │   updates when snapshots, jobs or notifications change)
+OpenFootball ────────┤        │                           │
+football-data.org ───┘        v                           │
+                       SQLite (WAL) <───────────────────────┤  queues jobs, reads results
+                              ^                           │
+   Python worker ── job queue ┘                           └─ EngineSupervisor starts/adopts the worker
+     ├─ walk-forward ratings (Elo, Poisson, Dixon–Coles, online/pi experiments)
+     ├─ features + LightGBM, logistic, learned ensemble, bookmaker benchmark
+     ├─ backtests, paired bootstrap comparisons, final test, drift monitor
+     ├─ forward predictions (immutable, ≥3 h before kick-off) with explanations
+     ├─ in-play hazard model, replay and live-provider processing
+     └─ scheduler: 6-hourly update cycle, weekly challenger research
+```
+
+- Every pre-match market comes from one Dixon–Coles joint score matrix built from the champion's expected goals, so 1X2, totals, BTTS and half markets are mutually consistent.
+- In-play forecasts start from the stored pre-match expected goals and step a Markov chain over the remaining minutes with learned time, score-state and red-card multipliers.
+- Predictions are immutable (database trigger); new model versions publish new rows and old versions are kept.
+
 ## Requirements
 
 - .NET SDK 10
