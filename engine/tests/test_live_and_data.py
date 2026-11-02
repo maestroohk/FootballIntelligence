@@ -165,3 +165,22 @@ def test_live_provider_produces_forecasts_from_score_changes(con, monkeypatch):
     payload["matches"] = []
     live.poll_live_provider(con, model, params)
     assert con.execute("SELECT status FROM live_sessions WHERE provider='football-data.org'").fetchone()[0] == "ended_or_unavailable"
+
+
+
+def test_repeated_meetings_and_rescheduled_fixtures(con):
+    from fie import ingest_fdco
+    ingest_fdco.ensure_reference(con)
+    rows = pd.DataFrame([
+        {"Date": "01/09/2020", "HomeTeam": "Celtic", "AwayTeam": "Rangers", "FTHG": 1, "FTAG": 0},
+        {"Date": "04/09/2020", "HomeTeam": "Celtic", "AwayTeam": "Rangers", "FTHG": 2, "FTAG": 2},
+    ])
+    counts = ingest_fdco.upsert_rows(con, rows, "SC0", 2020)
+    assert counts["inserted"] == 2 and counts["corrected"] == 0
+    fixture = pd.DataFrame([{"Date": "10/01/2021", "HomeTeam": "Celtic", "AwayTeam": "Rangers"}])
+    ingest_fdco.upsert_rows(con, fixture, "SC0", 2020, scheduled=True)
+    played_late = pd.DataFrame([{"Date": "17/01/2021", "HomeTeam": "Celtic", "AwayTeam": "Rangers", "FTHG": 0, "FTAG": 1}])
+    counts = ingest_fdco.upsert_rows(con, played_late, "SC0", 2020)
+    assert counts["updated"] == 1 and counts["inserted"] == 0
+    stored = con.execute("SELECT match_date, status, fthg, ftag FROM matches WHERE competition='SC0' ORDER BY match_date").fetchall()
+    assert [tuple(r) for r in stored] == [("2020-09-01", "finished", 1, 0), ("2020-09-04", "finished", 2, 2), ("2021-01-17", "finished", 0, 1)]

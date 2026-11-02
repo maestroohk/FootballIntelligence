@@ -6,7 +6,7 @@ import pandas as pd
 from scipy.optimize import minimize
 
 from . import backtest, db, metrics
-from .config import DATA, PRIMARY_COMPETITIONS, THREADS
+from .config import CORE_COMPETITIONS, DATA, PRIMARY_COMPETITIONS, THREADS
 from .features import FEATURE_COLUMNS, apply_xg_proxy, fit_xg_proxy, load_matches, team_form_features
 from .scoreline import dixon_coles_matrix
 
@@ -29,9 +29,11 @@ def save_cached(name, frame):
     frame.to_pickle(cache_path(name))
 
 
-def prepared_frame(con, include_scheduled=True):
+def prepared_frame(con, include_scheduled=True, refit_proxy=False):
     frame = load_matches(con, include_scheduled=include_scheduled)
-    coef = fit_xg_proxy(frame[(frame["season"] < 2010) & (frame["status"] == "finished")])
+    coef = None if refit_proxy else db.get_kv(con, "xg_proxy")
+    if coef is None:
+        coef = fit_xg_proxy(frame[(frame["season"] < 2010) & (frame["status"] == "finished") & (frame["competition"].isin(CORE_COMPETITIONS))])
     frame = apply_xg_proxy(frame, coef)
     return frame, coef
 
@@ -60,7 +62,7 @@ def feature_table(frame, elo_ratings, dc_oos, home_adv=65.0):
     return f
 
 
-def run_gbm(features, dc_oos, name="gbm", use_dc=True, first_season=2010, params=None):
+def run_gbm(features, dc_oos, name="gbm", use_dc=True, first_season=2010, params=None, train_competitions=CORE_COMPETITIONS):
     import lightgbm as lgb
     cols = FEATURE_COLUMNS + (["dc_log_lh", "dc_log_la"] if use_dc else [])
     params = {"objective": "poisson", "learning_rate": 0.03, "num_leaves": 15, "min_data_in_leaf": 200, "feature_fraction": 0.8,
@@ -69,7 +71,7 @@ def run_gbm(features, dc_oos, name="gbm", use_dc=True, first_season=2010, params
     outs = []
     seasons = sorted(features.loc[features["season"] >= first_season, "season"].unique())
     for season in seasons:
-        train = features[(features["season"] < season) & (features["season"] >= 2007) & (features["status"] == "finished")].dropna(subset=["dc_lh"])
+        train = features[(features["season"] < season) & (features["season"] >= 2007) & (features["status"] == "finished") & (features["competition"].isin(train_competitions))].dropna(subset=["dc_lh"])
         target = features[features["season"] == season].dropna(subset=["dc_lh"])
         preds = {}
         contrib = {}
@@ -110,7 +112,7 @@ def run_logistic(features, name="logistic", first_season=2010):
     cols = FEATURE_COLUMNS
     outs = []
     for season in sorted(features.loc[features["season"] >= first_season, "season"].unique()):
-        train = features[(features["season"] < season) & (features["season"] >= 2007) & (features["status"] == "finished")]
+        train = features[(features["season"] < season) & (features["season"] >= 2007) & (features["status"] == "finished") & (features["competition"].isin(CORE_COMPETITIONS))]
         target = features[features["season"] == season]
         y = metrics.outcome_index(train["hg"], train["ag"])
         model = make_pipeline(SimpleImputer(strategy="median"), StandardScaler(), LogisticRegression(C=0.1, max_iter=500))
@@ -179,7 +181,7 @@ def run_ensemble(component_oos, names, frame, name="ensemble", first_season=2012
     outs = []
     fitted = {}
     for season in sorted(base.loc[base["season"] >= first_season, "season"].unique()):
-        train = base[(base["season"] < season) & (base["season"] >= season - lookback) & (base["status"] == "finished")]
+        train = base[(base["season"] < season) & (base["season"] >= season - lookback) & (base["status"] == "finished") & (base["competition"].isin(CORE_COMPETITIONS))]
         target = base[base["season"] == season]
         comps_train = [c.loc[train["match_id"]] for c in keyed]
         params = fit_ensemble_weights(comps_train, train, spread=spread)

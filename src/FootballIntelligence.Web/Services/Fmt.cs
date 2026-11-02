@@ -62,7 +62,9 @@ public static class Fmt
     public static string CompetitionName(string code) => code switch
     {
         "E0" => "Premier League", "E1" => "Championship", "E2" => "League One", "SP1" => "La Liga", "SP2" => "Segunda",
-        "D1" => "Bundesliga", "D2" => "2. Bundesliga", "I1" => "Serie A", "I2" => "Serie B", "F1" => "Ligue 1", "F2" => "Ligue 2", _ => code
+        "D1" => "Bundesliga", "D2" => "2. Bundesliga", "I1" => "Serie A", "I2" => "Serie B", "F1" => "Ligue 1", "F2" => "Ligue 2",
+        "N1" => "Eredivisie", "P1" => "Primeira Liga", "B1" => "Pro League", "SC0" => "Scottish Premiership", "SC1" => "Scottish Championship",
+        "T1" => "Süper Lig", "G1" => "Super League Greece", _ => code
     };
 
     public static string ModelLabel(string? version) => version is null ? "—" : version.Split('@')[0] switch

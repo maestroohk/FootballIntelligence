@@ -43,6 +43,29 @@ First evaluated at 2026-11-02T19:36:08.358258Z.
 | Poisson (Maher) | time-weighted matches from the previous ~3 years, refit weekly | 2023-08-04 to 2026-11-01 | 7,515 | 0.9998 | 0.5972 | 0.2043 | 0.0159 | 0.509 | 0.901 | 1.298 | 2.9101 | 0.6810 | 0.6882 |
 | Frequency baseline | previous 5 seasons of the same league | 2023-08-04 to 2026-11-01 | 7,515 | 1.0743 | 0.6501 | 0.2298 | 0.0030 | 0.434 | 0.964 | 1.321 | 3.0137 | 0.6893 | 0.6893 |
 
+## Seven leagues added after the model freeze (generalisation test)
+
+| Model | Training window | Test period | Matches | Log loss | Brier | RPS | ECE | Accuracy | Goal MAE | Total-goals MAE | Score NLL | O2.5 log loss | BTTS log loss |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Bookmaker closing odds (benchmark) | market closing odds (benchmark, not a model) | 2012-07-28 to 2026-11-01 | 26,176 | 0.9583 | 0.5693 | 0.1927 | 0.0080 | 0.537 | — | — | — | — | — |
+| Learned ensemble (champion) | own-country ratings walk-forward; shared models trained on the original divisions only | 2012-07-28 to 2026-11-01 | 26,176 | 0.9751 | 0.5805 | 0.1978 | 0.0102 | 0.525 | 0.901 | 1.304 | 2.8907 | 0.6794 | 0.6879 |
+| LightGBM features | own-country ratings walk-forward; shared models trained on the original divisions only | 2012-07-28 to 2026-11-01 | 26,176 | 0.9772 | 0.5819 | 0.1984 | 0.0110 | 0.524 | 0.901 | 1.310 | 2.8984 | 0.6824 | 0.6895 |
+| Elo K=15 | own-country ratings walk-forward; shared models trained on the original divisions only | 2012-07-28 to 2026-11-01 | 26,176 | 0.9795 | 0.5833 | 0.1991 | 0.0096 | 0.523 | 0.910 | 1.327 | 2.9084 | 0.6867 | 0.6924 |
+| Dixon-Coles | own-country ratings walk-forward; shared models trained on the original divisions only | 2012-07-28 to 2026-11-01 | 26,176 | 0.9813 | 0.5845 | 0.1996 | 0.0107 | 0.520 | 0.912 | 1.316 | 2.9090 | 0.6862 | 0.6928 |
+| Poisson (Maher) | own-country ratings walk-forward; shared models trained on the original divisions only | 2012-07-28 to 2026-11-01 | 26,176 | 0.9815 | 0.5846 | 0.1996 | 0.0141 | 0.520 | 0.912 | 1.316 | 2.9090 | 0.6861 | 0.6932 |
+| Frequency baseline | previous 5 seasons of the same league | 2012-07-28 to 2026-11-01 | 26,176 | 1.0698 | 0.6470 | 0.2295 | 0.0047 | 0.443 | 0.980 | 1.325 | 3.0274 | 0.6888 | 0.6902 |
+
+| Comparison (A vs B) | Metric | n | Mean A − B | 95% CI | Verdict |
+|---|---|---:|---:|---|---|
+| Dixon-Coles vs Learned ensemble (champion) | log_loss | 26,176 | +0.0062 | +0.0047 .. +0.0078 | B better |
+| Dixon-Coles vs Learned ensemble (champion) | rps | 26,176 | +0.0018 | +0.0014 .. +0.0023 | B better |
+| Elo K=15 vs Learned ensemble (champion) | log_loss | 26,176 | +0.0044 | +0.0034 .. +0.0055 | B better |
+| Elo K=15 vs Learned ensemble (champion) | rps | 26,176 | +0.0013 | +0.0010 .. +0.0017 | B better |
+| LightGBM features vs Learned ensemble (champion) | log_loss | 26,176 | +0.0022 | +0.0012 .. +0.0031 | B better |
+| LightGBM features vs Learned ensemble (champion) | rps | 26,176 | +0.0006 | +0.0003 .. +0.0008 | B better |
+| Learned ensemble (champion) vs Bookmaker closing odds (benchmark) | log_loss | 26,176 | +0.0168 | +0.0144 .. +0.0192 | B better |
+| Learned ensemble (champion) vs Bookmaker closing odds (benchmark) | rps | 26,176 | +0.0051 | +0.0044 .. +0.0059 | B better |
+
 ## Paired comparisons, validation
 
 | Comparison (A vs B) | Metric | n | Mean A − B | 95% CI | Verdict |
@@ -318,3 +341,21 @@ Learned multipliers (hazard model):
 - Hypothesis: If confirmed lineups carry information beyond team-level ratings, adjusting pre-match goal rates by the starting XI's prior xG+xA per 90 (shrunk toward positional means, relative to the team's recent XIs) will improve held-out forecasts.
 - Result: Tested on 730 held-out 2015/16 matches (fitted on 661 earlier ones). The starting XI's prior xG+xA index, relative to the team's usual XI, gets coefficient +0.14 on log goal rate; 1X2 log loss change +0.0009 (95% CI -0.0001..+0.0019), scoreline NLL change +0.0015 (CI -0.0003..+0.0031). Not adopted: the evidence is not strong enough on this sample, so forecasts stay team-level.
 - Decision: reject (insufficient evidence)
+
+### Dynamic ratings: online Poisson and pi-ratings
+
+- Hypothesis: Match-by-match rating updates (online Poisson gradient steps; pi-ratings of Constantinou and Fenton 2013) adapt faster than weekly refits with a one-year half-life and should improve forecasts, either alone, inside the ensemble or as LightGBM features.
+- Result: Validation (n=26057): online Poisson lr 0.015 log loss 0.9971 / score NLL 2.8913 vs Dixon-Coles 0.9984 / 2.8929 (best of 7 settings, so slightly optimistic); pi-ratings best 0.9997 (worse than Elo K=15 0.9990). Ensemble with online Poisson: log loss diff +0.0001 (CI -0.0000..+0.0002); with pi-ratings too: +0.0000. LightGBM with pi and online-Poisson features: log loss 0.9953 -> 0.9947 (diff +0.0006, CI +0.0001..+0.0012), score NLL diff +0.0021 (CI +0.0013..+0.0029).
+- Decision: adopt GBM features
+
+### Ensemble built on the improved LightGBM
+
+- Hypothesis: If LightGBM with pi-rating and online-Poisson features is better on its own, an ensemble using it (with or without the online Poisson component) should beat the current champion.
+- Result: Validation n=26,057: ensemble with LightGBM v2 log loss 0.9946 vs champion 0.9947 (diff +0.0001, CI -0.0002..+0.0004), score NLL diff -0.0002 (CI -0.0006..+0.0002); adding online Poisson as well: +0.0001 (CI -0.0002..+0.0004). LightGBM v2 takes 93% of the blend weight.
+- Decision: reject: the champion already captures this information; no promotion
+
+### Generalisation to seven leagues added after the model freeze
+
+- Hypothesis: If the champion captures general football structure rather than quirks of the leagues it was selected on, its ranking should hold on divisions never used for model selection, ensemble weighting or LightGBM training (own-country ratings only, walk-forward).
+- Result: n=26,176 matches (Eredivisie, Primeira Liga, Pro League, Scottish Premiership and Championship, Super Lig, Super League Greece; 2012/13 onwards). Log loss: ensemble 0.9751, LightGBM 0.9772, Elo 0.9795, Dixon-Coles 0.9813, frequency 1.0698, bookmaker close 0.9583. Ensemble vs DC +0.0062 (CI +0.0047..+0.0078); vs LightGBM +0.0022 (CI +0.0012..+0.0031); bookmaker better by 0.0168. Core predictions unchanged (max rate change 0.0).
+- Decision: confirmed: ranking generalises; leagues added to coverage

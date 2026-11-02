@@ -19,6 +19,12 @@ COUNTRIES = {
     "GER": {"name": "Germany", "divisions": ["D1", "D2"]},
     "ITA": {"name": "Italy", "divisions": ["I1", "I2"]},
     "FRA": {"name": "France", "divisions": ["F1", "F2"]},
+    "NED": {"name": "Netherlands", "divisions": ["N1"]},
+    "POR": {"name": "Portugal", "divisions": ["P1"]},
+    "BEL": {"name": "Belgium", "divisions": ["B1"]},
+    "SCO": {"name": "Scotland", "divisions": ["SC0", "SC1"]},
+    "TUR": {"name": "Turkey", "divisions": ["T1"]},
+    "GRE": {"name": "Greece", "divisions": ["G1"]},
 }
 
 COMPETITIONS = {
@@ -33,7 +39,17 @@ COMPETITIONS = {
     "I2": ("Serie B", "ITA", 2),
     "F1": ("Ligue 1", "FRA", 1),
     "F2": ("Ligue 2", "FRA", 2),
+    "N1": ("Eredivisie", "NED", 1),
+    "P1": ("Primeira Liga", "POR", 1),
+    "B1": ("Pro League", "BEL", 1),
+    "SC0": ("Scottish Premiership", "SCO", 1),
+    "SC1": ("Scottish Championship", "SCO", 2),
+    "T1": ("Super Lig", "TUR", 1),
+    "G1": ("Super League Greece", "GRE", 1),
 }
+
+CORE_COMPETITIONS = ["E0", "E1", "E2", "SP1", "SP2", "D1", "D2", "I1", "I2", "F1", "F2"]
+EXPANSION_COMPETITIONS = ["N1", "P1", "B1", "SC0", "SC1", "T1", "G1"]
 
 PRIMARY_COMPETITIONS = ["E0", "E1", "SP1", "D1", "I1", "F1"]
 

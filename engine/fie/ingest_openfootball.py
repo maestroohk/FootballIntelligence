@@ -6,7 +6,7 @@ from .identity import normalise, resolve_team
 
 SOURCE = "OpenFootball"
 BASE = "https://raw.githubusercontent.com/openfootball/football.json/master"
-FILES = {"E0": "en.1", "E1": "en.2", "SP1": "es.1", "D1": "de.1", "I1": "it.1", "F1": "fr.1"}
+FILES = {"E0": "en.1", "E1": "en.2", "SP1": "es.1", "D1": "de.1", "I1": "it.1", "F1": "fr.1", "N1": "nl.1", "P1": "pt.1"}
 
 ALIASES = {
     "Manchester United FC": "Man United", "Manchester City FC": "Man City", "Nottingham Forest FC": "Nott'm Forest",
@@ -22,6 +22,12 @@ ALIASES = {
     "Paris Saint-Germain FC": "Paris SG", "Olympique Lyonnais": "Lyon", "Olympique de Marseille": "Marseille", "AS Saint-Étienne": "St Etienne",
     "Stade Rennais FC 1901": "Rennes", "OGC Nice": "Nice", "AS Monaco FC": "Monaco", "Lille OSC": "Lille", "RC Strasbourg Alsace": "Strasbourg",
     "Stade Brestois 29": "Brest", "RC Lens": "Lens", "Paris FC": "Paris FC",
+    "PSV": "PSV Eindhoven", "PSV Eindhoven": "PSV Eindhoven", "AFC Ajax": "Ajax", "FC Twente": "Twente", "FC Utrecht": "Utrecht", "NEC": "Nijmegen",
+    "NEC Nijmegen": "Nijmegen", "SC Heerenveen": "Heerenveen", "sc Heerenveen": "Heerenveen", "Fortuna Sittard": "For Sittard", "PEC Zwolle": "Zwolle",
+    "Heracles Almelo": "Heracles", "FC Groningen": "Groningen", "AZ": "AZ Alkmaar", "AZ Alkmaar": "AZ Alkmaar", "Feyenoord": "Feyenoord",
+    "SL Benfica": "Benfica", "Sporting CP": "Sp Lisbon", "Sporting Clube de Portugal": "Sp Lisbon", "Sporting Clube de Braga": "Sp Braga", "FC Porto": "Porto", "SC Braga": "Sp Braga", "Vitória SC": "Guimaraes", "Vitória Guimarães": "Guimaraes",
+    "Gil Vicente FC": "Gil Vicente", "Rio Ave FC": "Rio Ave", "Moreirense FC": "Moreirense", "FC Famalicão": "Famalicao", "Casa Pia AC": "Casa Pia",
+    "CD Santa Clara": "Santa Clara", "GD Estoril Praia": "Estoril", "FC Arouca": "Arouca", "CD Nacional": "Nacional", "AVS Futebol SAD": "AVS",
 }
 
 
@@ -68,8 +74,8 @@ def ingest(con, season=CURRENT_SEASON):
                 h, a = mapping.get(m["team1"]), mapping.get(m["team2"])
                 if h is None or a is None:
                     continue
-                row = con.execute("SELECT match_id, status, fthg, ftag FROM matches WHERE competition=? AND season=? AND home_team_id=? AND away_team_id=?",
-                                  (code, season, h, a)).fetchone()
+                from .ingest_fdco import find_existing
+                row = find_existing(con, code, season, h, a, m["date"], "scheduled")
                 sc = m.get("score")
                 ft = sc.get("ft") if isinstance(sc, dict) else (sc[:2] if isinstance(sc, list) and len(sc) >= 2 else None)
                 if row is not None:

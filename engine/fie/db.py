@@ -54,10 +54,10 @@ CREATE TABLE IF NOT EXISTS matches (
     source TEXT NOT NULL,
     source_row_hash TEXT,
     first_seen TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    UNIQUE(competition, season, home_team_id, away_team_id)
+    updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_matches_date ON matches(match_date);
+CREATE INDEX IF NOT EXISTS ix_matches_pair ON matches(competition, season, home_team_id, away_team_id);
 CREATE INDEX IF NOT EXISTS ix_matches_comp ON matches(competition, season);
 
 CREATE TABLE IF NOT EXISTS odds (
@@ -351,8 +351,45 @@ def connect(path=None) -> sqlite3.Connection:
     return con
 
 
+def migrate(con):
+    sql = con.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='matches'").fetchone()
+    if sql and "UNIQUE(competition, season, home_team_id, away_team_id)" in sql[0]:
+        con.execute("PRAGMA foreign_keys=OFF")
+        con.execute("PRAGMA legacy_alter_table=ON")
+        con.executescript("""
+            BEGIN;
+            ALTER TABLE matches RENAME TO matches_old;
+            CREATE TABLE matches (
+                match_id INTEGER PRIMARY KEY,
+                competition TEXT NOT NULL REFERENCES competitions(code),
+                season INTEGER NOT NULL,
+                match_date TEXT NOT NULL,
+                kickoff TEXT,
+                home_team_id INTEGER NOT NULL REFERENCES teams(team_id),
+                away_team_id INTEGER NOT NULL REFERENCES teams(team_id),
+                status TEXT NOT NULL,
+                fthg INTEGER, ftag INTEGER, hthg INTEGER, htag INTEGER,
+                referee TEXT, attendance INTEGER,
+                hs INTEGER, aws INTEGER, hst INTEGER, ast INTEGER,
+                hc INTEGER, ac INTEGER, hf INTEGER, af INTEGER,
+                hy INTEGER, ay INTEGER, hr INTEGER, ar INTEGER,
+                source TEXT NOT NULL,
+                source_row_hash TEXT,
+                first_seen TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO matches SELECT * FROM matches_old;
+            DROP TABLE matches_old;
+            COMMIT;
+        """)
+        con.execute("PRAGMA foreign_keys=ON")
+
+
 def init(path=None) -> sqlite3.Connection:
     con = connect(path)
+    con.executescript("CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL);")
+    if con.execute("SELECT 1 FROM sqlite_master WHERE name='matches'").fetchone():
+        migrate(con)
     con.executescript(SCHEMA)
     return con
 

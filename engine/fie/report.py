@@ -22,6 +22,7 @@ WINDOWS = {
     "ensemble": "component models refit as listed; blend weights fitted on the previous 3 seasons",
     "bookmaker_close": "market closing odds (benchmark, not a model)",
 }
+EXPANSION_WINDOW = "own-country ratings walk-forward; shared models trained on the original divisions only"
 
 
 def _f(v, d=4):
@@ -37,7 +38,7 @@ def _table(con, split):
         m = json.loads(r["metrics"])
         key = r["model_version"]
         family = "elo" if key.startswith("elo") else "gbm" if key.startswith("gbm") else "dc" if key.startswith(("dc_", "dixon")) else key
-        window = WINDOWS.get(family, "")
+        window = EXPANSION_WINDOW if split == "expansion" and family not in ("bookmaker_close", "frequency") else WINDOWS.get(family, "")
         out.append(f"| {LABELS.get(r['model_version'], r['model_version'])} | {window} | {r['test_period']} | {r['n_matches']:,} | {_f(m.get('log_loss'))} | {_f(m.get('brier'))} | {_f(m.get('rps'))} | "
                    f"{_f(m.get('ece'))} | {_f(m.get('accuracy'), 3)} | {_f(m.get('goal_mae'), 3)} | {_f(m.get('total_goals_mae'), 3)} | {_f(m.get('score_nll'))} | {_f(m.get('over25_log_loss'))} | {_f(m.get('btts_log_loss'))} |")
     return "\n".join(out)
@@ -115,6 +116,7 @@ def build(con):
              "## Validation (2012/13–2022/23, six primary leagues, walk-forward)", "", _table(con, "validation"), "",
              "## Final test (2023/24–2026/27 to date, untouched until all choices were frozen)", "",
              f"First evaluated at {final['at'] if final else 'n/a'}." if final else "Not yet evaluated.", "", _table(con, "final_test"), "",
+             "## Seven leagues added after the model freeze (generalisation test)", "", _table(con, "expansion"), "", _comparisons(db.get_kv(con, "expansion_comparisons", {})), "",
              "## Paired comparisons, validation", "", _comparisons(db.get_kv(con, "validation_comparisons", {})), "",
              "## Paired comparisons, final test", "", _comparisons(db.get_kv(con, "final_test_comparisons", {})), "",
              "## Champion by league, final test", "", _by_league(con, summary["selection"]["champion"], "final_test"), "",

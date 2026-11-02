@@ -117,6 +117,23 @@ def ensure_reference(con):
     )
 
 
+def find_existing(con, code, season, home, away, date, status):
+    rows = con.execute(
+        "SELECT match_id, status, fthg, ftag, source_row_hash, match_date FROM matches WHERE competition=? AND season=? AND home_team_id=? AND away_team_id=?",
+        (code, season, home, away),
+    ).fetchall()
+    if not rows:
+        return None
+    target = datetime.fromisoformat(date)
+    same_day = [r for r in rows if r["match_date"] == date]
+    if same_day:
+        return same_day[0]
+    pending = [r for r in rows if r["status"] in ("scheduled", "result_missing")]
+    if pending:
+        return min(pending, key=lambda r: abs((datetime.fromisoformat(r["match_date"]) - target).days))
+    return None
+
+
 def upsert_rows(con, frame: pd.DataFrame, code: str, season: int, scheduled=False):
     country = COMPETITIONS[code][1]
     stamp = db.now()
@@ -142,10 +159,7 @@ def upsert_rows(con, frame: pd.DataFrame, code: str, season: int, scheduled=Fals
         for src, dst in STAT_COLUMNS.items():
             values[dst] = _int(row, src)
         digest = hashlib.sha1(repr(sorted(values.items())).encode()).hexdigest()
-        existing = con.execute(
-            "SELECT match_id, status, fthg, ftag, source_row_hash FROM matches WHERE competition=? AND season=? AND home_team_id=? AND away_team_id=?",
-            (code, season, home, away),
-        ).fetchone()
+        existing = find_existing(con, code, season, home, away, date, status)
         if existing is None:
             cols = ", ".join(values)
             con.execute(

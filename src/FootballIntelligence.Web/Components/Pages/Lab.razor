@@ -34,14 +34,18 @@
 }
 
 <div class="tabs">
-    @foreach (var t in new[] { ("validation", "Validation 2012/13–2022/23"), ("final_test", "Final test 2023/24–2026/27"), ("inplay", "In-play model"), ("experiments", "Experiment log") })
+    @foreach (var t in new[] { ("validation", "Validation 2012/13–2022/23"), ("final_test", "Final test 2023/24–2026/27"), ("expansion", "New leagues (unseen)"), ("inplay", "In-play model"), ("experiments", "Experiment log") })
     {
         <button class="tab @(tab == t.Item1 ? "active" : "")" @onclick="() => SetTab(t.Item1)">@t.Item2</button>
     }
 </div>
 
-@if (tab is "validation" or "final_test")
+@if (tab is "validation" or "final_test" or "expansion")
 {
+    @if (tab == "expansion")
+    {
+        <div class="callout">Seven divisions added after every model choice was frozen (Eredivisie, Primeira Liga, Pro League, Scottish Premiership and Championship, Süper Lig, Super League Greece). Their own ratings are walk-forward; the shared LightGBM and the ensemble weights were trained on the original divisions only, so this is an out-of-sample test of how the system generalises to leagues it never saw.</div>
+    }
     @if (tab == "final_test" && runs.Count == 0)
     {
         <div class="callout warn">The final test period has not been evaluated. It is run once, after all model choices are frozen, via the <span class="mono">final_test</span> job.</div>
@@ -51,7 +55,7 @@
         <div class="card">
             <div class="card-head">
                 <h2>Model comparison</h2>
-                <span class="sub">6 primary leagues (EPL, Championship, La Liga, Bundesliga, Serie A, Ligue 1) · identical match set · lower is better except accuracy</span>
+                <span class="sub">@(tab == "expansion" ? "7 added divisions, 2012/13 onwards" : "6 primary leagues (EPL, Championship, La Liga, Bundesliga, Serie A, Ligue 1)") · identical match set · lower is better except accuracy</span>
             </div>
             <div class="table-wrap">
                 <table class="data compact">
@@ -272,7 +276,7 @@ else
     {
         running = Ops.ActiveJobs().Where(j => j.Kind is "research_full" or "train_inplay" or "final_test" or "player_study" or "predict_upcoming").ToList();
         championName = Research.Champion()?.Split('@')[0];
-        if (tab is "validation" or "final_test")
+        if (tab is "validation" or "final_test" or "expansion")
         {
             runs = Research.Backtests(tab);
             if (runs.All(r => r.ModelVersion != selectedModel) && championName is not null) selectedModel = championName;
@@ -313,7 +317,7 @@ else
                 seasonMax = Math.Ceiling(all.Max(p => p.Y) * 100) / 100;
                 seasonTicks = all.Select(p => p.X).Distinct().OrderBy(x => x).Select(x => ($"{(int)x % 100:00}/{((int)x + 1) % 100:00}", x)).ToList();
             }
-            comparisons = tab == "validation" ? Research.Comparisons() : Research.FinalComparisons();
+            comparisons = tab switch { "validation" => Research.Comparisons(), "final_test" => Research.FinalComparisons(), _ => Research.KvComparisons("expansion_comparisons") };
             var summary = Research.KvJson("research_summary");
             selectionReasons = summary?.GetProperty("selection").GetProperty("reasons").EnumerateArray().Select(x => x.GetString() ?? "").ToList() ?? [];
             var weights = Research.KvJson("ensemble_weights");

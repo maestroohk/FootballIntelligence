@@ -5,7 +5,7 @@ import time
 import numpy as np
 import pandas as pd
 
-from . import backtest, db, ingest_fdco, ingest_statsbomb, research
+from . import backtest, db, ingest_fdco, ingest_statsbomb, metrics, research
 from .config import FINAL_TEST_SEASONS, FORWARD_SEASON, PRIMARY_COMPETITIONS, VALIDATION_SEASONS
 from .jobs import Cancelled, handler
 
@@ -392,3 +392,89 @@ def rollback(ctx):
     db.notify(con, "warning", "Champion rolled back", f"{current['champion']} -> {previous['champion']}")
     return {"from": current["champion"], "to": previous["champion"]}
 from . import report
+
+
+
+def _load_component(name, best_elo):
+    return research.load_cached(name) if name in STRENGTH_CONFIGS or name == best_elo else research.load_cached(f"oos_{name}")
+
+
+@handler("expand_coverage")
+def expand_coverage(ctx):
+    from . import forward
+    from .config import EXPANSION_COMPETITIONS
+    con = ctx.con
+    summary = db.get_kv(con, "research_summary")
+    weights = db.get_kv(con, "ensemble_weights")
+    best_elo = summary["best"]["elo"]
+    ctx.stage("loading matches")
+    frame, coef = research.prepared_frame(con)
+    research.save_cached("frame", frame)
+    new_countries = sorted(frame.loc[frame["competition"].isin(EXPANSION_COMPETITIONS), "country"].unique())
+    sub = frame[frame["country"].isin(new_countries)]
+    for name in sorted(set([n for n in weights["components"] if n in STRENGTH_CONFIGS] + [summary["best"]["dc"], "poisson"])):
+        ctx.stage(f"walk-forward {name} for {len(new_countries)} new countries")
+        new = research.run_strength(sub, name, **STRENGTH_CONFIGS[name])
+        old = research.load_cached(name)
+        research.save_cached(name, pd.concat([old[~old["match_id"].isin(new["match_id"])], new], ignore_index=True))
+    ctx.stage(f"{best_elo} for all countries")
+    elo_out, ratings = research.run_elo(frame, name=best_elo, **ELO_CONFIGS[best_elo])
+    old_elo = research.load_cached(best_elo)
+    research.save_cached(best_elo, pd.concat([old_elo[~old_elo["match_id"].isin(sub["match_id"])], elo_out[elo_out["match_id"].isin(sub["match_id"])]], ignore_index=True))
+    research.save_cached(best_elo + "_ratings", ratings)
+    ctx.stage("features and LightGBM trained on the original divisions only")
+    dc = research.load_cached(summary["best"]["dc"])
+    features = research.feature_table(frame, ratings, dc)
+    research.save_cached("features", features)
+    gbm = research.run_gbm(features, dc, name="gbm_features", use_dc=False)
+    old_gbm = research.load_cached("oos_gbm_features")
+    core = old_gbm[["match_id", "lh"]].merge(gbm[["match_id", "lh"]], on="match_id", suffixes=("", "_new"))
+    drift = float((core["lh"] - core["lh_new"]).abs().max())
+    ctx.log(f"max change in core LightGBM rates after retraining: {drift:.2e}")
+    research.save_cached("oos_gbm_features", pd.concat([old_gbm[~old_gbm["match_id"].isin(sub["match_id"])], gbm[gbm["match_id"].isin(sub["match_id"])]], ignore_index=True))
+    ctx.stage("applying frozen ensemble weights to the new leagues")
+    comps = weights["components"]
+    oos = {n: _load_component(n, best_elo) for n in comps}
+    parts = []
+    for season, w in weights["by_season"].items():
+        ids = sub.loc[sub["season"] == int(season), "match_id"]
+        if len(ids):
+            parts.append(forward.apply_ensemble(oos, comps, w, frame, ids))
+    ens_new = pd.concat(parts, ignore_index=True)
+    old_ens = research.load_cached("oos_ensemble")
+    research.save_cached("oos_ensemble", pd.concat([old_ens[~old_ens["match_id"].isin(ens_new["match_id"])], ens_new], ignore_index=True))
+    ctx.stage("bookmaker benchmark")
+    research.save_cached("oos_bookmaker_close", research.bookmaker_oos(con, frame))
+    ctx.stage("evaluating the new leagues")
+    names = [best_elo, "poisson", summary["best"]["dc"], "gbm_features", "ensemble", "bookmaker_close"]
+    evals = {"frequency": research.run_frequency(frame)}
+    for n in names:
+        evals[n] = _load_component(n, best_elo)
+    common = None
+    for n, o in evals.items():
+        ids = set(o.loc[(o["status"] == "finished") & (o["competition"].isin(EXPANSION_COMPETITIONS)) & (o["season"] >= 2012), "match_id"])
+        common = ids if common is None else common & ids
+    con.execute("DELETE FROM backtest_runs WHERE split='expansion'")
+    results = {}
+    for n, o in evals.items():
+        d = o[o["match_id"].isin(common)]
+        overall = backtest.evaluate(d)
+        by_league = {c: backtest.evaluate(g) for c, g in d.groupby("competition")}
+        con.execute("INSERT INTO backtest_runs(model_version, split, created_at, train_window, test_period, n_matches, metrics, by_league, notes) VALUES(?,?,?,?,?,?,?,?,?)",
+                    (n, "expansion", db.now(), "own-country ratings walk-forward; shared models trained on original divisions only",
+                     f"{d['date'].min().date()} to {d['date'].max().date()}", overall["n"], db.dumps(overall), db.dumps(by_league), "leagues added after the model freeze"))
+        results[n] = overall
+    comparisons = {}
+    for a, b in ((summary["best"]["dc"], "ensemble"), (best_elo, "ensemble"), ("gbm_features", "ensemble"), ("ensemble", "bookmaker_close")):
+        for metric in ("log_loss", "rps"):
+            la = backtest.row_losses(evals[a][evals[a]["match_id"].isin(common)])
+            lb = backtest.row_losses(evals[b][evals[b]["match_id"].isin(common)])
+            j = la.merge(lb, on=["match_id", "season", "competition"], suffixes=("_a", "_b"))
+            comparisons[f"{a} vs {b} [{metric}]"] = metrics.paired_bootstrap(j[f"{metric}_a"], j[f"{metric}_b"], block=(j["competition"] + j["season"].astype(str)).to_numpy())
+    db.set_kv(con, "expansion_comparisons", comparisons)
+    db.set_kv(con, "expansion_results", {"results": results, "n": len(common), "core_gbm_max_change": drift})
+    ctx.stage("publishing predictions")
+    champ, version = _champion_version(con)
+    n_back = forward.publish_backtest(con, research.load_cached(f"oos_{champ}"), version)
+    n_bench = forward.publish_backtest(con, research.load_cached("oos_bookmaker_close"), "bookmaker_close@v1")
+    return {"n": len(common), "log_loss": {k: round(v["log_loss"], 4) for k, v in results.items()}, "core_gbm_max_change": drift, "published": n_back, "benchmark": n_bench}
