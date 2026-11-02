@@ -2,6 +2,7 @@ import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 
 from .config import DB_PATH
 
@@ -352,7 +353,9 @@ def now() -> str:
 
 
 def connect(path=None) -> sqlite3.Connection:
-    con = sqlite3.connect(str(path or DB_PATH), timeout=60, isolation_level=None)
+    target = Path(path or DB_PATH)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(target), timeout=60, isolation_level=None)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA synchronous=NORMAL")
