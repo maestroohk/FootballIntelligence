@@ -1,0 +1,6 @@
+<span class="crest @(Large ? "lg" : "")" style="background:@Fmt.TeamColor(Name)" title="@Name">@Fmt.Initials(Name)</span>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+    [Parameter] public bool Large { get; set; }
+}

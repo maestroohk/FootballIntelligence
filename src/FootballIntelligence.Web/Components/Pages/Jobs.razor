@@ -1,0 +1,136 @@
+@page "/jobs"
+@page "/jobs/{Id:long}"
+@inherits FeedComponent
+@inject OperationsQueries Ops
+
+<PageTitle>Jobs · Football Intelligence</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Background jobs</h1>
+        <p>Durable job queue in SQLite, executed by the Python engine worker with bounded concurrency. Jobs survive application restarts and are re-queued if their process dies.</p>
+    </div>
+    <div class="row">
+        <select class="input" @bind="newKind">
+            @foreach (var k in OperationsQueries.JobKinds.Where(k => k != "live_replay")) { <option value="@k">@k</option> }
+        </select>
+        <button class="btn primary" @onclick="Enqueue">Queue job</button>
+    </div>
+</div>
+
+@if (Id is not null && selected is not null)
+{
+    <div class="card">
+        <div class="card-head">
+            <h2>Job #@selected.JobId · @selected.Kind</h2>
+            <div class="row">
+                <StatusBadge Status="@selected.Status" />
+                @if (selected.Status is "queued" or "running") { <button class="btn sm danger" @onclick="() => Ops.Cancel(selected.JobId)" disabled="@(selected.CancelRequested == 1)">@(selected.CancelRequested == 1 ? "Cancelling…" : "Cancel")</button> }
+                @if (selected.Status is "failed" or "cancelled" or "succeeded") { <button class="btn sm" @onclick="() => Retry(selected.JobId)">Run again</button> }
+            </div>
+        </div>
+        <div class="grid g4">
+            <div class="kpi"><span class="label">Stage</span><span class="small">@(selected.Stage ?? "—")</span></div>
+            <div class="kpi"><span class="label">Progress</span><span class="small">@selected.DoneUnits / @(selected.TotalUnits?.ToString() ?? "?") @(selected.Progress is null ? "" : $"({Fmt.Pct(selected.Progress)})")</span>
+                @if (selected.Progress is not null) { <div class="meter"><div style="width:@Fmt.Pct(selected.Progress, 1)"></div></div> }</div>
+            <div class="kpi"><span class="label">Elapsed / ETA</span><span class="small">@Fmt.Duration(Elapsed(selected)) / @Eta(selected)</span></div>
+            <div class="kpi"><span class="label">Heartbeat · retries</span><span class="small">@Fmt.Ago(selected.HeartbeatAt) · @selected.Retries</span></div>
+        </div>
+        <div class="small dim" style="margin:10px 0">Created @Fmt.Local(selected.CreatedAt) · started @Fmt.Local(selected.StartedAt) · finished @Fmt.Local(selected.FinishedAt) · args <span class="mono">@selected.Args</span></div>
+        @if (selected.Error is not null) { <div class="callout bad">@selected.Error</div> }
+        @if (selected.Result is not null) { <h3 style="margin:10px 0 6px">Result</h3><div class="pre">@Pretty(selected.Result)</div> }
+        <h3 style="margin:14px 0 6px">Log</h3>
+        <div class="pre">@foreach (var l in logs) {<span class="@(l.Level == "error" ? "bad" : l.Level == "warning" ? "warn" : "")">@Fmt.Local(l.Ts)  @l.Message
+</span>}</div>
+    </div>
+}
+
+<div class="card">
+    <div class="card-head"><h2>Recent jobs</h2><span class="sub">@jobs.Count(j => j.Status == "running") running · @jobs.Count(j => j.Status == "queued") queued</span></div>
+    <div class="table-wrap">
+        <table class="data">
+            <thead><tr><th>#</th><th>Kind</th><th>Status</th><th>Stage</th><th style="width:160px">Progress</th><th>Started</th><th>Elapsed</th><th>Heartbeat</th><th class="num">Retries</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var j in jobs)
+                {
+                    <tr>
+                        <td><a href="jobs/@j.JobId">#@j.JobId</a></td>
+                        <td>@j.Kind</td>
+                        <td><StatusBadge Status="@j.Status" /></td>
+                        <td class="small dim" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@j.Stage</td>
+                        <td>@if (j.Progress is not null) { <div class="meter"><div style="width:@Fmt.Pct(j.Progress, 1)"></div></div><span class="small faint">@Fmt.Pct(j.Progress)</span> } else { <span class="faint small">@j.DoneUnits</span> }</td>
+                        <td class="small dim">@Fmt.Local(j.StartedAt)</td>
+                        <td class="small">@Fmt.Duration(Elapsed(j))</td>
+                        <td class="small dim">@Fmt.Ago(j.HeartbeatAt)</td>
+                        <td class="num">@j.Retries</td>
+                        <td class="right">
+                            @if (j.Status is "queued" or "running") { <button class="btn sm danger" @onclick="() => Ops.Cancel(j.JobId)">Cancel</button> }
+                            else if (j.Status is "failed" or "cancelled") { <button class="btn sm" @onclick="() => Retry(j.JobId)">Retry</button> }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head"><h2>Notifications</h2><button class="btn sm" @onclick="MarkAll">Mark all read</button></div>
+    @foreach (var n in notes)
+    {
+        <div class="spread small" style="padding:5px 0;border-bottom:1px solid var(--border-soft)">
+            <span><span class="dot @(n.Level == "error" ? "bad" : n.Level == "warning" ? "warn" : "ok")"></span> <b>@n.Title</b> <span class="dim">@n.Body</span></span>
+            <span class="faint">@Fmt.Ago(n.Ts) @(n.Seen == 0 ? "· new" : "")</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public long? Id { get; set; }
+    private List<JobRow> jobs = [];
+    private JobRow? selected;
+    private List<JobLogRow> logs = [];
+    private List<NotificationRow> notes = [];
+    private string newKind = "daily_cycle";
+
+    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange || previous.MaxNotificationId != next.MaxNotificationId;
+
+    protected override void OnParametersSet() => Load();
+
+    protected override void Load()
+    {
+        jobs = Ops.Jobs(60);
+        notes = Ops.Notifications(15);
+        if (Id is not null)
+        {
+            selected = Ops.Job(Id.Value);
+            logs = Ops.JobLogs(Id.Value, 200);
+        }
+    }
+
+    private void Enqueue() => Ops.Enqueue(newKind);
+    private void Retry(long id) => Ops.Retry(id);
+    private void MarkAll() { Ops.MarkAllSeen(); Load(); }
+
+    private static TimeSpan? Elapsed(JobRow j)
+    {
+        var start = Fmt.Since(j.StartedAt);
+        if (start is null) return null;
+        var end = Fmt.Since(j.FinishedAt);
+        return end is null ? start : start - end;
+    }
+
+    private static string Eta(JobRow j)
+    {
+        if (j.Status != "running" || j.Progress is null || j.Progress <= 0.02) return "—";
+        var el = Elapsed(j);
+        if (el is null) return "—";
+        return Fmt.Duration(TimeSpan.FromSeconds(el.Value.TotalSeconds * (1 - j.Progress.Value) / j.Progress.Value));
+    }
+
+    private static string Pretty(string json)
+    {
+        try { return JsonSerializer.Serialize(JsonDocument.Parse(json).RootElement, new JsonSerializerOptions { WriteIndented = true }); }
+        catch { return json; }
+    }
+}

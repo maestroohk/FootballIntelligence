@@ -1,0 +1,72 @@
+@using System.Globalization
+<svg class="chart" viewBox="0 0 @Width @Height" preserveAspectRatio="none" style="width:100%;height:@(Height)px">
+    @for (var k = 0; k <= 4; k++)
+    {
+        var yv = YMin + (YMax - YMin) * k / 4;
+        var y = Y(yv);
+        <line class="grid-line" x1="@Pad" x2="@(Width - 8)" y1="@F(y)" y2="@F(y)" />
+        <g><text x="@(Pad - 6)" y="@F(y + 3)" text-anchor="end">@(YFormat?.Invoke(yv) ?? yv.ToString("0.##", CultureInfo.InvariantCulture))</text></g>
+    }
+    @foreach (var m in Markers)
+    {
+        var x = X(m.X);
+        <line x1="@F(x)" x2="@F(x)" y1="8" y2="@(Height - 20)" stroke="@m.Color" stroke-dasharray="3 3" stroke-width="1" opacity=".8" />
+        <g><text x="@F(x + 3)" y="16" style="fill:@m.Color">@m.Label</text></g>
+    }
+    @foreach (var s in Series)
+    {
+        if (s.Points.Count == 0) { continue; }
+        <path d="@PathFor(s)" fill="none" stroke="@s.Color" stroke-width="@F(s.Width)" stroke-linejoin="round" opacity="@(s.Dashed ? ".75" : "1")" stroke-dasharray="@(s.Dashed ? "4 3" : "none")" />
+    }
+    @foreach (var (label, x) in XTicks)
+    {
+        <g><text x="@F(X(x))" y="@(Height - 4)" text-anchor="middle">@label</text></g>
+    }
+</svg>
+@if (ShowLegend)
+{
+    <div class="row small dim" style="gap:14px;margin-top:4px">
+        @foreach (var s in Series)
+        {
+            <span class="row" style="gap:6px"><span style="width:14px;height:3px;background:@s.Color;display:inline-block;border-radius:2px"></span>@s.Name</span>
+        }
+    </div>
+}
+
+@code {
+    public record Point(double X, double Y);
+    public record Line(string Name, string Color, List<Point> Points, bool Step = false, bool Dashed = false, double Width = 2);
+    public record Marker(double X, string Label, string Color);
+
+    [Parameter] public List<Line> Series { get; set; } = [];
+    [Parameter] public List<Marker> Markers { get; set; } = [];
+    [Parameter] public List<(string, double)> XTicks { get; set; } = [];
+    [Parameter] public double YMin { get; set; }
+    [Parameter] public double YMax { get; set; } = 1;
+    [Parameter] public double? XMin { get; set; }
+    [Parameter] public double? XMax { get; set; }
+    [Parameter] public int Height { get; set; } = 220;
+    [Parameter] public Func<double, string>? YFormat { get; set; }
+    [Parameter] public bool ShowLegend { get; set; } = true;
+
+    private const int Width = 800;
+    private const int Pad = 40;
+    private double MinX => XMin ?? Series.SelectMany(s => s.Points).Select(p => p.X).DefaultIfEmpty(0).Min();
+    private double MaxX => XMax ?? Series.SelectMany(s => s.Points).Select(p => p.X).DefaultIfEmpty(1).Max();
+    private double X(double x) => Pad + (MaxX > MinX ? (x - MinX) / (MaxX - MinX) : 0) * (Width - Pad - 8);
+    private double Y(double y) => 8 + (1 - (Math.Clamp(y, YMin, YMax) - YMin) / Math.Max(1e-9, YMax - YMin)) * (Height - 30);
+    private static string F(double v) => v.ToString("F1", CultureInfo.InvariantCulture);
+
+    private string PathFor(Line s)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (var i = 0; i < s.Points.Count; i++)
+        {
+            var p = s.Points[i];
+            if (i == 0) sb.Append($"M{F(X(p.X))} {F(Y(p.Y))}");
+            else if (s.Step) sb.Append($" H{F(X(p.X))} V{F(Y(p.Y))}");
+            else sb.Append($" L{F(X(p.X))} {F(Y(p.Y))}");
+        }
+        return sb.ToString();
+    }
+}

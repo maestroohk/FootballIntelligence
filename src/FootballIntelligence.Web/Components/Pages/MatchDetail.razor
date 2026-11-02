@@ -1,0 +1,328 @@
+@page "/matches/{Id:long}"
+@inject FootballQueries Football
+@inject ResearchQueries Research
+
+<PageTitle>@(match is null ? "Match" : $"{match.HomeName} v {match.AwayName}") · Football Intelligence</PageTitle>
+
+@if (match is null)
+{
+    <div class="empty">Match not found.</div>
+    return;
+}
+
+<div class="card hero">
+    <div class="side"><Crest Name="@match.HomeName" Large="true" /><div class="name">@match.HomeName</div><div class="small dim">Home</div></div>
+    <div class="center">
+        <div class="small dim">@Fmt.CompetitionName(match.Competition) · @match.Season/@((match.Season + 1) % 100)</div>
+        <div class="big-score">@(match.Fthg is null ? "vs" : $"{match.Fthg} – {match.Ftag}")</div>
+        <div class="small dim">@match.MatchDate @(match.Kickoff is null ? "" : match.Kickoff + " UK")@(match.Hthg is not null ? $" · HT {match.Hthg}–{match.Htag}" : "")</div>
+        <div class="row" style="justify-content:center;margin-top:8px">
+            <span class="badge @(match.Status == "scheduled" ? "info" : "")">@match.Status</span>
+            @if (match.Purpose == "forward") { <span class="badge ok">forward prediction · stored before kick-off</span> }
+            else if (match.Purpose == "backtest") { <span class="badge">walk-forward backtest prediction</span> }
+        </div>
+    </div>
+    <div class="side"><Crest Name="@match.AwayName" Large="true" /><div class="name">@match.AwayName</div><div class="small dim">Away</div></div>
+</div>
+
+@if (mk is null)
+{
+    <div class="callout warn">No stored prediction for this match. Predictions are generated for scheduled fixtures by the update cycle and for historical matches by the walk-forward backtest (2012/13 onwards).</div>
+}
+else
+{
+    <div class="grid g-main-side">
+        <div class="card">
+            <div class="card-head">
+                <h2>Outcome probabilities</h2>
+                <span class="sub">@Fmt.ModelLabel(match.ModelVersion) · data cutoff @match.DataCutoff · stored @Fmt.Local(match.PredictionCreated)</span>
+            </div>
+            <ProbBar Home="mk.PHome" Draw="mk.PDraw" Away="mk.PAway" Legend="true" HomeLabel="@match.HomeName" AwayLabel="@match.AwayName" />
+            <div class="grid g4" style="margin-top:16px">
+                <div class="kpi"><span class="label">Expected goals</span><span class="value">@Fmt.Num(mk.ExpHome) – @Fmt.Num(mk.ExpAway)</span><span class="note">model expectation, not shot xG</span></div>
+                <div class="kpi"><span class="label">Total expected</span><span class="value">@Fmt.Num(mk.ExpTotal)</span><span class="note">goal diff @Fmt.Signed(mk.ExpDiff, 2)</span></div>
+                <div class="kpi"><span class="label">Both teams score</span><span class="value">@Fmt.Pct(mk.Btts)</span><span class="note">@match.HomeName scores @Fmt.Pct(mk.PHomeScores) · @match.AwayName @Fmt.Pct(mk.PAwayScores)</span></div>
+                <div class="kpi"><span class="label">Clean sheet</span><span class="value">@Fmt.Pct(mk.HomeCleanSheet) / @Fmt.Pct(mk.AwayCleanSheet)</span><span class="note">home / away</span></div>
+            </div>
+            <div class="grid g2" style="margin-top:16px">
+                <div>
+                    <h3 style="margin-bottom:8px">Goal totals</h3>
+                    <table class="data">
+                        <thead><tr><th>Line</th><th class="num">Over</th><th class="num">Under</th><th style="width:45%"></th></tr></thead>
+                        <tbody>
+                            @foreach (var (line, over) in mk.Over)
+                            {
+                                <tr><td>@line</td><td class="num">@Fmt.Pct(over, 1)</td><td class="num">@Fmt.Pct(1 - over, 1)</td><td><div class="meter"><div style="width:@Fmt.Pct(over, 1)"></div></div></td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div>
+                    <h3 style="margin-bottom:8px">Halves & distribution</h3>
+                    <table class="data">
+                        <tbody>
+                            <tr><td>Goal in 1st half</td><td class="num">@Fmt.Pct(mk.PGoalFirstHalf, 1)</td></tr>
+                            <tr><td>Goal in 2nd half</td><td class="num">@Fmt.Pct(mk.PGoalSecondHalf, 1)</td></tr>
+                            <tr><td>Goal in each half</td><td class="num">@Fmt.Pct(mk.PGoalEachHalf, 1)</td></tr>
+                            @for (var g = 0; g < Math.Min(7, mk.TotalGoals.Length); g++)
+                            {
+                                <tr><td>Exactly @g goal@(g == 1 ? "" : "s")</td><td class="num">@Fmt.Pct(mk.TotalGoals[g], 1)</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                    <div class="small faint" style="margin-top:6px">Half splits assume each goal falls in the first half with probability 0.445 (league average), applied to the joint score distribution.</div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-head"><h2>Scoreline distribution</h2><span class="sub">Dixon-Coles joint distribution</span></div>
+            <ScoreMatrix Matrix="mk.Matrix" HomeLabel="@match.HomeName" AwayLabel="@match.AwayName" Actual="@(match.Fthg is null ? null : ((int)match.Fthg!.Value, (int)match.Ftag!.Value))" />
+            <h3 style="margin:14px 0 8px">Most likely scores</h3>
+            <div class="row">
+                @foreach (var s in mk.TopScores.Take(6))
+                {
+                    <span class="badge">@s.Home–@s.Away · @Fmt.Pct(s.P, 1)</span>
+                }
+            </div>
+            <div class="small faint" style="margin-top:12px">Outcome entropy @Fmt.Num(mk.OutcomeEntropy, 3) nats (max 1.099). @UncertaintyNote()</div>
+        </div>
+    </div>
+
+    <div class="grid g2">
+        <div class="card">
+            <div class="card-head"><h2>Why the model says this</h2><span class="sub">traceable to stored inputs</span></div>
+            @if (explain.Count == 0)
+            {
+                <div class="small dim">Component breakdown is stored for forward predictions only. Historical predictions store expected goals and the dependence parameter, from which every market above is recomputed.</div>
+            }
+            <div class="stack">
+                @foreach (var e in explain)
+                {
+                    <div class="callout @(e.Kind)">@e.Text</div>
+                }
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-head"><h2>Model vs market</h2><span class="sub">de-vigged bookmaker odds, power method</span></div>
+            @if (odds.Count == 0)
+            {
+                <div class="small dim">No bookmaker odds recorded for this match.</div>
+            }
+            else
+            {
+                <table class="data">
+                    <thead><tr><th>Source</th><th class="num">Home</th><th class="num">Draw</th><th class="num">Away</th><th class="num">Over 2.5</th></tr></thead>
+                    <tbody>
+                        <tr><td><b>Model</b></td><td class="num">@Fmt.Pct(mk.PHome, 1)</td><td class="num">@Fmt.Pct(mk.PDraw, 1)</td><td class="num">@Fmt.Pct(mk.PAway, 1)</td><td class="num">@Fmt.Pct(mk.Over.GetValueOrDefault("2.5"), 1)</td></tr>
+                        @foreach (var o in odds)
+                        {
+                            var p = Devig(o);
+                            <tr><td>@o.Bookmaker <span class="faint small">@o.Timing</span></td><td class="num">@Fmt.Pct(p[0], 1)</td><td class="num">@Fmt.Pct(p[1], 1)</td><td class="num">@Fmt.Pct(p[2], 1)</td>
+                                <td class="num">@(o.Over25 is null || o.Under25 is null ? "—" : Fmt.Pct((1 / o.Over25.Value) / (1 / o.Over25.Value + 1 / o.Under25.Value), 1))</td></tr>
+                        }
+                    </tbody>
+                </table>
+                <div class="small faint" style="margin-top:8px">Closing odds are published after the model's data cutoff and are used only as an external benchmark, never as a model input.</div>
+            }
+        </div>
+    </div>
+}
+
+<div class="grid g2">
+    <div class="card">
+        <div class="card-head"><h2>Team strength (current fit)</h2><span class="sub">Dixon-Coles attack / defence, log scale</span></div>
+        @if (strengthHome is null || strengthAway is null)
+        {
+            <div class="small dim">Current strength estimates are available for teams in the 2026/27 season.</div>
+        }
+        else
+        {
+            <table class="data">
+                <thead><tr><th></th><th class="num">Attack</th><th class="num">Defence</th><th class="num">League rank</th></tr></thead>
+                <tbody>
+                    <tr><td>@match.HomeName</td><td class="num">@Fmt.Signed(strengthHome.Value.Attack, 3)</td><td class="num">@Fmt.Signed(strengthHome.Value.Defence, 3)</td><td class="num">@strengthHome.Value.Rank / @strengthHome.Value.Of</td></tr>
+                    <tr><td>@match.AwayName</td><td class="num">@Fmt.Signed(strengthAway.Value.Attack, 3)</td><td class="num">@Fmt.Signed(strengthAway.Value.Defence, 3)</td><td class="num">@strengthAway.Value.Rank / @strengthAway.Value.Of</td></tr>
+                </tbody>
+            </table>
+            <div class="small faint" style="margin-top:8px">Higher attack = scores more; higher defence = concedes less. Fitted today on time-weighted results (half-life ≈ 1 year) across all tiers in the country; these are today's values, not as of the match date.</div>
+        }
+    </div>
+    <div class="card">
+        <div class="card-head"><h2>Player availability</h2></div>
+        @if (lineup.Count > 0)
+        {
+            <div class="small dim" style="margin-bottom:8px">Confirmed lineups from StatsBomb Open Data (historical match).</div>
+            <div class="grid g2">
+                @foreach (var side in new[] { "home", "away" })
+                {
+                    <div>
+                        <h3 style="margin-bottom:6px">@(side == "home" ? match.HomeName : match.AwayName)</h3>
+                        @foreach (var p in lineup.Where(l => l.Side == side))
+                        {
+                            <div class="spread small" style="padding:2px 0">
+                                <a href="players/@p.PlayerId" class="@(p.Started == 1 ? "" : "dim")">@p.Name</a>
+                                <span class="faint">@(p.Started == 1 ? "XI" : $"on {Math.Floor(p.MinuteOn) + 1}'") @(p.Goals > 0 ? $"⚽{p.Goals}" : "") @(p.Red > 0 ? "🟥" : "")</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="callout warn">Availability status: <b>unknown</b>. No licensed injury or confirmed-lineup feed is integrated, so this forecast is a team-level model and makes no assumption about who plays. It does not use rumours or speculative injury reports.</div>
+        }
+    </div>
+</div>
+
+<div class="grid g3">
+    <div class="card">
+        <div class="card-head"><h2>@match.HomeName form</h2><span class="sub">before this match</span></div>
+        <FormTable Rows="homeForm" />
+    </div>
+    <div class="card">
+        <div class="card-head"><h2>@match.AwayName form</h2><span class="sub">before this match</span></div>
+        <FormTable Rows="awayForm" />
+    </div>
+    <div class="card">
+        <div class="card-head"><h2>Head to head</h2><span class="sub">last @h2h.Count meetings</span></div>
+        @if (h2h.Count == 0) { <div class="empty">No previous meetings in the database.</div> }
+        @foreach (var m in h2h)
+        {
+            <div class="spread small" style="padding:4px 0;border-bottom:1px solid var(--border-soft)">
+                <span class="faint">@m.MatchDate</span><span>@m.HomeName <b>@m.Score</b> @m.AwayName</span>
+            </div>
+        }
+    </div>
+</div>
+
+@if (match.Status == "finished" && match.Hs is not null)
+{
+    <div class="card">
+        <div class="card-head"><h2>Match statistics</h2><span class="sub">observed, football-data.co.uk</span></div>
+        <table class="data">
+            <thead><tr><th class="num">@match.HomeName</th><th style="text-align:center">Statistic</th><th>@match.AwayName</th></tr></thead>
+            <tbody>
+                @foreach (var (label, h, a) in StatRows())
+                {
+                    <tr><td class="num">@(h?.ToString() ?? "—")</td><td style="text-align:center" class="dim">@label</td><td>@(a?.ToString() ?? "—")</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private MatchRow? match;
+    private Markets? mk;
+    private List<OddsRow> odds = [];
+    private List<FormRow> homeForm = [];
+    private List<FormRow> awayForm = [];
+    private List<MatchRow> h2h = [];
+    private List<LineupRow> lineup = [];
+    private List<(string Kind, string Text)> explain = [];
+    private (double Attack, double Defence, int Rank, int Of)? strengthHome;
+    private (double Attack, double Defence, int Rank, int Of)? strengthAway;
+
+    protected override void OnParametersSet()
+    {
+        match = Football.Match(Id);
+        if (match is null) return;
+        mk = Markets.FromJson(match.Markets);
+        if (mk is null && match.LambdaHome is not null)
+        {
+            var rho = 0.0;
+            if (!string.IsNullOrEmpty(match.Markets))
+            {
+                var root = JsonDocument.Parse(match.Markets).RootElement;
+                if (root.TryGetProperty("rho", out var r) && r.ValueKind == JsonValueKind.Number) rho = r.GetDouble();
+            }
+            mk = ScoreModel.Compute(ScoreModel.DixonColes(match.LambdaHome.Value, match.LambdaAway!.Value, rho));
+        }
+        odds = Football.Odds(Id);
+        homeForm = Football.Form(match.HomeTeamId, match.MatchDate, 6);
+        awayForm = Football.Form(match.AwayTeamId, match.MatchDate, 6);
+        h2h = Football.HeadToHead(match.HomeTeamId, match.AwayTeamId, match.MatchDate, 6);
+        var sb = Football.StatsBombMatchFor(Id);
+        lineup = sb is null ? [] : Football.Lineup(sb.Value);
+        LoadStrengths();
+        BuildExplanations();
+    }
+
+    private void LoadStrengths()
+    {
+        strengthHome = strengthAway = null;
+        var root = Research.KvJson("team_strengths");
+        if (root is null || match is null) return;
+        foreach (var country in root.Value.EnumerateObject())
+        {
+            var teams = country.Value.GetProperty("teams").EnumerateArray().ToList();
+            for (var i = 0; i < teams.Count; i++)
+            {
+                var id = teams[i].GetProperty("team_id").GetInt64();
+                var tuple = (teams[i].GetProperty("attack").GetDouble(), teams[i].GetProperty("defence").GetDouble(), i + 1, teams.Count);
+                if (id == match.HomeTeamId) strengthHome = tuple;
+                if (id == match.AwayTeamId) strengthAway = tuple;
+            }
+        }
+    }
+
+    private void BuildExplanations()
+    {
+        explain = [];
+        if (match?.Markets is null || mk is null) return;
+        var root = JsonDocument.Parse(match.Markets).RootElement;
+        if (root.TryGetProperty("components", out var comps))
+        {
+            var parts = comps.EnumerateArray().Select(c => $"{Fmt.ModelLabel(c.GetProperty("model").GetString())} {c.GetProperty("lh").GetDouble():F2}–{c.GetProperty("la").GetDouble():F2} (weight {c.GetProperty("weight").GetDouble():P0})");
+            explain.Add(("info", "Expected goals are a learned weighted geometric mean of component models: " + string.Join("; ", parts) + "."));
+        }
+        if (root.TryGetProperty("dc_terms", out var dc))
+        {
+            explain.Add(("info", $"Dixon-Coles terms: home attack {dc.GetProperty("home_attack").GetDouble():+0.00;-0.00}, away defence {dc.GetProperty("away_defence").GetDouble():+0.00;-0.00}, home advantage {dc.GetProperty("home_adv").GetDouble():+0.00;-0.00} (log scale)."));
+        }
+        if (root.TryGetProperty("gbm_contrib", out var gc))
+        {
+            foreach (var side in new[] { "home", "away" })
+            {
+                if (!gc.TryGetProperty(side, out var arr)) continue;
+                var items = arr.EnumerateArray().Take(4).Select(x => $"{x.GetProperty("feature").GetString()} {x.GetProperty("value").GetDouble():+0.000;-0.000}");
+                explain.Add(("info", $"LightGBM {(side == "home" ? match.HomeName : match.AwayName)} goal-rate drivers (SHAP, log scale): " + string.Join(", ", items) + "."));
+            }
+        }
+        if (strengthHome is not null && strengthAway is not null)
+        {
+            var edge = (strengthHome.Value.Attack + strengthHome.Value.Defence) - (strengthAway.Value.Attack + strengthAway.Value.Defence);
+            explain.Add(("ok", $"Current overall strength difference (attack+defence): {edge:+0.00;-0.00} in favour of {(edge >= 0 ? match.HomeName : match.AwayName)}."));
+        }
+        explain.Add(("warn", "No player availability, weather or travel inputs are used: these sources are not integrated."));
+    }
+
+    private string UncertaintyNote() => mk is null ? "" : mk.PHome > 0.6 || mk.PAway > 0.6 ? "Clear favourite, but upsets of this size happen regularly." : "Open match: no outcome is strongly favoured.";
+
+    private static double[] Devig(OddsRow o)
+    {
+        var inv = new[] { 1 / o.Home!.Value, 1 / o.Draw!.Value, 1 / o.Away!.Value };
+        double lo = 0.5, hi = 3.0, k = 1;
+        for (var i = 0; i < 60; i++)
+        {
+            k = (lo + hi) / 2;
+            if (inv.Sum(x => Math.Pow(x, k)) > 1) lo = k; else hi = k;
+        }
+        var p = inv.Select(x => Math.Pow(x, k)).ToArray();
+        var s = p.Sum();
+        return p.Select(x => x / s).ToArray();
+    }
+
+    private IEnumerable<(string, long?, long?)> StatRows()
+    {
+        yield return ("Shots", match!.Hs, match.Aws);
+        yield return ("Shots on target", match.Hst, match.Ast);
+        yield return ("Corners", match.Hc, match.Ac);
+        yield return ("Fouls", match.Hf, match.Af);
+        yield return ("Yellow cards", match.Hy, match.Ay);
+        yield return ("Red cards", match.Hr, match.Ar);
+    }
+}

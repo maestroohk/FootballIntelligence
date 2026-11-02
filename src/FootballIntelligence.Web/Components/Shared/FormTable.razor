@@ -1,0 +1,25 @@
+@if (Rows.Count == 0)
+{
+    <div class="empty">No earlier matches.</div>
+}
+else
+{
+    <div class="row" style="gap:4px;margin-bottom:8px">
+        @foreach (var r in Rows.AsEnumerable().Reverse())
+        {
+            <span class="badge @(r.Outcome == "W" ? "ok" : r.Outcome == "L" ? "bad" : "")">@r.Outcome</span>
+        }
+    </div>
+    @foreach (var r in Rows)
+    {
+        <div class="spread small" style="padding:3px 0;border-bottom:1px solid var(--border-soft)">
+            <span class="faint">@r.MatchDate[2..]</span>
+            <span>@r.Venue · @r.Opponent</span>
+            <b>@r.GoalsFor–@r.GoalsAgainst</b>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public List<FormRow> Rows { get; set; } = [];
+}

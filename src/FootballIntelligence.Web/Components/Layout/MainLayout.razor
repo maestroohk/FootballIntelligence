@@ -1,0 +1,87 @@
+﻿@inherits LayoutComponentBase
+@implements IDisposable
+@inject ChangeFeed Feed
+@inject OperationsQueries Ops
+@inject EngineSupervisor Supervisor
+
+<div class="shell">
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-mark">FI</div>
+            <div>
+                <div class="brand-name">Football Intelligence</div>
+                <div class="brand-sub">Predictive analytics engine</div>
+            </div>
+        </div>
+        <NavLink class="nav-link" href="" Match="NavLinkMatch.All"><span class="nav-ico">◎</span>Overview</NavLink>
+        <NavLink class="nav-link" href="matches"><span class="nav-ico">▤</span>Matches</NavLink>
+        <NavLink class="nav-link" href="live"><span class="nav-ico">◉</span>Live tracker</NavLink>
+        <NavLink class="nav-link" href="players"><span class="nav-ico">♟</span>Players</NavLink>
+        <NavLink class="nav-link" href="lab"><span class="nav-ico">⚗</span>Model lab</NavLink>
+        <NavLink class="nav-link" href="performance"><span class="nav-ico">↗</span>Performance</NavLink>
+        <NavLink class="nav-link" href="jobs"><span class="nav-ico">⚙</span>Jobs</NavLink>
+        <NavLink class="nav-link" href="data"><span class="nav-ico">⛁</span>Data health</NavLink>
+        <div class="sidebar-foot">
+            <div class="row" style="gap:6px"><span class="dot @(worker.Alive ? "ok" : "bad")"></span>Engine worker @(worker.Alive ? "online" : "offline")</div>
+            <div>Heartbeat: @(worker.LastHeartbeat is null ? "never" : Fmt.Ago(worker.LastHeartbeat.Value.ToString("o")))</div>
+            @if (Supervisor.LastError is not null) { <div class="bad">@Supervisor.LastError</div> }
+            <div style="margin-top:6px">Data: football-data.co.uk, StatsBomb Open Data</div>
+        </div>
+    </aside>
+    <div class="main">
+        <div class="topbar">
+            <div class="row small dim">
+                @if (active.Count > 0)
+                {
+                    <span class="dot ok"></span>
+                    <span>@active.Count background job@(active.Count == 1 ? "" : "s") active:</span>
+                    @foreach (var j in active.Take(3))
+                    {
+                        <a href="jobs/@j.JobId" class="badge info">#@j.JobId @j.Kind @(j.Progress is null ? "" : Fmt.Pct(j.Progress))</a>
+                    }
+                }
+                else
+                {
+                    <span class="faint">No background jobs running</span>
+                }
+            </div>
+            <div class="row small">
+                <a href="jobs" class="badge @(unseen > 0 ? "warn" : "")">@unseen unread notification@(unseen == 1 ? "" : "s")</a>
+            </div>
+        </div>
+        <div class="content">
+            @Body
+        </div>
+    </div>
+</div>
+<Toasts />
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private WorkerStatus worker = new(null, false, false);
+    private List<JobRow> active = [];
+    private long unseen;
+
+    protected override void OnInitialized()
+    {
+        Refresh();
+        Feed.Changed += OnChanged;
+    }
+
+    private void Refresh()
+    {
+        if (!Ops.WorkerStatus().DatabaseExists) return;
+        worker = Ops.WorkerStatus();
+        active = Ops.ActiveJobs();
+        unseen = Feed.State.UnseenNotifications;
+    }
+
+    private void OnChanged(FeedState a, FeedState b) => _ = InvokeAsync(() => { Refresh(); StateHasChanged(); });
+
+    public void Dispose() => Feed.Changed -= OnChanged;
+}

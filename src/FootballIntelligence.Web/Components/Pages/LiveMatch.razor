@@ -1,0 +1,276 @@
+@page "/live/{Id:long}"
+@inherits FeedComponent
+@inject OperationsQueries Ops
+
+<PageTitle>@(session is null ? "Live" : $"{session.HomeName} v {session.AwayName}") · Live tracker</PageTitle>
+
+@if (session is null)
+{
+    <div class="empty">Session not found.</div>
+    return;
+}
+
+@if (session.Mode == "replay")
+{
+    <div class="callout" style="border-left-color:#d59bff">
+        <b>SIMULATION MODE.</b> This is a replay of a completed @(session.HomeName)–@(session.AwayName) match from StatsBomb Open Data, streamed at @(session.Speed)× speed. It is not live. The forecast at each moment uses only events delivered up to that moment and the pre-match prediction stored before kick-off.
+    </div>
+}
+
+<div class="card hero">
+    <div class="side"><Crest Name="@(session.HomeName ?? "")" Large="true" /><div class="name">@session.HomeName</div></div>
+    <div class="center">
+        <div class="row" style="justify-content:center">
+            @if (session.Status == "running") { <span class="dot live"></span> }
+            <span class="badge @(session.Mode == "replay" ? "sim" : "bad")">@(session.Mode == "replay" ? "REPLAY" : "LIVE")</span>
+            <span class="badge">@session.Status</span>
+        </div>
+        <div class="big-score">@session.HomeGoals – @session.AwayGoals</div>
+        <div class="dim">@MinuteLabel()</div>
+        <div class="small faint" style="margin-top:6px">
+            Last provider event @Fmt.Ago(session.LastEventAt) · last model update @Fmt.Ago(session.LastUpdateAt)
+            @if (Stale) { <span class="badge warn">feed stale</span> }
+        </div>
+    </div>
+    <div class="side"><Crest Name="@(session.AwayName ?? "")" Large="true" /><div class="name">@session.AwayName</div></div>
+</div>
+
+@if (latest is not null && fc is not null)
+{
+    <div class="grid g-main-side">
+        <div class="card">
+            <div class="card-head"><h2>Final result probabilities</h2><span class="sub">updated @Fmt.Local(latest.Ts) · trigger: @latest.Trigger</span></div>
+            <ProbBar Home="latest.PHome" Draw="latest.PDraw" Away="latest.PAway" Legend="true" HomeLabel="@session.HomeName" AwayLabel="@session.AwayName" />
+            <div class="grid g4" style="margin-top:16px">
+                <div class="kpi"><span class="label">Another goal</span><span class="value">@Fmt.Pct(latest.PAnotherGoal)</span><span class="note">5' @Fmt.Pct(D("p_goal_5")) · 10' @Fmt.Pct(D("p_goal_10")) · 15' @Fmt.Pct(D("p_goal_15"))</span></div>
+                <div class="kpi"><span class="label">Expected remaining goals</span><span class="value">@Fmt.Num(latest.ExpRemaining)</span><span class="note">final total @Fmt.Num(D("exp_final_total")) · @Fmt.Num(D("minutes_remaining_est"), 0) min left (est.)</span></div>
+                <div class="kpi"><span class="label">Next goal</span><span class="value" style="font-size:18px">@Fmt.Pct(D("p_next_home")) / @Fmt.Pct(D("p_next_away"))</span><span class="note">@session.HomeName / @session.AwayName · none @Fmt.Pct(D("p_no_more"))</span></div>
+                <div class="kpi"><span class="label">@(latest.HomeGoals == latest.AwayGoals ? "Stays level" : "Leader holds on")</span>
+                    <span class="value">@(latest.HomeGoals == latest.AwayGoals ? Fmt.Pct(latest.PDraw) : Fmt.Pct(D("p_leader_holds")))</span>
+                    <span class="note">@(latest.HomeGoals == latest.AwayGoals ? "draw probability" : $"comeback win {Fmt.Pct(D("p_comeback_win"))} · avoid defeat {Fmt.Pct(D("p_comeback_avoid_defeat"))}")</span></div>
+            </div>
+            <h3 style="margin:18px 0 6px">Win probability over time</h3>
+            <LineChart Series="probSeries" Markers="markers" XTicks="ticks" XMin="0" XMax="maxClock" YMin="0" YMax="1" Height="230" YFormat="@(v => Fmt.Pct(v))" />
+            <h3 style="margin:18px 0 6px">Goal expectation over time</h3>
+            <LineChart Series="goalSeries" Markers="markers" XTicks="ticks" XMin="0" XMax="maxClock" YMin="0" YMax="@Math.Max(1, goalSeries.SelectMany(s => s.Points).Select(p => p.Y).DefaultIfEmpty(1).Max())" Height="170" />
+        </div>
+        <div class="stack" style="gap:16px">
+            <div class="card">
+                <div class="card-head"><h2>What changed</h2><span class="sub">from model inputs</span></div>
+                <div class="stack">
+                    @foreach (var e in Explanations(latest)) { <div class="callout @(e.Kind)">@e.Text</div> }
+                    @foreach (var s in snapshots.Where(s => s.Trigger is "goal" or "red_card" or "substitution").Reverse().Take(6))
+                    {
+                        <div class="small dim" style="border-top:1px solid var(--border-soft);padding-top:6px">
+                            <span class="mono">@StateMinute(s)</span>
+                            @foreach (var e in Explanations(s).Where(e => e.Kind != "observation")) { <div>@e.Text</div> }
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-head"><h2>Final score distribution</h2></div>
+                <ScoreMatrix Matrix="matrix" Size="6" HomeLabel="@session.HomeName" AwayLabel="@session.AwayName" />
+                <table class="data" style="margin-top:10px">
+                    <tbody>
+                        @foreach (var line in new[] { "1.5", "2.5", "3.5", "4.5" })
+                        {
+                            <tr><td>Over @line total goals</td><td class="num">@Fmt.Pct(Over(line), 1)</td></tr>
+                        }
+                        <tr><td>Both teams score</td><td class="num">@Fmt.Pct(D("btts"), 1)</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid g3">
+        <div class="card">
+            <div class="card-head"><h2>Match statistics</h2><span class="sub">accumulated so far</span></div>
+            <table class="data">
+                <thead><tr><th class="num">@Fmt.Initials(session.HomeName ?? "")</th><th style="text-align:center"></th><th>@Fmt.Initials(session.AwayName ?? "")</th></tr></thead>
+                <tbody>
+                    <tr><td class="num">@Fmt.Num(SD("xg_home"))</td><td class="dim" style="text-align:center">xG (accumulated)</td><td>@Fmt.Num(SD("xg_away"))</td></tr>
+                    <tr><td class="num">@Fmt.Num(SD("exp_home_so_far"))</td><td class="dim" style="text-align:center">pre-match expectation so far</td><td>@Fmt.Num(SD("exp_away_so_far"))</td></tr>
+                    <tr><td class="num">@S("shots_home")</td><td class="dim" style="text-align:center">Shots</td><td>@S("shots_away")</td></tr>
+                    <tr><td class="num">@S("sot_home")</td><td class="dim" style="text-align:center">On target</td><td>@S("sot_away")</td></tr>
+                    <tr><td class="num">@Fmt.Pct(SD("possession_home"))</td><td class="dim" style="text-align:center">Possession</td><td>@(S("possession_home") is double ph ? Fmt.Pct(1 - ph) : "—")</td></tr>
+                    <tr><td class="num">@Fmt.Num(SD("ppda_home"), 1)</td><td class="dim" style="text-align:center">PPDA (lower = more pressing)</td><td>@Fmt.Num(SD("ppda_away"), 1)</td></tr>
+                    <tr><td class="num">@S("pressures_home")</td><td class="dim" style="text-align:center">Pressures</td><td>@S("pressures_away")</td></tr>
+                    <tr><td class="num">@S("recoveries_home")</td><td class="dim" style="text-align:center">Ball recoveries</td><td>@S("recoveries_away")</td></tr>
+                    <tr><td class="num">@S("reds_home")</td><td class="dim" style="text-align:center">Red cards</td><td>@S("reds_away")</td></tr>
+                </tbody>
+            </table>
+            <div class="small faint" style="margin-top:6px">Accumulated xG describes what has happened; future expectation comes from the hazard model. They are shown separately to avoid double counting.</div>
+        </div>
+        <div class="card">
+            <div class="card-head"><h2>Momentum</h2><span class="sub">last 10 minutes</span></div>
+            @foreach (var (label, key) in new[] { ("Box touches", "box"), ("Final-third passes", "f3"), ("Passes", "passes"), ("Pressures", "press") })
+            {
+                var h = Mom("home", key);
+                var a = Mom("away", key);
+                var tot = Math.Max(1, h + a);
+                <div style="margin-bottom:10px">
+                    <div class="spread small"><span>@h</span><span class="dim">@label</span><span>@a</span></div>
+                    <div class="prob-bar slim"><div class="h" style="width:@((100.0 * h / tot).ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%"></div><div class="a" style="width:@((100.0 * a / tot).ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%"></div></div>
+                </div>
+            }
+            <div class="spread small"><span>@Fmt.Num(SD("recent_xg_home"))</span><span class="dim">xG last 10'</span><span>@Fmt.Num(SD("recent_xg_away"))</span></div>
+            <div class="small faint" style="margin-top:8px">Momentum is descriptive. Whether it moves the forecast depends on its learned out-of-sample weight (see Model lab).</div>
+        </div>
+        <div class="card">
+            <div class="card-head"><h2>Timeline</h2><span class="sub">@events.Count events received</span></div>
+            <div class="timeline">
+                @foreach (var e in events.Where(e => e.Kind != "shot" || (e.Xg ?? 0) >= 0.1).Reverse())
+                {
+                    <div class="tl-item">
+                        <span class="tl-min">@Fmt.Minute(e.Clock, e.Period)</span>
+                        <span>@Icon(e)</span>
+                        <span class="@(e.Side == "home" ? "" : "dim")">@Describe(e)</span>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head"><h2>Model update log</h2><span class="sub">@snapshots.Count snapshots · pre-match xG @Fmt.Num(Pre("lambda_home")) – @Fmt.Num(Pre("lambda_away")) (@PreModel)</span></div>
+        <div class="table-wrap">
+            <table class="data">
+                <thead><tr><th>Updated</th><th>Clock</th><th>Trigger</th><th class="num">Score</th><th class="num">Home</th><th class="num">Draw</th><th class="num">Away</th><th class="num">P(another goal)</th></tr></thead>
+                <tbody>
+                    @foreach (var s in snapshots.AsEnumerable().Reverse().Take(12))
+                    {
+                        <tr><td class="dim">@Fmt.Local(s.Ts)</td><td class="mono">@StateMinute(s)</td><td>@s.Trigger</td><td class="num">@s.HomeGoals–@s.AwayGoals</td>
+                            <td class="num">@Fmt.Pct(s.PHome, 1)</td><td class="num">@Fmt.Pct(s.PDraw, 1)</td><td class="num">@Fmt.Pct(s.PAway, 1)</td><td class="num">@Fmt.Pct(s.PAnotherGoal, 1)</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+else
+{
+    <div class="empty">Waiting for the first model update…</div>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private LiveSessionRow? session;
+    private List<SnapshotRow> snapshots = [];
+    private List<LiveEventRow> events = [];
+    private SnapshotRow? latest;
+    private JsonElement? fc;
+    private double[][] matrix = [];
+    private List<LineChart.Line> probSeries = [];
+    private List<LineChart.Line> goalSeries = [];
+    private List<LineChart.Marker> markers = [];
+    private List<(string, double)> ticks = [];
+    private double maxClock = 95;
+    private JsonElement? prematch;
+
+    private bool Stale => session is { Status: "running" } && (Fmt.Since(session.LastUpdateAt) ?? TimeSpan.MaxValue) > TimeSpan.FromSeconds(30);
+    private string PreModel => prematch?.TryGetProperty("model_version", out var v) == true ? Fmt.ModelLabel(v.GetString()) : "";
+
+    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.MaxSnapshotId != next.MaxSnapshotId || previous.LatestJobChange != next.LatestJobChange;
+
+    protected override void Load()
+    {
+        session = Ops.LiveSession(Id);
+        if (session is null) return;
+        prematch = session.Prematch is null ? null : JsonDocument.Parse(session.Prematch).RootElement.Clone();
+        snapshots = Ops.Snapshots(Id);
+        events = Ops.LiveEvents(Id).Where(e => e.Superseded == 0).ToList();
+        latest = snapshots.LastOrDefault();
+        fc = latest?.State is null ? null : JsonDocument.Parse(latest.State).RootElement.Clone();
+        matrix = fc?.TryGetProperty("matrix", out var m) == true ? m.EnumerateArray().Select(r => r.EnumerateArray().Select(c => c.GetDouble()).ToArray()).ToArray() : [];
+        maxClock = Math.Max(95, snapshots.Select(X).DefaultIfEmpty(0).Max());
+        probSeries =
+        [
+            new("Home", "var(--home)", snapshots.Select(s => new LineChart.Point(X(s), s.PHome)).ToList()),
+            new("Draw", "var(--draw)", snapshots.Select(s => new LineChart.Point(X(s), s.PDraw)).ToList()),
+            new("Away", "var(--away)", snapshots.Select(s => new LineChart.Point(X(s), s.PAway)).ToList()),
+        ];
+        goalSeries =
+        [
+            new("P(another goal)", "var(--accent)", snapshots.Select(s => new LineChart.Point(X(s), s.PAnotherGoal)).ToList()),
+            new("Expected remaining goals", "var(--warn)", snapshots.Select(s => new LineChart.Point(X(s), s.ExpRemaining)).ToList(), Dashed: true),
+        ];
+        markers = events.Where(e => e.Kind is "goal" or "red_card").Select(e => new LineChart.Marker(EventX(e), e.Kind == "goal" ? "⚽" : "🟥", e.Side == "home" ? "var(--home)" : "var(--away)")).ToList();
+        ticks = [("0'", 0), ("15'", 15), ("30'", 30), ("HT", 45 + HalfOffset), ("60'", 60 + HalfOffset), ("75'", 75 + HalfOffset), ("90'", 90 + HalfOffset)];
+    }
+
+    private double X(SnapshotRow s) => s.Clock;
+
+    private double EventX(LiveEventRow e) => e.Period == 2 ? e.Clock + HalfOffset : e.Clock;
+
+    private double HalfOffset => snapshots.FirstOrDefault(s => s.Trigger == "half_time") is { } ht ? ht.Clock - 45 : 2;
+
+    private double? D(string key) => fc?.TryGetProperty(key, out var v) == true && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : null;
+
+    private object? S(string key)
+    {
+        if (fc?.TryGetProperty("state", out var st) != true || !st.TryGetProperty(key, out var v)) return null;
+        return v.ValueKind switch { JsonValueKind.Number => v.TryGetInt64(out var l) && !key.StartsWith("xg") && !key.StartsWith("exp") && !key.StartsWith("ppda") && !key.StartsWith("poss") && !key.StartsWith("recent") ? l : v.GetDouble(), _ => null };
+    }
+
+    private double? SD(string key) => S(key) switch { double d => d, long l => l, _ => null };
+
+    private double? Pre(string key) => prematch?.TryGetProperty(key, out var v) == true && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : null;
+
+    private long Mom(string side, string key)
+    {
+        if (fc?.TryGetProperty("state", out var st) != true || !st.TryGetProperty("momentum", out var mo)) return 0;
+        return mo.TryGetProperty(side, out var s) && s.TryGetProperty(key, out var v) ? (long)v.GetDouble() : 0;
+    }
+
+    private double? Over(string line) => fc?.TryGetProperty("over_under", out var ou) == true && ou.TryGetProperty(line, out var l) ? l.GetProperty("over").GetDouble() : null;
+
+    private string MinuteLabel()
+    {
+        if (latest is null) return "not started";
+        return latest.Trigger switch
+        {
+            "full_time" => "Full-time",
+            "half_time" => "Half-time",
+            "kickoff" => "Kick-off",
+            _ => StateMinute(latest),
+        };
+    }
+
+    private static string StateMinute(SnapshotRow s)
+    {
+        if (string.IsNullOrEmpty(s.State)) return Fmt.Minute(s.Clock);
+        var st = JsonDocument.Parse(s.State).RootElement.GetProperty("state");
+        return Fmt.Minute(st.GetProperty("clock").GetDouble(), st.GetProperty("period").GetInt64());
+    }
+
+    private static List<(string Kind, string Text)> Explanations(SnapshotRow s)
+    {
+        if (string.IsNullOrEmpty(s.Explanation)) return [];
+        return JsonDocument.Parse(s.Explanation).RootElement.EnumerateArray()
+            .Select(e => (e.GetProperty("type").GetString() switch { "event" => "ok", "evidence" => "", "observation" => "warn", _ => "" }, e.GetProperty("text").GetString() ?? "")).ToList();
+    }
+
+    private static string Icon(LiveEventRow e) => e.Kind switch
+    {
+        "goal" => "⚽", "red_card" => "🟥", "yellow_card" => "🟨", "substitution" => "⇄", "shot" => "◎", "formation" => "▦", _ => "·"
+    };
+
+    private string Describe(LiveEventRow e)
+    {
+        var team = e.Side == "home" ? session!.HomeName : session!.AwayName;
+        var payload = e.Payload is null ? default : JsonDocument.Parse(e.Payload).RootElement;
+        return e.Kind switch
+        {
+            "goal" => $"Goal — {team}{(e.PlayerName is null ? "" : $" ({e.PlayerName})")}",
+            "shot" => $"Shot {team}: {e.PlayerName} · xG {e.Xg:F2} · {(payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("outcome", out var o) ? o.GetString() : "")}",
+            "substitution" => $"Sub {team}: {(payload.TryGetProperty("on", out var on) ? on.GetString() : "?")} for {(payload.TryGetProperty("off", out var off) ? off.GetString() : "?")}",
+            "red_card" => $"Red card — {team} ({e.PlayerName})",
+            "yellow_card" => $"Yellow card — {team} ({e.PlayerName})",
+            "formation" => $"{team} formation change {(payload.TryGetProperty("formation", out var f) ? f.GetString() : "")}",
+            _ => e.Kind,
+        };
+    }
+}

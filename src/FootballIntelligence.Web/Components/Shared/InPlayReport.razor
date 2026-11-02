@@ -1,0 +1,146 @@
+@inject ResearchQueries Research
+
+@if (model is null || metrics is null)
+{
+    <div class="callout warn">No in-play model has been trained yet. Queue the <span class="mono">train_inplay</span> job.</div>
+}
+else
+{
+    var m = metrics.Value;
+    <div class="grid g4" id="inplay">
+        <Kpi Label="Active in-play model" Value="@model.Version.Replace("inplay-", "")" Note="@($"selected variant: {m.GetProperty("selected").GetString()}")" />
+        <Kpi Label="Training / test matches" Value="@($"{m.GetProperty("n_train_matches").GetInt64()} / {m.GetProperty("n_test_matches").GetInt64()}")" Note="@($"chronological split at {m.GetProperty("split_date").GetString()}")" />
+        <Kpi Label="Half lengths (avg)" Value="@($"{m.GetProperty("half_end")[0].GetDouble():F1}' / {m.GetProperty("half_end")[1].GetDouble():F1}'")" Note="StatsBomb 2015/16 incl. stoppage" />
+        <Kpi Label="Half-time test sample" Value="@m.GetProperty("halftime_eval").GetProperty("n").GetInt64().ToString("N0")" Note="football-data.co.uk HT scores, 2016/17–2022/23" />
+    </div>
+
+    <div class="card">
+        <div class="card-head"><h2>Checkpoint evaluation on held-out StatsBomb matches</h2><span class="sub">final-result log loss · "another goal" log loss · "another goal" calibration error</span></div>
+        <div class="table-wrap">
+            <table class="data">
+                <thead>
+                    <tr><th>Model</th>@foreach (var cp in checkpoints) { <th class="num">@cp</th> }</tr>
+                </thead>
+                <tbody>
+                    @foreach (var model in m.GetProperty("checkpoints").EnumerateObject())
+                    {
+                        <tr>
+                            <td>@Label(model.Name)</td>
+                            @foreach (var cp in checkpoints)
+                            {
+                                var v = model.Value.GetProperty(cp);
+                                <td class="num mono small">@v.GetProperty("log_loss_1x2").GetDouble().ToString("F3") · @v.GetProperty("another_goal_log_loss").GetDouble().ToString("F3") · @v.GetProperty("another_goal_ece").GetDouble().ToString("F3")</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="small faint" style="margin-top:6px">Linear extrapolation scales goals-so-far to the remaining time; it is included to demonstrate why that approach is not used.</div>
+    </div>
+
+    <div class="grid g2">
+        <div class="card">
+            <div class="card-head"><h2>Paired comparisons</h2><span class="sub">final-result log loss, A − B</span></div>
+            <table class="data">
+                <thead><tr><th>Comparison</th><th class="num">n</th><th class="num">Diff</th><th class="num">95% CI</th><th>Verdict</th></tr></thead>
+                <tbody>
+                    @foreach (var (scope, el) in new[] { ("held-out SB", m.GetProperty("paired")), ("half-time, large sample", m.GetProperty("halftime_eval").GetProperty("paired")) })
+                    {
+                        @foreach (var p in el.EnumerateObject())
+                        {
+                            var lo = p.Value.GetProperty("ci_low").GetDouble();
+                            var hi = p.Value.GetProperty("ci_high").GetDouble();
+                            <tr><td>@p.Name.Replace("_vs_", " vs ").Replace("_", " ") <span class="faint small">(@scope)</span></td><td class="num">@p.Value.GetProperty("n").GetInt64().ToString("N0")</td>
+                                <td class="num mono">@Fmt.Signed(p.Value.GetProperty("mean_diff").GetDouble(), 4)</td><td class="num mono">[@Fmt.Signed(lo, 4), @Fmt.Signed(hi, 4)]</td>
+                                <td>@if (lo > 0) { <span class="badge ok">B better</span> } else if (hi < 0) { <span class="badge bad">A better</span> } else { <span class="badge">inconclusive</span> }</td></tr>
+                        }
+                    }
+                </tbody>
+            </table>
+            <h3 style="margin:14px 0 6px">Half-time forecasts (n=@m.GetProperty("halftime_eval").GetProperty("n").GetInt64().ToString("N0"))</h3>
+            <table class="data">
+                <thead><tr><th>Model</th><th class="num">1X2 log loss</th><th class="num">P(2nd-half goal) mean</th><th class="num">Observed</th><th class="num">ECE</th></tr></thead>
+                <tbody>
+                    @foreach (var p in m.GetProperty("halftime_eval").GetProperty("summary").EnumerateObject())
+                    {
+                        var v = p.Value.GetProperty("HT");
+                        <tr><td>@Label(p.Name)</td><td class="num">@v.GetProperty("log_loss_1x2").GetDouble().ToString("F4")</td><td class="num">@Fmt.Pct(v.GetProperty("mean_p_more").GetDouble(), 1)</td><td class="num">@Fmt.Pct(v.GetProperty("freq_more").GetDouble(), 1)</td><td class="num">@v.GetProperty("another_goal_ece").GetDouble().ToString("F3")</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="card">
+            <div class="card-head"><h2>"Another goal" reliability</h2><span class="sub">held-out checkpoints</span></div>
+            <Reliability Sets="relSets" MinN="15" />
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head"><h2>Learned rate multipliers</h2><span class="sub">Poisson regression with pre-match expected goals as offset · ×multiplier on a team's scoring rate</span></div>
+        <div class="table-wrap">
+            <table class="data">
+                <thead><tr><th>Term</th><th class="num">Hazard model</th><th class="num">± s.e.</th><th class="num">With xG evidence</th><th class="num">± s.e.</th><th>Meaning</th></tr></thead>
+                <tbody>
+                    @foreach (var (name, hz, ev) in Coefs())
+                    {
+                        <tr>
+                            <td class="mono">@name</td>
+                            <td class="num">@(hz is null ? "—" : $"×{Math.Exp(hz.Value.Beta):F2}")</td><td class="num faint">@(hz is null ? "" : hz.Value.Se.ToString("F3"))</td>
+                            <td class="num">@(ev is null ? "—" : $"×{Math.Exp(ev.Value.Beta):F2}")</td><td class="num faint">@(ev is null ? "" : ev.Value.Se.ToString("F3"))</td>
+                            <td class="small dim">@Meaning(name)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="small faint" style="margin-top:6px">Multipliers with |β/s.e.| &lt; 2 are not distinguishable from 1 on this sample. Pre-match strength enters only through the offset, so accumulated in-match xG cannot be double-counted unless the evidence variant is selected, and it is selected only when it improves held-out log loss.</div>
+    </div>
+}
+
+@code {
+    private LiveModelRow? model;
+    private JsonElement? metrics;
+    private string[] checkpoints = [];
+    private List<Reliability.BinSet> relSets = [];
+
+    protected override void OnInitialized()
+    {
+        model = Research.LiveModels().FirstOrDefault(x => x.Status == "champion");
+        if (model?.Metrics is null) return;
+        metrics = JsonDocument.Parse(model.Metrics).RootElement.Clone();
+        checkpoints = metrics.Value.GetProperty("checkpoints").EnumerateObject().First().Value.EnumerateObject().Select(p => p.Name)
+            .OrderBy(n => n, StringComparer.Ordinal).ToArray();
+        var colors = new Dictionary<string, string> { ["hazard"] = "var(--accent)", ["hazard_evidence"] = "var(--warn)" };
+        relSets = metrics.Value.GetProperty("reliability_another_goal").EnumerateObject()
+            .Select(p => new Reliability.BinSet(Label(p.Name), colors.GetValueOrDefault(p.Name, "var(--info)"), Reliability.Parse(p.Value))).ToList();
+    }
+
+    private IEnumerable<(string, (double Beta, double Se)?, (double Beta, double Se)?)> Coefs()
+    {
+        var c = metrics!.Value.GetProperty("coefficients");
+        var hz = c.GetProperty("hazard").EnumerateArray().ToDictionary(x => x.GetProperty("name").GetString()!, x => (x.GetProperty("beta").GetDouble(), x.GetProperty("se").GetDouble()));
+        var ev = c.GetProperty("hazard_evidence").EnumerateArray().ToDictionary(x => x.GetProperty("name").GetString()!, x => (x.GetProperty("beta").GetDouble(), x.GetProperty("se").GetDouble()));
+        foreach (var name in ev.Keys)
+            yield return (name, hz.TryGetValue(name, out var h) ? h : null, ev[name]);
+    }
+
+    private static string Label(string name) => name switch
+    {
+        "constant_rate" => "Constant rate (pre-match λ spread evenly)",
+        "hazard" => "Goal-hazard model",
+        "hazard_evidence" => "Hazard + in-match xG evidence",
+        "extrapolation" => "Linear extrapolation (straw man)",
+        _ => name,
+    };
+
+    private static string Meaning(string name) => name switch
+    {
+        "t0" => "minutes 0–15", "t1" => "minutes 15–30", "t2" => "minutes 30–45", "t3" => "first-half stoppage time",
+        "t4" => "minutes 45–60", "t5" => "minutes 60–75", "t6" => "minutes 75–90", "t7" => "second-half stoppage time",
+        "lead1" => "team leads by one", "lead2" => "team leads by two or more", "trail1" => "team trails by one", "trail2" => "team trails by two or more",
+        "lead_late" => "leading after 70'", "trail_late" => "trailing after 70'", "man_up" => "opponent has more red cards", "man_down" => "team has more red cards",
+        "xg_ratio" => "log of (xG so far + 0.3)/(expected so far + 0.3)", "recent_xg" => "xG in the last 10 minutes (capped at 1.5)",
+        _ => "",
+    };
+}

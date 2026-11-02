@@ -1,0 +1,97 @@
+@page "/players/{Id:long}"
+@inject FootballQueries Football
+
+<PageTitle>@(player?.Name ?? "Player") · Football Intelligence</PageTitle>
+
+@if (player is null)
+{
+    <div class="empty">Player not found.</div>
+    return;
+}
+
+<div class="page-head">
+    <div class="row">
+        <Crest Name="@player.Name" Large="true" />
+        <div>
+            <h1>@player.Name</h1>
+            <p>@player.Team · @player.Position · StatsBomb Open Data 2015/16</p>
+        </div>
+    </div>
+    <a class="btn" href="players">← All players</a>
+</div>
+
+<div class="grid g4">
+    <Kpi Label="Appearances" Value="@($"{player.Apps} ({player.Starts} starts)")" Note="@($"{player.Minutes:N0} minutes · {player.Minutes / Math.Max(1, player.Apps):F0} per appearance")" />
+    <Kpi Label="Goals / xG" Value="@($"{player.Goals} / {player.Xg:F1}")" Note="@($"{player.Per90(player.Xg):F2} xG per 90 · finishing {(player.Goals - player.Xg):+0.0;-0.0} vs xG")" />
+    <Kpi Label="Assists / xA" Value="@($"{player.Assists} / {player.Xa:F1}")" Note="@($"{player.Per90(player.KeyPasses):F2} key passes per 90")" />
+    @if (player.GkShotsFaced is > 0)
+    {
+        <Kpi Label="Shot-stopping" Value="@($"{(player.GkXgFaced - player.GkGoalsConceded):+0.0;-0.0}")" Note="@($"on-target xG faced {player.GkXgFaced:F1} vs {player.GkGoalsConceded} conceded (pre-shot xG not in open data)")" />
+    }
+    else
+    {
+        <Kpi Label="Defensive actions / 90" Value="@player.Per90(player.Tackles + player.Interceptions).ToString("F1")" Note="@($"{player.Per90(player.Pressures):F1} pressures · {player.Per90(player.Recoveries):F1} recoveries")" />
+    }
+</div>
+
+<div class="grid g2">
+    <div class="card">
+        <div class="card-head"><h2>Form: xG + xA per match</h2><span class="sub">rolling 5-match average (dashed) · bars per match</span></div>
+        <LineChart Series="formSeries" XTicks="formTicks" YMin="0" YMax="@formMax" Height="220" />
+    </div>
+    <div class="card">
+        <div class="card-head"><h2>Playing time & workload</h2><span class="sub">minutes per match and days of rest</span></div>
+        <LineChart Series="workSeries" XTicks="formTicks" YMin="0" YMax="100" Height="220" />
+        <div class="small dim" style="margin-top:6px">
+            Average rest between appearances: @(matches.Skip(1).Select(m => (double)m.DaysSincePrevious).DefaultIfEmpty(0).Average().ToString("F1")) days ·
+            appearances with &lt; 4 days rest: @matches.Skip(1).Count(m => m.DaysSincePrevious < 4) ·
+            league matches only (cup and international minutes not in this dataset).
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="callout warn" style="margin-bottom:12px">
+        Injury and availability history is <b>unavailable</b>: no licensed injury data is integrated. Absences below are simply matches without an appearance in the data; they are not inferred as injuries.
+        Sprint and distance metrics are not in the open data.
+    </div>
+    <div class="table-wrap">
+        <table class="data">
+            <thead><tr><th>Date</th><th>Opponent</th><th>Role</th><th class="num">Min</th><th class="num">Rest (d)</th><th class="num">G</th><th class="num">A</th><th class="num">xG</th><th class="num">xA</th><th class="num">Shots</th><th class="num">Key passes</th><th class="num">Prog. passes</th><th class="num">Pressures</th></tr></thead>
+            <tbody>
+                @foreach (var m in matches.AsEnumerable().Reverse())
+                {
+                    <tr>
+                        <td class="dim">@m.MatchDate</td><td>@m.Opponent</td><td class="small">@(m.Started == 1 ? "Start" : "Sub") · @m.Position</td>
+                        <td class="num">@m.Minutes.ToString("F0")</td><td class="num">@(m.DaysSincePrevious == 0 ? "—" : m.DaysSincePrevious.ToString())</td>
+                        <td class="num">@m.Goals</td><td class="num">@m.Assists</td><td class="num">@m.Xg.ToString("F2")</td><td class="num">@m.Xa.ToString("F2")</td>
+                        <td class="num">@m.Shots</td><td class="num">@m.KeyPasses</td><td class="num">@m.ProgressivePasses</td><td class="num">@m.Pressures</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    [Parameter] public long Id { get; set; }
+    private PlayerSummary? player;
+    private List<PlayerMatchRow> matches = [];
+    private List<LineChart.Line> formSeries = [];
+    private List<LineChart.Line> workSeries = [];
+    private List<(string, double)> formTicks = [];
+    private double formMax = 1;
+
+    protected override void OnParametersSet()
+    {
+        player = Football.Player(Id);
+        matches = Football.PlayerMatches(Id);
+        var per = matches.Select((m, i) => new LineChart.Point(i, m.Xg + m.Xa)).ToList();
+        var rolling = matches.Select((m, i) => new LineChart.Point(i, matches.Skip(Math.Max(0, i - 4)).Take(Math.Min(5, i + 1)).Average(x => x.Xg + x.Xa))).ToList();
+        formSeries = [new("xG + xA", "var(--home)", per, Step: true, Width: 1.5), new("5-match average", "var(--accent)", rolling, Dashed: true)];
+        formMax = Math.Max(0.5, Math.Ceiling(per.Select(p => p.Y).DefaultIfEmpty(0).Max() * 2) / 2);
+        workSeries = [new("Minutes", "var(--accent)", matches.Select((m, i) => new LineChart.Point(i, m.Minutes)).ToList(), Step: true),
+                      new("Days rest", "var(--warn)", matches.Select((m, i) => new LineChart.Point(i, Math.Min(100, m.DaysSincePrevious))).Skip(1).ToList(), Dashed: true)];
+        formTicks = matches.Select((m, i) => (m, i)).Where(x => x.i % 6 == 0).Select(x => (x.m.MatchDate[5..], (double)x.i)).ToList();
+    }
+}

@@ -1,0 +1,142 @@
+@page "/players"
+@inject FootballQueries Football
+@inject ResearchQueries Research
+
+<PageTitle>Players · Football Intelligence</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Player intelligence</h1>
+        <p>Player profiles built from StatsBomb Open Data event data (2015/16 big-five leagues). No current-season player feed is licensed, so these profiles are historical.</p>
+    </div>
+</div>
+
+@if (study is not null)
+{
+    <div class="callout @(study.Value.GetProperty("adopted").GetBoolean() ? "ok" : "warn")">
+        <b>Does player information improve forecasts?</b> @study.Value.GetProperty("summary").GetString()
+    </div>
+}
+
+<div class="card">
+    <div class="row">
+        <input class="input" placeholder="Search player" @bind="search" @bind:event="oninput" @bind:after="Load" />
+        <select class="input" @bind="team" @bind:after="Load">
+            <option value="">All teams</option>
+            @foreach (var t in teams) { <option value="@t">@t</option> }
+        </select>
+        <select class="input" @bind="position" @bind:after="Load">
+            <option value="">All positions</option>
+            @foreach (var p in new[] { "Forward", "Wing", "Midfield", "Back", "Goalkeeper" }) { <option value="@p">@p</option> }
+        </select>
+        <select class="input" @bind="sort" @bind:after="Load">
+            <option value="xgxa">Sort: xG+xA per 90</option>
+            <option value="xg">Sort: xG per 90</option>
+            <option value="prog">Sort: progressive actions per 90</option>
+            <option value="def">Sort: defensive actions per 90</option>
+            <option value="minutes">Sort: minutes</option>
+        </select>
+        <span class="small faint">min. 450 minutes</span>
+    </div>
+</div>
+
+<div class="grid g-main-side">
+    <div class="card">
+        <div class="table-wrap">
+            <table class="data">
+                <thead><tr><th></th><th>Player</th><th>Team</th><th>Position</th><th class="num">Min</th><th class="num">G</th><th class="num">xG/90</th><th class="num">xA/90</th><th class="num">Prog/90</th><th class="num">Press/90</th><th class="num">Tkl+Int/90</th></tr></thead>
+                <tbody>
+                    @foreach (var p in players)
+                    {
+                        <tr>
+                            <td><input type="checkbox" checked="@compare.Contains(p.PlayerId)" @onchange="() => Toggle(p)" title="compare" /></td>
+                            <td><a href="players/@p.PlayerId">@p.Name</a></td>
+                            <td class="small dim">@p.Team</td>
+                            <td class="small dim">@p.Position</td>
+                            <td class="num">@p.Minutes.ToString("N0")</td>
+                            <td class="num">@p.Goals</td>
+                            <td class="num">@p.Per90(p.Xg).ToString("F2")</td>
+                            <td class="num">@p.Per90(p.Xa).ToString("F2")</td>
+                            <td class="num">@p.Per90(p.ProgressivePasses + p.ProgressiveCarries).ToString("F1")</td>
+                            <td class="num">@p.Per90(p.Pressures).ToString("F1")</td>
+                            <td class="num">@p.Per90(p.Tackles + p.Interceptions).ToString("F1")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-head"><h2>Compare</h2><span class="sub">tick up to 3 players</span></div>
+        @if (compared.Count == 0) { <div class="empty">Select players to compare per-90 output.</div> }
+        else
+        {
+            @foreach (var (label, f, max) in Metrics())
+            {
+                <div style="margin-bottom:10px">
+                    <div class="small dim">@label</div>
+                    @foreach (var (p, i) in compared.Select((p, i) => (p, i)))
+                    {
+                        var v = f(p);
+                        <div class="row small" style="gap:6px">
+                            <span style="width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@p.Name.Split(' ').Last()</span>
+                            <div class="meter" style="flex:1"><div style="width:@Fmt.Pct(Math.Min(1, v / max), 1);background:@Colors[i]"></div></div>
+                            <span class="mono" style="width:40px;text-align:right">@v.ToString("F2")</span>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly string[] Colors = ["var(--home)", "var(--away)", "var(--accent)"];
+    private string search = "";
+    private string team = "";
+    private string position = "";
+    private string sort = "xgxa";
+    private List<string> teams = [];
+    private List<PlayerSummary> players = [];
+    private readonly HashSet<long> compare = [];
+    private List<PlayerSummary> compared = [];
+    private JsonElement? study;
+
+    protected override void OnInitialized()
+    {
+        teams = Football.PlayerTeams();
+        study = Research.KvJson("player_study");
+        Load();
+    }
+
+    private void Load()
+    {
+        var all = Football.Players(string.IsNullOrWhiteSpace(search) ? null : search, string.IsNullOrEmpty(team) ? null : team, string.IsNullOrEmpty(position) ? null : position, 2000);
+        players = (sort switch
+        {
+            "xg" => all.OrderByDescending(p => p.Per90(p.Xg)),
+            "prog" => all.OrderByDescending(p => p.Per90(p.ProgressivePasses + p.ProgressiveCarries)),
+            "def" => all.OrderByDescending(p => p.Per90(p.Tackles + p.Interceptions)),
+            "minutes" => all.OrderByDescending(p => p.Minutes),
+            _ => all.OrderByDescending(p => p.Per90(p.Xg + p.Xa)),
+        }).Take(100).ToList();
+        compared = all.Where(p => compare.Contains(p.PlayerId)).ToList();
+    }
+
+    private void Toggle(PlayerSummary p)
+    {
+        if (!compare.Remove(p.PlayerId) && compare.Count < 3) compare.Add(p.PlayerId);
+        compared = compare.Select(id => players.FirstOrDefault(x => x.PlayerId == id) ?? compared.FirstOrDefault(x => x.PlayerId == id)).Where(x => x is not null).Cast<PlayerSummary>().ToList();
+    }
+
+    private IEnumerable<(string, Func<PlayerSummary, double>, double)> Metrics()
+    {
+        yield return ("xG per 90", p => p.Per90(p.Xg), 1.0);
+        yield return ("xA per 90", p => p.Per90(p.Xa), 0.5);
+        yield return ("Key passes per 90", p => p.Per90(p.KeyPasses), 4);
+        yield return ("Progressive passes + carries per 90", p => p.Per90(p.ProgressivePasses + p.ProgressiveCarries), 15);
+        yield return ("Pressures per 90", p => p.Per90(p.Pressures), 30);
+        yield return ("Tackles + interceptions per 90", p => p.Per90(p.Tackles + p.Interceptions), 6);
+        yield return ("Ball recoveries per 90", p => p.Per90(p.Recoveries), 12);
+    }
+}

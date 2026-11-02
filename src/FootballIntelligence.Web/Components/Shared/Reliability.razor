@@ -1,0 +1,42 @@
+@using System.Globalization
+<svg class="chart" viewBox="0 0 320 300" style="width:100%;max-width:@(MaxWidth)px">
+    @for (var k = 0; k <= 5; k++)
+    {
+        var v = k / 5.0;
+        <line class="grid-line" x1="@F(X(0))" x2="@F(X(1))" y1="@F(Y(v))" y2="@F(Y(v))" />
+        <g><text x="@F(X(0) - 5)" y="@F(Y(v) + 3)" text-anchor="end">@((v * 100).ToString("0"))%</text></g>
+        <g><text x="@F(X(v))" y="292" text-anchor="middle">@((v * 100).ToString("0"))%</text></g>
+    }
+    <line x1="@F(X(0))" y1="@F(Y(0))" x2="@F(X(1))" y2="@F(Y(1))" stroke="var(--text-faint)" stroke-dasharray="4 4" />
+    @foreach (var s in Sets)
+    {
+        var pts = s.Bins.Where(b => b.N >= MinN).ToList();
+        if (pts.Count == 0) { continue; }
+        <polyline points="@string.Join(" ", pts.Select(b => F(X(b.MeanP)) + "," + F(Y(b.Freq))))" fill="none" stroke="@s.Color" stroke-width="2" />
+        @foreach (var b in pts)
+        {
+            var r = Math.Clamp(2 + Math.Sqrt(b.N) / 12, 2.5, 7);
+            <circle cx="@F(X(b.MeanP))" cy="@F(Y(b.Freq))" r="@F(r)" fill="@s.Color"><title>@s.Name: predicted @Fmt.Pct(b.MeanP, 1), observed @Fmt.Pct(b.Freq, 1), n=@b.N</title></circle>
+        }
+    }
+</svg>
+<div class="row small dim" style="gap:14px">
+    @foreach (var s in Sets) { <span class="row" style="gap:6px"><span class="dot" style="background:@s.Color"></span>@s.Name</span> }
+    <span class="faint">x: predicted · y: observed · dot size ∝ √n (bins with n &lt; @MinN hidden)</span>
+</div>
+
+@code {
+    public record Bin(double MeanP, double Freq, long N);
+    public record BinSet(string Name, string Color, List<Bin> Bins);
+
+    [Parameter] public List<BinSet> Sets { get; set; } = [];
+    [Parameter] public int MinN { get; set; } = 30;
+    [Parameter] public int MaxWidth { get; set; } = 420;
+
+    private static double X(double p) => 40 + p * 270;
+    private static double Y(double p) => 10 + (1 - p) * 265;
+    private static string F(double v) => v.ToString("F1", CultureInfo.InvariantCulture);
+
+    public static List<Bin> Parse(System.Text.Json.JsonElement arr) =>
+        arr.EnumerateArray().Select(b => new Bin(b.GetProperty("mean_p").GetDouble(), b.GetProperty("freq").GetDouble(), b.GetProperty("n").GetInt64())).ToList();
+}

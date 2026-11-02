@@ -1,0 +1,131 @@
+@page "/data"
+@inherits FeedComponent
+@inject OperationsQueries Ops
+
+<PageTitle>Data health · Football Intelligence</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Data health</h1>
+        <p>Providers, coverage, missing fields and provenance. Missing values are stored as missing, never as zero.</p>
+    </div>
+    <div class="row">
+        <button class="btn" @onclick='() => Ops.Enqueue("ingest_fixtures")'>Refresh fixtures</button>
+        <button class="btn" @onclick='() => Ops.Enqueue("daily_cycle")'>Run update cycle</button>
+    </div>
+</div>
+
+<div class="grid g4">
+    <Kpi Label="Matches stored" Value="@coverage.Sum(c => c.Matches).ToString("N0")" Note="@($"{coverage.Count} competitions")" />
+    <Kpi Label="Finished matches" Value="@coverage.Sum(c => c.Finished).ToString("N0")" Note="@($"latest result {coverage.Select(c => c.LatestResult).Max()}")" />
+    <Kpi Label="With event data" Value="@coverage.Sum(c => c.WithEvents).ToString("N0")" Note="StatsBomb Open Data (2015/16)" />
+    <Kpi Label="With closing odds" Value="@coverage.Sum(c => c.WithClosingOdds).ToString("N0")" Note="benchmark only" />
+</div>
+
+<div class="card">
+    <div class="card-head"><h2>Connected providers</h2><span class="sub">status from actual requests</span></div>
+    <table class="data">
+        <thead><tr><th>Provider</th><th>Status</th><th>Last success</th><th>Last attempt</th><th class="num">Requests</th><th>Rate limit</th><th>Last error</th></tr></thead>
+        <tbody>
+            @foreach (var p in providers)
+            {
+                <tr>
+                    <td>@p.Provider</td>
+                    <td><span class="badge @(p.Status == "ok" ? "ok" : p.Status == "not_configured" ? "warn" : "bad")">@p.Status</span></td>
+                    <td class="dim">@Fmt.Ago(p.LastSuccess)</td>
+                    <td class="dim">@Fmt.Ago(p.LastAttempt)</td>
+                    <td class="num">@p.RequestsToday</td>
+                    <td class="small dim">@(p.RateLimit ?? "—")</td>
+                    <td class="small bad" style="max-width:340px">@p.LastError</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <div class="card-head"><h2>Coverage by competition</h2></div>
+    <div class="table-wrap">
+        <table class="data">
+            <thead><tr><th>Competition</th><th class="num">Seasons</th><th class="num">Matches</th><th class="num">Finished</th><th class="num">Scheduled</th><th class="num">Missing HT</th><th class="num">Missing shots</th><th class="num">Closing odds</th><th class="num">Event data</th><th>Latest result</th></tr></thead>
+            <tbody>
+                @foreach (var c in coverage)
+                {
+                    <tr>
+                        <td><b>@c.Competition</b> <span class="dim">@c.Name</span></td>
+                        <td class="num">@c.FirstSeason–@((c.LastSeason + 1) % 100)</td>
+                        <td class="num">@c.Matches.ToString("N0")</td>
+                        <td class="num">@c.Finished.ToString("N0")</td>
+                        <td class="num">@c.Scheduled</td>
+                        <td class="num @(c.MissingHt > 0 ? "warn" : "")">@c.MissingHt</td>
+                        <td class="num @(c.MissingShots > 0 ? "warn" : "")">@c.MissingShots</td>
+                        <td class="num">@c.WithClosingOdds.ToString("N0")</td>
+                        <td class="num">@c.WithEvents</td>
+                        <td class="dim">@c.LatestResult</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="grid g2">
+    <div class="card">
+        <div class="card-head"><h2>Field provenance</h2></div>
+        <table class="data">
+            <thead><tr><th>Field</th><th>Status</th><th>Source</th><th>Notes</th></tr></thead>
+            <tbody>
+                @foreach (var f in fields)
+                {
+                    <tr><td class="mono">@f.Field</td><td><span class="badge @(f.Status switch { "observed" => "ok", "derived" => "info", "estimated" => "warn", _ => "bad" })">@f.Status</span></td><td class="small">@f.Source</td><td class="small dim">@f.Description</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="card">
+        <div class="card-head"><h2>Sources & licensing</h2></div>
+        @foreach (var s in sources)
+        {
+            <div style="padding:8px 0;border-bottom:1px solid var(--border-soft)">
+                <div class="spread"><b>@s.Source</b><a href="@s.Url" target="_blank" rel="noopener" class="small">@s.Url</a></div>
+                <div class="small dim">Licence: @s.Licence</div>
+                <div class="small dim">Coverage: @s.Coverage</div>
+                <div class="small warn">Limits: @s.Notes</div>
+            </div>
+        }
+        <div class="callout" style="margin-top:10px">Not integrated: Understat (unreachable from this machine during research; terms do not grant API access), FBref/Opta (scraping restricted), Transfermarkt (terms forbid scraping), injury feeds (no free licensed source). Live scores need a football-data.org key; event-level live data needs a commercial provider.</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head"><h2>Live feed freshness</h2></div>
+    @if (live.Count == 0) { <div class="empty">No live or replay sessions.</div> }
+    @foreach (var l in live)
+    {
+        var age = Fmt.Since(l.LastUpdateAt);
+        var stale = l.Status == "running" && (age ?? TimeSpan.MaxValue) > TimeSpan.FromSeconds(30);
+        <div class="spread small" style="padding:4px 0">
+            <span><a href="live/@l.LiveId">#@l.LiveId @l.HomeName – @l.AwayName</a> <span class="badge @(l.Mode == "replay" ? "sim" : "bad")">@l.Mode</span></span>
+            <span class="@(stale ? "warn" : "dim")">@l.Status · last update @Fmt.Ago(l.LastUpdateAt) @(stale ? "· STALE" : "")</span>
+        </div>
+    }
+</div>
+
+@code {
+    private List<CoverageRow> coverage = [];
+    private List<ProviderRow> providers = [];
+    private List<FieldRow> fields = [];
+    private List<SourceRow> sources = [];
+    private List<LiveSessionRow> live = [];
+
+    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange;
+
+    protected override void Load()
+    {
+        coverage = Ops.Coverage();
+        providers = Ops.Providers();
+        fields = Ops.Fields();
+        sources = Ops.Sources();
+        live = Ops.LiveSessions(10);
+    }
+}

@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FootballIntelligence.Web/FootballIntelligence.Web.csproj" />
+  </Folder>
+</Solution>

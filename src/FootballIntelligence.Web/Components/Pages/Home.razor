@@ -1,0 +1,120 @@
+﻿@page "/"
+@inherits FeedComponent
+@inject FootballQueries Football
+@inject ResearchQueries Research
+@inject OperationsQueries Ops
+
+<PageTitle>Overview · Football Intelligence</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Overview</h1>
+        <p>Pre-match forecasts from the promoted champion model, live tracking status, evaluated performance and data health.</p>
+    </div>
+    <div class="row">
+        <button class="btn" @onclick='() => Enqueue("daily_cycle")'>Run update cycle</button>
+        <a class="btn" href="lab">Model lab →</a>
+    </div>
+</div>
+
+<div class="grid g4">
+    <Kpi Label="Champion model" Value="@Fmt.ModelLabel(champion)" Note="@championNote" />
+    <Kpi Label="Validation log loss" Value="@Fmt.Num(championVal?.GetProperty("log_loss").GetDouble(), 4)" Note="@($"vs bookmaker close {Fmt.Num(bookVal?.GetProperty("log_loss").GetDouble(), 4)} · n={championVal?.GetProperty("n").GetInt64()}")" />
+    <Kpi Label="Upcoming predictions" Value="@upcoming.Count(u => u.PHome is not null).ToString()" Note="@($"{upcoming.Count} scheduled fixtures in database")" />
+    <Kpi Label="Live feeds" Value="@(liveProvider?.Status == "ok" ? "Connected" : "Unavailable")" Color="@(liveProvider?.Status == "ok" ? "var(--ok)" : "var(--warn)")"
+         Note="@(liveProvider?.LastError ?? "Historical replay available in Live tracker")" />
+</div>
+
+<div class="grid g-main-side">
+    <div class="card">
+        <div class="card-head">
+            <h2>Upcoming fixtures</h2>
+            <span class="sub">Forward predictions are stored before kick-off and never overwritten</span>
+        </div>
+        @if (upcoming.Count == 0)
+        {
+            <div class="empty">No scheduled fixtures. Run the update cycle to fetch the latest fixture list.</div>
+        }
+        @foreach (var m in upcoming.Take(14))
+        {
+            <MatchLine Match="m" />
+        }
+    </div>
+    <div class="stack" style="gap:16px">
+        <div class="card">
+            <div class="card-head"><h2>Strongest model confidence</h2><span class="sub">highest single-outcome probability</span></div>
+            @foreach (var m in upcoming.Where(u => u.PHome is not null).OrderByDescending(u => Math.Max(u.PHome!.Value, Math.Max(u.PDraw!.Value, u.PAway!.Value))).Take(6))
+            {
+                var top = new[] { (m.HomeName + " win", m.PHome!.Value), ("Draw", m.PDraw!.Value), (m.AwayName + " win", m.PAway!.Value) }.MaxBy(x => x.Item2);
+                <div class="spread" style="padding:6px 0;border-bottom:1px solid var(--border-soft)">
+                    <a href="matches/@m.MatchId">@m.HomeName – @m.AwayName</a>
+                    <span class="row"><span class="small dim">@top.Item1</span><b>@Fmt.Pct(top.Item2)</b></span>
+                </div>
+            }
+            <div class="small faint" style="margin-top:8px">In validation, matches whose top outcome exceeded 60% hit at the rate shown on the Performance page; confidence is not certainty.</div>
+        </div>
+        <div class="card">
+            <div class="card-head"><h2>Live matches</h2><a href="live" class="small">Live tracker →</a></div>
+            @if (live.Count == 0)
+            {
+                <div class="callout warn">No live provider is connected (no FOOTBALL_DATA_API_KEY). Live tracking is available as clearly labelled historical replay.</div>
+            }
+            @foreach (var l in live.Take(5))
+            {
+                <div class="spread" style="padding:6px 0">
+                    <a href="live/@l.LiveId">@l.HomeName @l.HomeGoals – @l.AwayGoals @l.AwayName</a>
+                    <span class="row"><span class="badge @(l.Mode == "replay" ? "sim" : "bad")">@(l.Mode == "replay" ? "REPLAY" : "LIVE")</span><span class="small dim">@Fmt.Minute(l.Minute ?? 0)</span></span>
+                </div>
+            }
+        </div>
+        <div class="card">
+            <div class="card-head"><h2>Data sources</h2><a href="data" class="small">Data health →</a></div>
+            @foreach (var p in providers)
+            {
+                <div class="spread small" style="padding:4px 0">
+                    <span class="row"><span class="dot @(p.Status == "ok" ? "ok" : p.Status == "not_configured" ? "warn" : "bad")"></span>@p.Provider</span>
+                    <span class="dim">@(p.LastSuccess is null ? p.Status : Fmt.Ago(p.LastSuccess))</span>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head"><h2>Recent results vs stored predictions</h2><a href="performance" class="small">Performance →</a></div>
+    @foreach (var m in recent.Take(10))
+    {
+        <MatchLine Match="m" />
+    }
+</div>
+
+@code {
+    private List<MatchRow> upcoming = [];
+    private List<MatchRow> recent = [];
+    private List<LiveSessionRow> live = [];
+    private List<ProviderRow> providers = [];
+    private ProviderRow? liveProvider;
+    private string? champion;
+    private string championNote = "";
+    private JsonElement? championVal;
+    private JsonElement? bookVal;
+
+    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange || previous.MaxSnapshotId != next.MaxSnapshotId;
+
+    protected override void Load()
+    {
+        upcoming = Football.Upcoming(60);
+        recent = Football.Recent(10);
+        live = Ops.LiveSessions(10).Where(l => l.Status == "running").ToList();
+        providers = Ops.Providers();
+        liveProvider = providers.FirstOrDefault(p => p.Provider.Contains("live"));
+        champion = Research.Champion();
+        var champRun = champion is null ? null : Research.Backtest(champion.Split('@')[0], "validation");
+        championVal = champRun is null ? null : JsonDocument.Parse(champRun.Metrics).RootElement.Clone();
+        var book = Research.Backtest("bookmaker_close", "validation");
+        bookVal = book is null ? null : JsonDocument.Parse(book.Metrics).RootElement.Clone();
+        championNote = champRun is null ? "Run the research job to select a champion" : $"validation {champRun.TestPeriod}";
+    }
+
+    private void Enqueue(string kind) => Ops.Enqueue(kind);
+}

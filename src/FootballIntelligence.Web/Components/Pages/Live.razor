@@ -1,0 +1,134 @@
+@page "/live"
+@inherits FeedComponent
+@inject OperationsQueries Ops
+@inject NavigationManager Nav
+
+<PageTitle>Live tracker · Football Intelligence</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Live tracker</h1>
+        <p>In-play forecasts from the goal-hazard model. Real-time tracking needs a licensed live feed; without one, historical matches can be replayed event by event in clearly labelled simulation mode.</p>
+    </div>
+</div>
+
+<div class="grid g2">
+    <div class="card">
+        <div class="card-head"><h2>Live provider</h2></div>
+        @if (liveProvider is null || liveProvider.Status != "ok")
+        {
+            <div class="callout warn">
+                <b>No live feed is connected.</b> @(liveProvider?.LastError ?? "The live provider has not been polled yet.")<br />
+                Set <span class="mono">FOOTBALL_DATA_API_KEY</span> (football-data.org) to poll live scores. Nothing on this page is presented as live unless a provider update was actually received.
+            </div>
+        }
+        else
+        {
+            <div class="callout ok">football-data.org connected · last success @Fmt.Ago(liveProvider.LastSuccess) · @liveProvider.RateLimit</div>
+        }
+        <div class="row" style="margin-top:10px">
+            <button class="btn sm" @onclick='() => Ops.Enqueue("poll_live")'>Poll provider now</button>
+            <span class="small faint">Last attempt @Fmt.Ago(liveProvider?.LastAttempt)</span>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-head"><h2>In-play model</h2></div>
+        <div class="small dim">
+            Each team's scoring rate is the pre-match expected-goals rate multiplied by learned effects for match period, score state (leading/trailing, late game) and red cards, fitted on 1,551 StatsBomb 2015/16 matches.
+            The final scoreline distribution is computed exactly by stepping a Markov chain over the remaining minutes. Goals, red cards and substitutions trigger an immediate update; otherwise forecasts refresh every simulated minute.
+        </div>
+        <div class="row" style="margin-top:10px"><a href="lab#inplay" class="small">Evaluation and coefficients in the Model lab →</a></div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <h2>Start a historical replay</h2>
+        <span class="badge sim">SIMULATION · StatsBomb Open Data 2015/16</span>
+    </div>
+    <div class="row" style="margin-bottom:10px">
+        <input class="input" placeholder="Search team" @bind="search" @bind:event="oninput" @bind:after="LoadCandidates" />
+        <label class="small dim">Speed
+            <select class="input" @bind="speed">
+                <option value="30">30× (3 min per match)</option>
+                <option value="60">60× (≈1.6 min)</option>
+                <option value="120">120×</option>
+                <option value="10">10× (≈10 min)</option>
+            </select>
+        </label>
+        <label class="small dim"><input type="checkbox" @bind="faults" /> inject provider faults (duplicates, late delivery)</label>
+    </div>
+    <div class="table-wrap">
+        <table class="data">
+            <thead><tr><th>Date</th><th>Competition</th><th>Match</th><th class="num">Score</th><th class="num">Red cards</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var c in candidates.Take(25))
+                {
+                    <tr>
+                        <td class="dim">@c.MatchDate</td><td>@Fmt.CompetitionName(c.Competition)</td>
+                        <td>@c.HomeName – @c.AwayName</td><td class="num">@c.HomeScore–@c.AwayScore</td><td class="num">@c.Reds</td>
+                        <td class="right"><button class="btn sm primary" @onclick="() => Start(c)">Replay</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head"><h2>Sessions</h2><span class="sub">replays and live sessions</span></div>
+    @if (sessions.Count == 0) { <div class="empty">No sessions yet.</div> }
+    <table class="data">
+        <thead><tr><th>#</th><th>Mode</th><th>Match</th><th class="num">Score</th><th class="num">Minute</th><th>Status</th><th>Last update</th></tr></thead>
+        <tbody>
+            @foreach (var s in sessions)
+            {
+                <tr>
+                    <td><a href="live/@s.LiveId">#@s.LiveId</a></td>
+                    <td><span class="badge @(s.Mode == "replay" ? "sim" : "bad")">@(s.Mode == "replay" ? "REPLAY" : "LIVE")</span></td>
+                    <td><a href="live/@s.LiveId">@s.HomeName – @s.AwayName</a></td>
+                    <td class="num">@s.HomeGoals–@s.AwayGoals</td>
+                    <td class="num">@Fmt.Minute(s.Minute ?? 0)</td>
+                    <td>@if (s.Status == "running") { <span class="row"><span class="dot live"></span>running</span> } else { @s.Status }</td>
+                    <td class="dim">@Fmt.Ago(s.LastUpdateAt)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<LiveSessionRow> sessions = [];
+    private List<ReplayCandidate> candidates = [];
+    private ProviderRow? liveProvider;
+    private string search = "";
+    private double speed = 60;
+    private bool faults = true;
+
+    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange || previous.MaxSnapshotId != next.MaxSnapshotId;
+
+    protected override void Load()
+    {
+        sessions = Ops.LiveSessions(30);
+        liveProvider = Ops.Providers().FirstOrDefault(p => p.Provider.Contains("live"));
+        if (candidates.Count == 0) LoadCandidates();
+    }
+
+    private void LoadCandidates() => candidates = Ops.ReplayCandidates(string.IsNullOrWhiteSpace(search) ? null : search, 60);
+
+    private async Task Start(ReplayCandidate c)
+    {
+        var jobId = Ops.Enqueue("live_replay", new { sb_match_id = c.SbMatchId, speed, interval_minutes = 1.0, faults });
+        for (var i = 0; i < 40; i++)
+        {
+            await Task.Delay(500);
+            var s = Ops.LiveSessions(10).FirstOrDefault(x => x.JobId == jobId);
+            if (s is not null)
+            {
+                Nav.NavigateTo($"live/{s.LiveId}");
+                return;
+            }
+        }
+        Nav.NavigateTo($"jobs/{jobId}");
+    }
+}

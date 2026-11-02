@@ -1,0 +1,27 @@
+<div class="match-line">
+    <div class="small dim">
+        <div>@Match.MatchDate[5..]</div>
+        <div class="faint">@Match.Competition @(Match.Kickoff ?? "")</div>
+    </div>
+    <div class="team home row" style="justify-content:flex-end"><a href="matches/@Match.MatchId">@Match.HomeName</a><Crest Name="@Match.HomeName" /></div>
+    <div class="score">@Match.Score</div>
+    <div class="team row"><Crest Name="@Match.AwayName" /><a href="matches/@Match.MatchId">@Match.AwayName</a></div>
+    <div class="pbar">
+        @if (Match.PHome is not null)
+        {
+            <ProbBar Home="Match.PHome.Value" Draw="Match.PDraw!.Value" Away="Match.PAway!.Value" />
+            <div class="small faint spread" style="margin-top:3px">
+                <span>xG @Fmt.Num(Match.LambdaHome) – @Fmt.Num(Match.LambdaAway)</span>
+                <span>@(Match.Purpose == "forward" ? "forward" : "backtest") · @Fmt.ModelLabel(Match.ModelVersion)</span>
+            </div>
+        }
+        else
+        {
+            <span class="small faint">No stored prediction</span>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MatchRow Match { get; set; } = default!;
+}

@@ -1,0 +1,9 @@
+.venv/
+data/
+**/bin/
+**/obj/
+__pycache__/
+.pytest_cache/
+*.db
+*.db-*
+.env

@@ -1,0 +1,125 @@
+@page "/performance"
+@inherits FeedComponent
+@inject ResearchQueries Research
+
+<PageTitle>Performance · Football Intelligence</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Performance</h1>
+        <p>Stored predictions compared with actual outcomes. Backtest predictions were produced walk-forward with data available before each match; forward predictions were stored before kick-off.</p>
+    </div>
+    <div class="tabs" style="border:none">
+        <button class="tab @(purpose == "backtest" ? "active" : "")" @onclick='() => SetPurpose("backtest")'>Walk-forward history</button>
+        <button class="tab @(purpose == "forward" ? "active" : "")" @onclick='() => SetPurpose("forward")'>Forward (live-stored)</button>
+    </div>
+</div>
+
+<div class="grid g4">
+    <Kpi Label="Predictions evaluated" Value="@points.Sum(p => p.N).ToString("N0")" Note="@Fmt.ModelLabel(champion)" />
+    <Kpi Label="Log loss" Value="@Fmt.Num(Weighted(p => p.LogLoss), 4)" Note="@($"bookmaker close {Fmt.Num(bookLogLoss, 4)} on the same months")" />
+    <Kpi Label="Top-outcome accuracy" Value="@Fmt.Pct(Weighted(p => p.Accuracy), 1)" Note="not the optimisation target" />
+    <Kpi Label="Goal MAE (per team)" Value="@Fmt.Num(Weighted(p => p.GoalMae ?? double.NaN), 3)" Note="|expected − actual| goals" />
+</div>
+
+@if (purpose == "forward" && points.Count == 0)
+{
+    <div class="callout warn">No forward predictions have been settled yet. Forward predictions are stored before kick-off and evaluated after results arrive via the update cycle.</div>
+}
+
+<div class="card">
+    <div class="card-head"><h2>Performance over time</h2><span class="sub">monthly log loss, 3-month rolling · model vs de-vigged bookmaker closing odds</span></div>
+    <LineChart Series="series" XTicks="ticks" YMin="@ymin" YMax="@ymax" Height="260" YFormat="@(v => v.ToString("0.000"))" />
+</div>
+
+@if (drift is not null)
+{
+    <div class="card">
+        <div class="card-head"><h2>Drift monitor</h2><span class="sub">last @drift.Value.GetProperty("window").GetInt32() primary-league matches up to @drift.Value.GetProperty("last_date").GetString()</span></div>
+        <div class="row">
+            <span class="badge @(drift.Value.GetProperty("alarm").GetBoolean() ? "bad" : "ok")">@(drift.Value.GetProperty("alarm").GetBoolean() ? "drift alarm" : "no drift detected")</span>
+            <span class="small dim">recent log loss @drift.Value.GetProperty("recent_log_loss").GetDouble().ToString("F4") ± @drift.Value.GetProperty("recent_se").GetDouble().ToString("F4") vs validation @drift.Value.GetProperty("validation_log_loss").GetDouble().ToString("F4")</span>
+        </div>
+        <div class="small faint" style="margin-top:6px">An alarm fires when recent loss exceeds validation by more than max(0.03, 2 s.e.). Alarms trigger challenger review; the champion is only replaced after a validated comparison, and previous versions remain registered for rollback.</div>
+    </div>
+}
+
+<div class="card">
+    <div class="card-head"><h2>Prediction history</h2><span class="sub">latest @history.Count settled and pending predictions</span></div>
+    <div class="table-wrap">
+        <table class="data">
+            <thead><tr><th>Date</th><th>Comp</th><th>Match</th><th class="num">Result</th><th style="width:220px">Prediction</th><th class="num">P(actual)</th><th class="num">xG pred.</th><th>Cutoff</th></tr></thead>
+            <tbody>
+                @foreach (var m in history)
+                {
+                    var pActual = m.Result switch { "H" => m.PHome, "D" => m.PDraw, "A" => m.PAway, _ => null };
+                    <tr>
+                        <td class="dim">@m.MatchDate</td><td>@m.Competition</td>
+                        <td><a href="matches/@m.MatchId">@m.HomeName – @m.AwayName</a></td>
+                        <td class="num"><b>@m.Score</b></td>
+                        <td><ProbBar Home="m.PHome ?? 0" Draw="m.PDraw ?? 0" Away="m.PAway ?? 0" Slim="true" /></td>
+                        <td class="num @(pActual is null ? "" : pActual > 0.45 ? "good" : pActual < 0.2 ? "bad" : "")">@Fmt.Pct(pActual)</td>
+                        <td class="num">@Fmt.Num(m.LambdaHome) – @Fmt.Num(m.LambdaAway)</td>
+                        <td class="small faint">@m.DataCutoff</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private string purpose = "backtest";
+    private string? champion;
+    private List<PerformancePoint> points = [];
+    private List<PerformancePoint> bookPoints = [];
+    private double? bookLogLoss;
+    private List<LineChart.Line> series = [];
+    private List<(string, double)> ticks = [];
+    private double ymin = 0.9, ymax = 1.1;
+    private List<MatchRow> history = [];
+    private JsonElement? drift;
+
+    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange;
+
+    private void SetPurpose(string p) { purpose = p; Load(); }
+
+    private double? Weighted(Func<PerformancePoint, double> f)
+    {
+        var valid = points.Where(p => !double.IsNaN(f(p))).ToList();
+        var n = valid.Sum(p => p.N);
+        return n == 0 ? null : valid.Sum(p => f(p) * p.N) / n;
+    }
+
+    protected override void Load()
+    {
+        champion = Research.Champion();
+        points = champion is null ? [] : Research.RollingPerformance(champion, purpose);
+        var months = points.Select(p => p.Period).ToHashSet();
+        bookPoints = Research.RollingPerformance("bookmaker_close@v1", "backtest").Where(p => months.Contains(p.Period)).ToList();
+        var bn = bookPoints.Sum(p => p.N);
+        bookLogLoss = bn == 0 ? null : bookPoints.Sum(p => p.LogLoss * p.N) / bn;
+        series = [];
+        var index = points.Select((p, i) => (p.Period, i)).ToDictionary(x => x.Period, x => (double)x.i);
+        series.Add(new(Fmt.ModelLabel(champion), "var(--accent)", Rolling(points, index)));
+        if (bookPoints.Count > 0) series.Add(new("Bookmaker close", "var(--info)", Rolling(bookPoints, index), Dashed: true));
+        var ys = series.SelectMany(s => s.Points).Select(p => p.Y).ToList();
+        if (ys.Count > 0) { ymin = Math.Floor(ys.Min() * 50) / 50; ymax = Math.Ceiling(ys.Max() * 50) / 50; }
+        ticks = points.Select((p, i) => (p, i)).Where(x => x.p.Period.EndsWith("-08")).Select(x => (x.p.Period[..4], (double)x.i)).ToList();
+        history = Research.PredictionHistory(champion, purpose, 60);
+        drift = Research.KvJson("drift");
+    }
+
+    private static List<LineChart.Point> Rolling(List<PerformancePoint> pts, Dictionary<string, double> index)
+    {
+        var outp = new List<LineChart.Point>();
+        for (var i = 0; i < pts.Count; i++)
+        {
+            var win = pts.Skip(Math.Max(0, i - 2)).Take(Math.Min(3, i + 1)).ToList();
+            var n = win.Sum(p => p.N);
+            if (n < 60 || !index.TryGetValue(pts[i].Period, out var x)) continue;
+            outp.Add(new(x, win.Sum(p => p.LogLoss * p.N) / n));
+        }
+        return outp;
+    }
+}

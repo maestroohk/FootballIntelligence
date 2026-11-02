@@ -1,0 +1,39 @@
+@inherits FeedComponent
+@inject OperationsQueries Ops
+<div class="toasts">
+    @foreach (var n in visible)
+    {
+        <div class="toast @n.Level" @onclick="() => Dismiss(n)">
+            <div style="font-weight:600">@n.Title</div>
+            @if (!string.IsNullOrEmpty(n.Body)) { <div class="small dim">@n.Body</div> }
+            <div class="small faint">@Fmt.Ago(n.Ts) · click to dismiss</div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<NotificationRow> visible = [];
+    private long lastSeenId = -1;
+
+    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.MaxNotificationId != next.MaxNotificationId;
+
+    protected override void Load()
+    {
+        var all = Ops.Notifications(10);
+        var max = all.Select(n => n.NotificationId).DefaultIfEmpty(0).Max();
+        if (lastSeenId < 0)
+        {
+            lastSeenId = max;
+            return;
+        }
+        foreach (var n in all.Where(n => n.NotificationId > lastSeenId).OrderBy(n => n.NotificationId)) visible.Add(n);
+        lastSeenId = Math.Max(lastSeenId, max);
+        if (visible.Count > 4) visible = visible.TakeLast(4).ToList();
+    }
+
+    private void Dismiss(NotificationRow n)
+    {
+        visible.Remove(n);
+        Ops.MarkSeen(n.NotificationId);
+    }
+}

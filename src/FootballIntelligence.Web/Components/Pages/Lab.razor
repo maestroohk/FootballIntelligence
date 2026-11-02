@@ -1,0 +1,320 @@
+@page "/lab"
+@inherits FeedComponent
+@inject ResearchQueries Research
+@inject OperationsQueries Ops
+
+<PageTitle>Model lab · Football Intelligence</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Model laboratory</h1>
+        <p>Walk-forward backtests, paired comparisons, calibration and champion selection. Every number on this page is computed from stored out-of-sample predictions.</p>
+    </div>
+    <div class="row">
+        <button class="btn" @onclick='() => Ops.Enqueue("research_full")'>Run research</button>
+        <button class="btn" @onclick='() => Ops.Enqueue("train_inplay")'>Retrain in-play</button>
+        <button class="btn" @onclick='() => Ops.Enqueue("player_study")'>Player study</button>
+    </div>
+</div>
+
+@if (running.Count > 0)
+{
+    <div class="card">
+        <div class="card-head"><h2>Running experiments</h2></div>
+        @foreach (var j in running)
+        {
+            <div class="spread" style="padding:6px 0">
+                <a href="jobs/@j.JobId">#@j.JobId @j.Kind</a>
+                <span class="small dim">@j.Stage</span>
+                <span style="width:200px">@if (j.Progress is not null) { <div class="meter"><div style="width:@Fmt.Pct(j.Progress, 1)"></div></div> }</span>
+            </div>
+        }
+    </div>
+}
+
+<div class="tabs">
+    @foreach (var t in new[] { ("validation", "Validation 2012/13–2022/23"), ("final_test", "Final test 2023/24–2026/27"), ("inplay", "In-play model"), ("experiments", "Experiment log") })
+    {
+        <button class="tab @(tab == t.Item1 ? "active" : "")" @onclick="() => SetTab(t.Item1)">@t.Item2</button>
+    }
+</div>
+
+@if (tab is "validation" or "final_test")
+{
+    @if (tab == "final_test" && runs.Count == 0)
+    {
+        <div class="callout warn">The final test period has not been evaluated. It is run once, after all model choices are frozen, via the <span class="mono">final_test</span> job.</div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-head">
+                <h2>Model comparison</h2>
+                <span class="sub">6 primary leagues (EPL, Championship, La Liga, Bundesliga, Serie A, Ligue 1) · identical match set · lower is better except accuracy</span>
+            </div>
+            <div class="table-wrap">
+                <table class="data">
+                    <thead><tr><th>Model</th><th>Status</th><th>Train window</th><th>Test period</th><th class="num">n</th><th class="num">Log loss</th><th class="num">Brier</th><th class="num">RPS</th><th class="num">ECE</th><th class="num">Accuracy</th><th class="num">Goal MAE</th><th class="num">Total MAE</th><th class="num">Score NLL</th><th class="num">O2.5 LL</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in runs)
+                        {
+                            var m = JsonDocument.Parse(r.Metrics).RootElement;
+                            var name = r.ModelVersion;
+                            <tr style="@(name == championName ? "background:var(--accent-dim)" : "")">
+                                <td><a href="lab?model=@name" @onclick="() => Select(name)" @onclick:preventDefault>@Fmt.ModelLabel(name)</a></td>
+                                <td>@if (name == championName) { <span class="badge ok">champion</span> } else if (name == "bookmaker_close") { <span class="badge info">benchmark</span> }</td>
+                                <td class="small dim">@r.TrainWindow</td>
+                                <td class="small dim">@r.TestPeriod</td>
+                                <td class="num">@r.NMatches.ToString("N0")</td>
+                                <td class="num"><b>@Fmt.Num(M(m, "log_loss"), 4)</b></td>
+                                <td class="num">@Fmt.Num(M(m, "brier"), 4)</td>
+                                <td class="num">@Fmt.Num(M(m, "rps"), 4)</td>
+                                <td class="num">@Fmt.Num(M(m, "ece"), 4)</td>
+                                <td class="num">@Fmt.Pct(M(m, "accuracy"), 1)</td>
+                                <td class="num">@Fmt.Num(M(m, "goal_mae"), 3)</td>
+                                <td class="num">@Fmt.Num(M(m, "total_goals_mae"), 3)</td>
+                                <td class="num">@Fmt.Num(M(m, "score_nll"), 4)</td>
+                                <td class="num">@Fmt.Num(M(m, "over25_log_loss"), 4)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="small faint" style="margin-top:8px">ECE = class-wise expected calibration error (10 bins). Goal metrics need a goal model; logistic and bookmaker rows give 1X2 only. Bookmaker closing odds are an external benchmark, not proof of model quality.</div>
+        </div>
+
+        <div class="grid g2">
+            <div class="card">
+                <div class="card-head"><h2>Reliability · @Fmt.ModelLabel(selectedModel)</h2><span class="sub">1X2 outcome calibration</span></div>
+                <Reliability Sets="relSets" />
+            </div>
+            <div class="card">
+                <div class="card-head"><h2>Over 2.5 goals calibration</h2></div>
+                <Reliability Sets="ouSets" />
+                <h3 style="margin:14px 0 6px">By confidence band</h3>
+                <table class="data">
+                    <thead><tr><th>Top-outcome probability</th><th class="num">n</th><th class="num">Mean predicted</th><th class="num">Hit rate</th><th class="num">Log loss</th></tr></thead>
+                    <tbody>
+                        @foreach (var b in confBands)
+                        {
+                            <tr><td>@b.Name</td><td class="num">@b.Value.GetProperty("n").GetInt64()</td><td class="num">@Fmt.Pct(b.Value.GetProperty("mean_top_p").GetDouble(), 1)</td><td class="num">@Fmt.Pct(b.Value.GetProperty("top_hit_rate").GetDouble(), 1)</td><td class="num">@Fmt.Num(b.Value.GetProperty("log_loss").GetDouble(), 4)</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="grid g2">
+            <div class="card">
+                <div class="card-head"><h2>By league · @Fmt.ModelLabel(selectedModel)</h2></div>
+                <table class="data">
+                    <thead><tr><th>League</th><th class="num">n</th><th class="num">Log loss</th><th class="num">RPS</th><th class="num">ECE</th><th class="num">Accuracy</th><th class="num">Goal MAE</th></tr></thead>
+                    <tbody>
+                        @foreach (var (name, m) in byLeague)
+                        {
+                            <tr><td>@Fmt.CompetitionName(name)</td><td class="num">@m.GetProperty("n").GetInt64()</td><td class="num">@Fmt.Num(M(m, "log_loss"), 4)</td><td class="num">@Fmt.Num(M(m, "rps"), 4)</td><td class="num">@Fmt.Num(M(m, "ece"), 4)</td><td class="num">@Fmt.Pct(M(m, "accuracy"), 1)</td><td class="num">@Fmt.Num(M(m, "goal_mae"), 3)</td></tr>
+                        }
+                    </tbody>
+                </table>
+                <h3 style="margin:14px 0 6px">By favourite side</h3>
+                <table class="data">
+                    <tbody>
+                        @foreach (var (name, m) in byFav)
+                        {
+                            <tr><td>@name.Replace("_", " ")</td><td class="num">n=@m.GetProperty("n").GetInt64()</td><td class="num">LL @Fmt.Num(M(m, "log_loss"), 4)</td><td class="num">acc @Fmt.Pct(M(m, "accuracy"), 1)</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="card">
+                <div class="card-head"><h2>By season · log loss</h2></div>
+                <LineChart Series="seasonSeries" XTicks="seasonTicks" YMin="@seasonMin" YMax="@seasonMax" Height="240" YFormat="@(v => v.ToString("0.000"))" />
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-head"><h2>Champion vs challenger · paired comparisons</h2><span class="sub">difference = A − B (positive means B is better) · 95% CI from block bootstrap over league-seasons</span></div>
+            <div class="table-wrap">
+                <table class="data">
+                    <thead><tr><th>Comparison</th><th>Metric</th><th class="num">n</th><th class="num">Mean diff</th><th class="num">95% CI</th><th>Verdict</th></tr></thead>
+                    <tbody>
+                        @foreach (var (name, v) in comparisons)
+                        {
+                            var parts = name.Split(" [");
+                            var lo = v.GetProperty("ci_low").GetDouble();
+                            var hi = v.GetProperty("ci_high").GetDouble();
+                            var models = parts[0].Split(" vs ");
+                            <tr>
+                                <td>@Fmt.ModelLabel(models[0]) <span class="faint">vs</span> @Fmt.ModelLabel(models.ElementAtOrDefault(1))</td>
+                                <td class="small">@parts.ElementAtOrDefault(1)?.TrimEnd(']')</td>
+                                <td class="num">@v.GetProperty("n").GetInt64().ToString("N0")</td>
+                                <td class="num mono">@Fmt.Signed(v.GetProperty("mean_diff").GetDouble(), 4)</td>
+                                <td class="num mono">[@Fmt.Signed(lo, 4), @Fmt.Signed(hi, 4)]</td>
+                                <td>@if (lo > 0) { <span class="badge ok">B better</span> } else if (hi < 0) { <span class="badge bad">A better</span> } else { <span class="badge">inconclusive</span> }</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="grid g2">
+            <div class="card">
+                <div class="card-head"><h2>Champion selection</h2></div>
+                @foreach (var reason in selectionReasons) { <div class="small" style="padding:3px 0">• @reason</div> }
+                <h3 style="margin:14px 0 6px">Ensemble weights (latest season)</h3>
+                @foreach (var (name, w) in ensembleWeights)
+                {
+                    <div class="spread small"><span>@Fmt.ModelLabel(name)</span><span class="mono">@Fmt.Pct(w, 1)</span></div>
+                    <div class="meter" style="margin-bottom:6px"><div style="width:@Fmt.Pct(w, 1)"></div></div>
+                }
+                <div class="small faint">Weights are re-fitted each season on the previous three seasons' out-of-sample predictions (score log-likelihood of the joint Dixon-Coles distribution), so the ensemble never sees the season it predicts.</div>
+            </div>
+            <div class="card">
+                <div class="card-head"><h2>LightGBM feature importance</h2><span class="sub">gain share, home-goals model trained to 2021/22</span></div>
+                @foreach (var (f, g) in importance.Take(14))
+                {
+                    <div class="spread small"><span class="mono">@f</span><span>@Fmt.Pct(g, 1)</span></div>
+                    <div class="meter" style="margin-bottom:5px"><div style="width:@Fmt.Pct(Math.Min(1, g / Math.Max(0.0001, importance.First().Item2)), 1)"></div></div>
+                }
+                <div class="small faint">h_/a_ prefixes: home/away team. gf/ga goals, sf/sa shots, tf/ta shots on target, xf/xa shot-xG proxy (exponentially weighted, for/against), rest = days since last match, m28 = matches in 28 days.</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-head"><h2>Model registry</h2></div>
+            <table class="data">
+                <thead><tr><th>Version</th><th>Family</th><th>Status</th><th>Parameters</th><th>Registered</th></tr></thead>
+                <tbody>
+                    @foreach (var v in versions)
+                    {
+                        <tr><td class="mono">@v.Version</td><td>@v.Family</td><td><span class="badge @(v.Status == "champion" ? "ok" : v.Status == "benchmark" ? "info" : "")">@v.Status</span></td><td class="mono small dim">@v.Params</td><td class="dim small">@Fmt.Local(v.CreatedAt)</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+else if (tab == "inplay")
+{
+    <InPlayReport />
+}
+else
+{
+    <div class="card">
+        <div class="card-head"><h2>Experiment log</h2><span class="sub">hypothesis → measured result → decision</span></div>
+        @if (experiments.Count == 0) { <div class="empty">No experiments recorded.</div> }
+        @foreach (var e in experiments)
+        {
+            <div style="padding:10px 0;border-bottom:1px solid var(--border-soft)">
+                <div class="spread"><b>@e.Name</b><span class="small faint">@Fmt.Local(e.CreatedAt)</span></div>
+                <div class="small dim">Hypothesis: @e.Hypothesis</div>
+                <div class="small">Result: @e.Result</div>
+                <div class="small"><span class="badge @(e.Decision?.StartsWith("adopt") == true ? "ok" : e.Decision?.StartsWith("reject") == true ? "bad" : "")">@e.Decision</span></div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery] public string? Model { get; set; }
+
+    private string tab = "validation";
+    private List<BacktestRow> runs = [];
+    private List<JobRow> running = [];
+    private string? championName;
+    private string selectedModel = "ensemble";
+    private List<Reliability.BinSet> relSets = [];
+    private List<Reliability.BinSet> ouSets = [];
+    private List<(string Name, JsonElement Value)> confBands = [];
+    private List<(string, JsonElement)> byLeague = [];
+    private List<(string, JsonElement)> byFav = [];
+    private List<LineChart.Line> seasonSeries = [];
+    private List<(string, double)> seasonTicks = [];
+    private double seasonMin = 0.9, seasonMax = 1.1;
+    private List<(string Name, JsonElement Value)> comparisons = [];
+    private List<string> selectionReasons = [];
+    private List<(string, double)> ensembleWeights = [];
+    private List<(string, double)> importance = [];
+    private List<ModelVersionRow> versions = [];
+    private List<ExperimentRow> experiments = [];
+
+    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange;
+
+    protected override void OnInitialized()
+    {
+        if (!string.IsNullOrEmpty(Model)) selectedModel = Model;
+        base.OnInitialized();
+    }
+
+    private void SetTab(string t) { tab = t; Load(); }
+    private void Select(string m) { selectedModel = m; Load(); }
+
+    private static double? M(JsonElement m, string key) => m.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : null;
+
+    protected override void Load()
+    {
+        running = Ops.ActiveJobs().Where(j => j.Kind is "research_full" or "train_inplay" or "final_test" or "player_study" or "predict_upcoming").ToList();
+        championName = Research.Champion()?.Split('@')[0];
+        if (tab is "validation" or "final_test")
+        {
+            runs = Research.Backtests(tab);
+            if (runs.All(r => r.ModelVersion != selectedModel) && championName is not null) selectedModel = championName;
+            var sel = runs.FirstOrDefault(r => r.ModelVersion == selectedModel);
+            var book = runs.FirstOrDefault(r => r.ModelVersion == "bookmaker_close");
+            var dc = runs.FirstOrDefault(r => r.ModelVersion == "dixon_coles");
+            relSets = [];
+            ouSets = [];
+            if (sel?.Reliability is not null)
+            {
+                var rel = JsonDocument.Parse(sel.Reliability).RootElement;
+                var outcomes = rel.GetProperty("outcomes");
+                relSets =
+                [
+                    new("Home win", "var(--home)", Reliability.Parse(outcomes.GetProperty("home"))),
+                    new("Draw", "var(--draw)", Reliability.Parse(outcomes.GetProperty("draw"))),
+                    new("Away win", "var(--away)", Reliability.Parse(outcomes.GetProperty("away"))),
+                ];
+                if (rel.TryGetProperty("over25", out var ou)) ouSets.Add(new(Fmt.ModelLabel(selectedModel), "var(--accent)", Reliability.Parse(ou)));
+                if (book?.Reliability is not null && JsonDocument.Parse(book.Reliability).RootElement.TryGetProperty("over25", out var bou)) ouSets.Add(new("Bookmaker close", "var(--info)", Reliability.Parse(bou)));
+                confBands = rel.GetProperty("by_confidence").EnumerateObject().Select(p => (p.Name, p.Value.Clone())).ToList();
+                byFav = rel.GetProperty("by_favourite").EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.Object).Select(p => (p.Name, p.Value.Clone())).ToList();
+            }
+            byLeague = sel?.ByLeague is null ? [] : JsonDocument.Parse(sel.ByLeague).RootElement.EnumerateObject().Select(p => (p.Name, p.Value.Clone())).ToList();
+            seasonSeries = [];
+            var colors = new Dictionary<string, string> { [selectedModel] = "var(--accent)", ["dixon_coles"] = "var(--home)", ["bookmaker_close"] = "var(--info)", ["elo_k15"] = "var(--away)" };
+            foreach (var (model, color) in colors)
+            {
+                var run = runs.FirstOrDefault(r => r.ModelVersion == model);
+                if (run?.BySeason is null || seasonSeries.Any(s => s.Name == Fmt.ModelLabel(model))) continue;
+                var pts = JsonDocument.Parse(run.BySeason).RootElement.EnumerateObject().Select(p => new LineChart.Point(double.Parse(p.Name), p.Value.GetProperty("log_loss").GetDouble())).ToList();
+                seasonSeries.Add(new(Fmt.ModelLabel(model), color, pts, Dashed: model == "bookmaker_close"));
+            }
+            var all = seasonSeries.SelectMany(s => s.Points).ToList();
+            if (all.Count > 0)
+            {
+                seasonMin = Math.Floor(all.Min(p => p.Y) * 100) / 100;
+                seasonMax = Math.Ceiling(all.Max(p => p.Y) * 100) / 100;
+                seasonTicks = all.Select(p => p.X).Distinct().OrderBy(x => x).Select(x => ($"{(int)x % 100:00}/{((int)x + 1) % 100:00}", x)).ToList();
+            }
+            comparisons = tab == "validation" ? Research.Comparisons() : Research.FinalComparisons();
+            var summary = Research.KvJson("research_summary");
+            selectionReasons = summary?.GetProperty("selection").GetProperty("reasons").EnumerateArray().Select(x => x.GetString() ?? "").ToList() ?? [];
+            var weights = Research.KvJson("ensemble_weights");
+            if (weights is not null)
+            {
+                var bySeason = weights.Value.GetProperty("by_season").EnumerateObject().OrderBy(p => int.Parse(p.Name)).LastOrDefault();
+                ensembleWeights = bySeason.Value.ValueKind == JsonValueKind.Object
+                    ? bySeason.Value.GetProperty("weights").EnumerateObject().Select(p => (p.Name, p.Value.GetDouble())).OrderByDescending(x => x.Item2).ToList()
+                    : [];
+            }
+            var imp = Research.KvJson("gbm_importance");
+            importance = imp?.EnumerateArray().Select(x => (x.GetProperty("feature").GetString() ?? "", x.GetProperty("gain_share").GetDouble())).ToList() ?? [];
+            versions = Research.Versions();
+        }
+        else if (tab == "experiments")
+        {
+            experiments = Research.Experiments();
+        }
+    }
+}

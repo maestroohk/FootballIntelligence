@@ -1,0 +1,20 @@
+<div class="prob-bar @(Slim ? "slim" : "")" title="Home @Fmt.Pct(Home, 1) · Draw @Fmt.Pct(Draw, 1) · Away @Fmt.Pct(Away, 1)">
+    <div class="h" style="width:@W(Home)">@if (!Slim && Home >= 0.08) { @Fmt.Pct(Home) }</div>
+    <div class="d" style="width:@W(Draw)">@if (!Slim && Draw >= 0.08) { @Fmt.Pct(Draw) }</div>
+    <div class="a" style="width:@W(Away)">@if (!Slim && Away >= 0.08) { @Fmt.Pct(Away) }</div>
+</div>
+@if (Legend)
+{
+    <div class="prob-legend"><span>@(HomeLabel ?? "Home")</span><span>Draw</span><span>@(AwayLabel ?? "Away")</span></div>
+}
+
+@code {
+    [Parameter] public double Home { get; set; }
+    [Parameter] public double Draw { get; set; }
+    [Parameter] public double Away { get; set; }
+    [Parameter] public bool Slim { get; set; }
+    [Parameter] public bool Legend { get; set; }
+    [Parameter] public string? HomeLabel { get; set; }
+    [Parameter] public string? AwayLabel { get; set; }
+    private static string W(double p) => (Math.Max(0, p) * 100).ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + "%";
+}

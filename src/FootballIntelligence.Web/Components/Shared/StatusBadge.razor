@@ -1,0 +1,5 @@
+<span class="badge @(Status switch { "succeeded" => "ok", "running" => "info", "failed" => "bad", "cancelled" => "warn", _ => "" })">@Status</span>
+
+@code {
+    [Parameter] public string Status { get; set; } = "";
+}

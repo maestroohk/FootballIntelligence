@@ -1,0 +1,33 @@
+@using System.Globalization
+@if (Matrix.Length > 0)
+{
+    var size = Math.Min(Size, Matrix.Length);
+    var max = Matrix.Take(size).SelectMany(r => r.Take(size)).DefaultIfEmpty(0).Max();
+    <div class="matrix" style="grid-template-columns: 34px repeat(@size, minmax(0,1fr));">
+        <div class="axis small">H\A</div>
+        @for (var j = 0; j < size; j++) { <div class="axis">@j</div> }
+        @for (var i = 0; i < size; i++)
+        {
+            <div class="axis">@i</div>
+            @for (var j = 0; j < size; j++)
+            {
+                var p = Matrix[i][j];
+                var alpha = max > 0 ? 0.08 + 0.85 * p / max : 0;
+                var color = i > j ? "78,168,255" : i == j ? "163,173,189" : "255,138,76";
+                var hit = Actual is not null && Actual.Value.Home == i && Actual.Value.Away == j;
+                <div class="cell" style="background: rgba(@color,@alpha.ToString("F3", CultureInfo.InvariantCulture)); @(hit ? "outline: 2px solid var(--accent);" : "") color: @(alpha > .55 ? "#07101a" : "var(--text)")" title="@i-@j: @Fmt.Pct(p, 2)">
+                    @Fmt.Pct(p, 1)
+                </div>
+            }
+        }
+    </div>
+    <div class="small faint" style="margin-top:6px">Rows: @(HomeLabel ?? "home") goals · Columns: @(AwayLabel ?? "away") goals@(Actual is not null ? " · outlined cell = actual result" : "")</div>
+}
+
+@code {
+    [Parameter] public double[][] Matrix { get; set; } = [];
+    [Parameter] public int Size { get; set; } = 6;
+    [Parameter] public string? HomeLabel { get; set; }
+    [Parameter] public string? AwayLabel { get; set; }
+    [Parameter] public (int Home, int Away)? Actual { get; set; }
+}

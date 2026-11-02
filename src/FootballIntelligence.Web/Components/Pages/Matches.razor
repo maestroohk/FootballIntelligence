@@ -1,0 +1,74 @@
+@page "/matches"
+@inject FootballQueries Football
+
+<PageTitle>Matches · Football Intelligence</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Matches</h1>
+        <p>Upcoming fixtures with forward predictions and historical matches with their walk-forward (leakage-free) predictions.</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="row">
+        <select class="input" @bind="competition" @bind:after="Load">
+            <option value="">All competitions</option>
+            @foreach (var c in competitions) { <option value="@c">@Fmt.CompetitionName(c)</option> }
+        </select>
+        <select class="input" @bind="season" @bind:after="Load">
+            <option value="">All seasons</option>
+            @for (var s = 2026; s >= 2005; s--) { <option value="@s">@s/@((s + 1) % 100)</option> }
+        </select>
+        <input class="input" placeholder="Team" @bind="team" @bind:event="oninput" @bind:after="Load" />
+        <div class="tabs" style="border:none">
+            <button class="tab @(view == "upcoming" ? "active" : "")" @onclick='() => SetView("upcoming")'>Upcoming</button>
+            <button class="tab @(view == "results" ? "active" : "")" @onclick='() => SetView("results")'>Results</button>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <h2>@(view == "upcoming" ? "Upcoming fixtures" : "Results")</h2>
+        <span class="sub">@rows.Count matches shown</span>
+    </div>
+    @if (rows.Count == 0) { <div class="empty">No matches for these filters.</div> }
+    @foreach (var m in rows) { <MatchLine Match="m" /> }
+</div>
+
+@code {
+    private List<string> competitions = [];
+    private string competition = "";
+    private string season = "";
+    private string team = "";
+    private string view = "upcoming";
+    private List<MatchRow> rows = [];
+
+    protected override void OnInitialized()
+    {
+        competitions = Football.Competitions();
+        Load();
+        if (rows.Count == 0) SetView("results");
+    }
+
+    private void SetView(string v)
+    {
+        view = v;
+        Load();
+    }
+
+    private void Load()
+    {
+        string? comp = string.IsNullOrEmpty(competition) ? null : competition;
+        if (view == "upcoming")
+        {
+            rows = Football.Upcoming(150, comp).Where(m => string.IsNullOrEmpty(team) || m.HomeName.Contains(team, StringComparison.OrdinalIgnoreCase) || m.AwayName.Contains(team, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+        else
+        {
+            rows = Football.Search(comp, long.TryParse(season, out var s) ? s : null, string.IsNullOrWhiteSpace(team) ? null : team, 150)
+                .Where(m => m.Status == "finished").ToList();
+        }
+    }
+}
