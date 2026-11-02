@@ -18,7 +18,8 @@
         <div class="small dim">@match.MatchDate @(match.Kickoff is null ? "" : match.Kickoff + " local")@(match.Hthg is not null ? $" · HT {match.Hthg}–{match.Htag}" : "")</div>
         <div class="row" style="justify-content:center;margin-top:8px">
             <span class="badge @(match.Status == "scheduled" ? "info" : "")">@match.Status</span>
-            @if (match.Purpose == "forward") { <span class="badge ok">forward prediction · stored before kick-off</span> }
+            @if (match.Purpose == "forward" && match.PredictionFlag is not null) { <span class="badge warn" title="@match.PredictionFlag">forward prediction stored close to kick-off · excluded from evaluation</span> }
+            else if (match.Purpose == "forward") { <span class="badge ok">forward prediction · stored before kick-off</span> }
             else if (match.Purpose == "backtest") { <span class="badge">walk-forward backtest prediction</span> }
         </div>
     </div>

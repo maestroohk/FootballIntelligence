@@ -20,7 +20,7 @@
 <div class="grid g4">
     <Kpi Label="Champion model" Value="@Fmt.ModelLabel(champion)" Note="@championNote" />
     <Kpi Label="Validation log loss" Value="@Fmt.Num(championVal?.GetProperty("log_loss").GetDouble(), 4)" Note="@($"vs bookmaker close {Fmt.Num(bookVal?.GetProperty("log_loss").GetDouble(), 4)} · n={championVal?.GetProperty("n").GetInt64()}")" />
-    <Kpi Label="Forward predictions" Value="@upcoming.Count(u => u.PHome is not null).ToString()" Note="@($"stored for the next 10 days · {upcoming.Count} future fixtures known")" />
+    <Kpi Label="Forward predictions" Value="@upcoming.Count(u => u.PHome is not null && u.Purpose == "forward" && u.PredictionFlag is null).ToString()" Note="@($"stored ≥3 h before kick-off, next 10 days · {upcoming.Count} future fixtures known")" />
     <Kpi Label="Live feeds" Value="@(liveProvider?.Status == "ok" ? "Connected" : "Unavailable")" Color="@(liveProvider?.Status == "ok" ? "var(--ok)" : "var(--warn)")"
          Note="@(liveProvider?.LastError ?? "Historical replay available in Live tracker")" />
 </div>

@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS appearances (
     gk_shots_faced INTEGER, gk_goals_conceded INTEGER, gk_xg_faced REAL, gk_saves INTEGER,
     PRIMARY KEY(sb_match_id, player_id)
 );
+CREATE INDEX IF NOT EXISTS ix_appearances_player ON appearances(player_id, position);
 
 CREATE TABLE IF NOT EXISTS model_versions (
     version TEXT PRIMARY KEY,
@@ -182,6 +183,14 @@ WHEN NEW.purpose = 'forward' AND (SELECT status FROM matches WHERE match_id = NE
 BEGIN
     SELECT RAISE(ABORT, 'forward prediction for a match that is no longer scheduled');
 END;
+
+CREATE TABLE IF NOT EXISTS prediction_flags (
+    prediction_id INTEGER NOT NULL REFERENCES predictions(prediction_id),
+    flag TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    flagged_at TEXT NOT NULL,
+    PRIMARY KEY(prediction_id, flag)
+);
 
 CREATE TABLE IF NOT EXISTS backtest_runs (
     run_id INTEGER PRIMARY KEY,

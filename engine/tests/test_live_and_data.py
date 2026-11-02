@@ -184,3 +184,20 @@ def test_repeated_meetings_and_rescheduled_fixtures(con):
     assert counts["updated"] == 1 and counts["inserted"] == 0
     stored = con.execute("SELECT match_date, status, fthg, ftag FROM matches WHERE competition='SC0' ORDER BY match_date").fetchall()
     assert [tuple(r) for r in stored] == [("2020-09-01", "finished", 1, 0), ("2020-09-04", "finished", 2, 2), ("2021-01-17", "finished", 0, 1)]
+
+
+
+def test_forward_predictions_require_future_kickoff(con):
+    from datetime import datetime, timedelta
+    from fie import forward
+    now = datetime.utcnow()
+    soon = now + timedelta(hours=1)
+    later = now + timedelta(days=2)
+    assert not forward.safely_before_kickoff(soon.strftime("%Y-%m-%d"), soon.strftime("%H:%M"))
+    assert forward.safely_before_kickoff(later.strftime("%Y-%m-%d"), "15:00")
+    con.execute("INSERT INTO competitions VALUES('E0','PL','ENG',1)")
+    con.execute("INSERT INTO teams(team_id, name, country) VALUES(1,'A','ENG'),(2,'B','ENG')")
+    con.execute("INSERT INTO matches(match_id, competition, season, match_date, kickoff, home_team_id, away_team_id, status, source, first_seen, updated_at) VALUES(5,'E0',2026,?,?,1,2,'scheduled','t',?,?)",
+                (soon.strftime("%Y-%m-%d"), soon.strftime("%H:%M"), db.now(), db.now()))
+    con.execute("INSERT INTO predictions(match_id, model_version, purpose, created_at, data_cutoff, p_home, p_draw, p_away) VALUES(5,'m','forward',?,'2026-01-01',.4,.3,.3)", (db.now(),))
+    assert forward.flag_late_forward_predictions(con) == 1

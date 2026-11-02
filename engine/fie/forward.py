@@ -97,6 +97,36 @@ def _explain_payload(match_id, components):
 
 
 FORWARD_HORIZON_DAYS = 10
+KICKOFF_SAFETY_HOURS = 3.0
+
+
+def kickoff_utc_upper_bound(match_date, kickoff):
+    from datetime import datetime, timezone
+    hhmm = (kickoff or "00:00").strip()[:5]
+    try:
+        local = datetime.fromisoformat(f"{match_date}T{hhmm}")
+    except ValueError:
+        local = datetime.fromisoformat(f"{match_date}T00:00")
+    return (local - timedelta(hours=KICKOFF_SAFETY_HOURS)).replace(tzinfo=timezone.utc)
+
+
+def safely_before_kickoff(match_date, kickoff):
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc) < kickoff_utc_upper_bound(match_date, kickoff if kickoff else "00:00")
+
+
+def flag_late_forward_predictions(con):
+    from datetime import datetime
+    rows = con.execute("""SELECT p.prediction_id, p.created_at, m.match_date, m.kickoff FROM predictions p JOIN matches m ON m.match_id=p.match_id
+                          WHERE p.purpose='forward' AND p.prediction_id NOT IN (SELECT prediction_id FROM prediction_flags WHERE flag='after_kickoff_possible')""").fetchall()
+    flagged = 0
+    for r in rows:
+        created = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00"))
+        if created >= kickoff_utc_upper_bound(r["match_date"], r["kickoff"]):
+            con.execute("INSERT OR IGNORE INTO prediction_flags VALUES(?,?,?,?)",
+                        (r["prediction_id"], "after_kickoff_possible", "stored within 3 hours of or after the listed local kick-off; excluded from forward evaluation", db.now()))
+            flagged += 1
+    return flagged
 
 
 def publish_forward(con, oos_champion, version, components=None, horizon_days=FORWARD_HORIZON_DAYS):
@@ -104,8 +134,11 @@ def publish_forward(con, oos_champion, version, components=None, horizon_days=FO
     sched = oos_champion[(oos_champion["status"] == "scheduled") & (oos_champion["date"] >= today) & (oos_champion["date"] <= today + pd.Timedelta(days=horizon_days))]
     status = dict(con.execute("SELECT match_id, status FROM matches WHERE match_id IN (%s)" % ",".join(str(int(x)) for x in sched["match_id"]) or "0").fetchall()) if len(sched) else {}
     inserted = 0
+    kickoffs = dict(con.execute("SELECT match_id, kickoff FROM matches WHERE match_id IN (%s)" % ",".join(str(int(x)) for x in sched["match_id"]) or "0").fetchall()) if len(sched) else {}
     for r in sched.itertuples():
         if status.get(r.match_id) != "scheduled":
+            continue
+        if not safely_before_kickoff(str(pd.Timestamp(r.date).date()), kickoffs.get(r.match_id)):
             continue
         exists = con.execute("SELECT 1 FROM predictions WHERE match_id=? AND model_version=? AND purpose='forward'", (int(r.match_id), version)).fetchone()
         if exists:
@@ -159,9 +192,11 @@ def team_strengths(con, frame, summary):
 
 
 def evaluate_forward(con):
+    flag_late_forward_predictions(con)
     rows = pd.read_sql_query("""SELECT p.match_id, p.model_version, p.p_home, p.p_draw, p.p_away, p.lambda_home, p.lambda_away, m.fthg, m.ftag, m.match_date, m.competition
                                 FROM predictions p JOIN matches m ON m.match_id=p.match_id
-                                WHERE p.purpose='forward' AND m.status='finished'""", con)
+                                WHERE p.purpose='forward' AND m.status='finished'
+                                  AND p.prediction_id NOT IN (SELECT prediction_id FROM prediction_flags WHERE flag='after_kickoff_possible')""", con)
     out = {"n": int(len(rows))}
     if rows.empty:
         db.set_kv(con, "forward_performance", out)

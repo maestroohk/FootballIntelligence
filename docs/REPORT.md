@@ -82,6 +82,8 @@ Every experiment with its hypothesis, numbers and decision is in the experiment 
 13. The match key (competition, season, home, away) silently merged repeated meetings in leagues with splits or play-offs (Scotland, Belgium, Greece): 4,377 matches lost and 4,079 false "result corrected" alerts when the new leagues were first ingested. Fixed with date-aware matching (finished matches match on the exact date; date tolerance only for unplayed fixtures), a non-unique index, re-ingestion and a regression test. The original 11 divisions were unaffected (95,046 finished matches before and after).
 14. The table migration renamed `matches` and SQLite rewrote foreign keys in `odds`, `predictions`, `sb_matches` and a trigger to point at the temporary name. Repaired in place (integrity and foreign-key checks clean) and the migration now uses legacy rename semantics.
 15. A ±4-day matching window merged two genuine Scottish Championship meetings a few days apart — tightened to exact dates for finished matches.
+16. Forward predictions were stored for same-day fixtures whose kick-off had already passed (their results were simply not yet ingested). Forward predictions now require a listed kick-off at least 3 hours in the future (local times vary by source); 14 existing rows were flagged `after_kickoff_possible` (rows stay immutable) and are excluded from forward evaluation and labelled in the UI.
+17. The Players page took 6.8 s because of an unindexed per-player subquery; an index brought it to 0.19 s.
 
 ## 6. Data-provider limitations
 
@@ -98,7 +100,7 @@ Every experiment with its hypothesis, numbers and decision is in the experiment 
 - Player availability is shown as unknown for current fixtures; lineup-based adjustments are not used (evidence insufficient).
 - Tactical analysis is descriptive (shots, corners, fouls; possession, PPDA, pressures for StatsBomb matches) — no formation-matchup model.
 - No Bayesian hierarchical, bivariate Poisson, pi-rating or true state-space model (see future work).
-- Forward predictions exist for 82 fixtures so far; forward performance tracking will only become meaningful after results arrive.
+- About 90 valid forward predictions exist so far (14 more are flagged as stored too close to kick-off); forward performance tracking only becomes meaningful after results arrive.
 - Model selection used the six primary leagues; seven further divisions were evaluated as an out-of-sample generalisation test; second and third tiers of the original countries are used for strength linkage and receive predictions but are not separately validated.
 
 ## 8. Prioritised plan

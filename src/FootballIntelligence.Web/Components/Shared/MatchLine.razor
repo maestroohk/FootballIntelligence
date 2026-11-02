@@ -12,7 +12,7 @@
             <ProbBar Home="Match.PHome.Value" Draw="Match.PDraw!.Value" Away="Match.PAway!.Value" />
             <div class="small faint spread" style="margin-top:3px">
                 <span>exp. goals @Fmt.Num(Match.LambdaHome) – @Fmt.Num(Match.LambdaAway)</span>
-                <span>@(Match.Purpose == "forward" ? "forward" : "backtest") · @Fmt.ModelLabel(Match.ModelVersion)</span>
+                <span title="@Match.PredictionFlag">@(Match.PredictionFlag is not null ? "late, not evaluated" : Match.Purpose == "forward" ? "forward" : "backtest") · @Fmt.ModelLabel(Match.ModelVersion)</span>
             </div>
         }
         else

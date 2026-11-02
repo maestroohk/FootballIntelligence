@@ -141,7 +141,7 @@ input.input, select.input { background: var(--bg-elev); border: 1px solid var(--
 .hero .side { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
 .hero .side .name { font-size: 18px; font-weight: 700; }
 .hero .center { text-align: center; }
-.hero .big-score { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.hero .big-score { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: .02em; white-space: nowrap; }
 
 .matrix { display: grid; gap: 2px; font-variant-numeric: tabular-nums; font-size: 11.5px; }
 .matrix .cell { padding: 6px 4px; text-align: center; border-radius: 4px; }
@@ -196,4 +196,9 @@ input.input, select.input { background: var(--bg-elev); border: 1px solid var(--
     .sidebar-foot, .brand-sub { display: none; }
     .g2, .g4 { grid-template-columns: 1fr; }
     .content { padding: 16px; }
+    .hero { gap: 8px; padding: 14px 10px; }
+    .hero .big-score { font-size: 30px; white-space: nowrap; }
+    .hero .side .name { font-size: 14px; }
+    .crest.lg { width: 44px; height: 44px; font-size: 15px; }
+    .match-line { grid-template-columns: 52px minmax(0,1fr) 40px minmax(0,1fr); gap: 6px; }
 }
