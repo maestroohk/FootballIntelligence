@@ -235,7 +235,7 @@ def _compact(ev, side, kind, xg=None, outcome=None, detail=None):
     loc = ev.get("location") or [None, None]
     return {"seq": ev["index"] * 10 + (1 if kind == "goal" else 0), "period": ev["period"], "minute": ev["minute"], "second": ev["second"], "clock": _clock(ev),
             "kind": kind, "side": side, "player_id": ev.get("player", {}).get("id"), "player_name": ev.get("player", {}).get("name"),
-            "xg": xg, "x": loc[0], "y": loc[1], "outcome": outcome, "detail": detail}
+            "xg": xg, "x": loc[0], "y": loc[1], "outcome": outcome, "detail": detail, "pattern": ev.get("play_pattern", {}).get("name")}
 
 
 def store_match(con, sb_id, parsed):
@@ -244,9 +244,9 @@ def store_match(con, sb_id, parsed):
         con.execute("DELETE FROM sb_team_minutes WHERE sb_match_id=?", (sb_id,))
         con.execute("DELETE FROM appearances WHERE sb_match_id=?", (sb_id,))
         con.executemany(
-            "INSERT INTO sb_events VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO sb_events(sb_match_id, seq, period, minute, second, clock, kind, side, player_id, player_name, xg, x, y, outcome, detail, pattern) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             [(sb_id, e["seq"], e["period"], e["minute"], e["second"], e["clock"], e["kind"], e["side"], e["player_id"], e["player_name"],
-              e["xg"], e["x"], e["y"], e["outcome"], e["detail"]) for e in parsed["events"]],
+              e["xg"], e["x"], e["y"], e["outcome"], e["detail"], e.get("pattern")) for e in parsed["events"]],
         )
         con.executemany(
             "INSERT INTO sb_team_minutes VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",

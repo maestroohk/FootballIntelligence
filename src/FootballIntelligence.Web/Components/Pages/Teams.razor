@@ -1,0 +1,136 @@
+@page "/teams"
+@inject FootballQueries Football
+@inject ResearchQueries Research
+
+<PageTitle>Team tactics · Football Intelligence</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Team tactical profiles</h1>
+        <p>Measured from StatsBomb Open Data event data, 2015/16 (Premier League, La Liga, Serie A, Ligue 1). Historical and descriptive: shot volume or possession alone do not imply dominance.</p>
+    </div>
+    <div class="row">
+        <select class="input" @bind="league">
+            <option value="">All leagues</option>
+            @foreach (var c in rows.Select(r => r.Competition).Distinct().OrderBy(c => c)) { <option value="@c">@Fmt.CompetitionName(c)</option> }
+        </select>
+        <select class="input" @bind="sort">
+            <option value="xgd">Sort: xG difference per match</option>
+            <option value="possession">Sort: possession</option>
+            <option value="ppda">Sort: pressing (lowest PPDA)</option>
+            <option value="tilt">Sort: field tilt</option>
+            <option value="setpiece">Sort: set-piece xG share</option>
+            <option value="counter">Sort: counter-attack xG share</option>
+            <option value="counter_against">Sort: counter xG conceded</option>
+        </select>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-wrap">
+        <table class="data compact">
+            <thead>
+                <tr>
+                    <th>Team</th><th>League</th><th class="num">M</th><th class="num">Goals ±</th><th class="num">xG/m</th><th class="num">xGA/m</th><th class="num">Poss.</th><th class="num">Field tilt</th>
+                    <th class="num">PPDA</th><th class="num">Opp. PPDA</th><th class="num">Pressures/m</th><th class="num">Box touches/m</th>
+                    <th class="num">Set-piece xG share</th><th class="num">Counter xG share</th><th class="num">Set-piece xGA/m</th><th class="num">Counter xGA/m</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var t in Sorted())
+                {
+                    <tr>
+                        <td><b>@t.Team</b></td><td class="small dim">@Fmt.CompetitionName(t.Competition)</td><td class="num">@t.Matches</td>
+                        <td class="num">@($"{t.GoalsFor:0}-{t.GoalsAgainst:0}")</td>
+                        <td class="num">@t.PerMatch(t.XgFor).ToString("F2")</td><td class="num">@t.PerMatch(t.XgAgainst).ToString("F2")</td>
+                        <td class="num">@Fmt.Pct(t.Possession)</td><td class="num">@Fmt.Pct(t.FieldTilt)</td>
+                        <td class="num">@Fmt.Num(t.Ppda, 1)</td><td class="num">@Fmt.Num(t.OppPpda, 1)</td>
+                        <td class="num">@t.PressuresPerMatch.ToString("F0")</td><td class="num">@t.BoxTouchesPerMatch.ToString("F1")</td>
+                        <td class="num">@Fmt.Pct(Share(t.SetPieceXgFor, t.XgFor - t.PenaltyXgFor))</td><td class="num">@Fmt.Pct(Share(t.CounterXgFor, t.XgFor - t.PenaltyXgFor))</td>
+                        <td class="num">@t.PerMatch(t.SetPieceXgAgainst).ToString("F2")</td><td class="num">@t.PerMatch(t.CounterXgAgainst).ToString("F2")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="small faint" style="margin-top:8px">
+        PPDA = opponent passes in their own 60% of the pitch per defensive action (tackle, interception, foul) in that zone; lower means more aggressive pressing. Field tilt = share of completed final-third passes.
+        Set-piece xG comes from possessions that started with a corner or free kick; counter xG from possessions StatsBomb labels as counter-attacks; both exclude penalties. The 2015/16 Bundesliga is excluded (only 34 matches in the open data).
+    </div>
+</div>
+
+@if (rows.Count > 5)
+{
+    <div class="grid g2">
+        <div class="card">
+            <div class="card-head"><h2>Does style relate to results?</h2><span class="sub">correlation across @rows.Count team-seasons</span></div>
+            <table class="data">
+                <tbody>
+                    @foreach (var (label, f) in Correlates())
+                    {
+                        var r = Corr(rows.Select(f), rows.Select(t => t.PerMatch(t.GoalsFor - t.GoalsAgainst)));
+                        var rx = Corr(rows.Select(f), rows.Select(t => t.PerMatch(t.XgFor - t.XgAgainst)));
+                        <tr><td>@label</td><td class="num">r = @r.ToString("+0.00;-0.00") with goal difference</td><td class="num">r = @rx.ToString("+0.00;-0.00") with xG difference</td></tr>
+                    }
+                </tbody>
+            </table>
+            <div class="small faint" style="margin-top:6px">Descriptive, same-season correlations: strong teams have the ball more, press more and tilt the field because they are strong, so this is not evidence that adopting a style causes better results. Predictive value is tested out of sample in the Model lab.</div>
+        </div>
+        <div class="card">
+            <div class="card-head"><h2>Most counter-attack-reliant attacks</h2><span class="sub">share of non-penalty xG from counters</span></div>
+            @foreach (var t in rows.OrderByDescending(t => Share(t.CounterXgFor, t.XgFor - t.PenaltyXgFor)).Take(8))
+            {
+                var share = Share(t.CounterXgFor, t.XgFor - t.PenaltyXgFor) ?? 0;
+                <div class="spread small"><span>@t.Team <span class="faint">@Fmt.Pct(t.Possession) poss.</span></span><span>@Fmt.Pct(share, 1)</span></div>
+                <div class="meter" style="margin-bottom:6px"><div style="width:@Fmt.Pct(Math.Min(1, share / 0.3), 1)"></div></div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private List<TeamTactics> rows = [];
+    private string league = "";
+    private string sort = "xgd";
+
+    protected override void OnInitialized() => rows = Football.TeamTactics();
+
+    private static double? Share(double part, double total) => total > 0 ? part / total : null;
+
+    private IEnumerable<TeamTactics> Sorted()
+    {
+        var r = rows.Where(t => string.IsNullOrEmpty(league) || t.Competition == league);
+        return sort switch
+        {
+            "possession" => r.OrderByDescending(t => t.Possession),
+            "ppda" => r.OrderBy(t => t.Ppda ?? 99),
+            "tilt" => r.OrderByDescending(t => t.FieldTilt),
+            "setpiece" => r.OrderByDescending(t => Share(t.SetPieceXgFor, t.XgFor - t.PenaltyXgFor) ?? 0),
+            "counter" => r.OrderByDescending(t => Share(t.CounterXgFor, t.XgFor - t.PenaltyXgFor) ?? 0),
+            "counter_against" => r.OrderByDescending(t => t.PerMatch(t.CounterXgAgainst)),
+            _ => r.OrderByDescending(t => t.PerMatch(t.XgFor - t.XgAgainst)),
+        };
+    }
+
+    private IEnumerable<(string, Func<TeamTactics, double>)> Correlates()
+    {
+        yield return ("Possession", t => t.Possession);
+        yield return ("Field tilt", t => t.FieldTilt);
+        yield return ("Pressing intensity (−PPDA)", t => -(t.Ppda ?? 0));
+        yield return ("Pressures per match", t => t.PressuresPerMatch);
+        yield return ("Counter-attack xG share", t => Share(t.CounterXgFor, t.XgFor - t.PenaltyXgFor) ?? 0);
+        yield return ("Set-piece xG share", t => Share(t.SetPieceXgFor, t.XgFor - t.PenaltyXgFor) ?? 0);
+    }
+
+    private static double Corr(IEnumerable<double> a, IEnumerable<double> b)
+    {
+        var x = a.ToArray();
+        var y = b.ToArray();
+        var mx = x.Average();
+        var my = y.Average();
+        var cov = x.Zip(y, (p, q) => (p - mx) * (q - my)).Sum();
+        var vx = Math.Sqrt(x.Sum(p => (p - mx) * (p - mx)));
+        var vy = Math.Sqrt(y.Sum(q => (q - my) * (q - my)));
+        return vx > 0 && vy > 0 ? cov / (vx * vy) : 0;
+    }
+}

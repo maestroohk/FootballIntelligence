@@ -100,7 +100,7 @@ Every experiment with its hypothesis, numbers and decision is in the experiment 
 
 - Live tracking of real matches is untested end to end (no API key); replay mode is fully working.
 - Player availability is shown as unknown for current fixtures; lineup-based adjustments are not used (evidence insufficient).
-- Tactical analysis is descriptive (shots, corners, fouls; possession, PPDA, pressures for StatsBomb matches) — no formation-matchup model.
+- Tactical analysis is descriptive: a per-match style profile for every fixture (shots, shots on target, corners, fouls, cards, shot share) and full team tactical profiles for 2015/16 from event data (possession, field tilt, PPDA, pressures, box touches, set-piece and counter-attack xG for and against). Across 81 team-seasons, field tilt (r = +0.73) and possession (+0.69) track goal difference, while raw pressure counts correlate negatively (−0.37) because weaker sides defend more; these are same-season correlations, not causal effects, and no formation-matchup model was built.
 - No Bayesian hierarchical, bivariate Poisson, pi-rating or true state-space model (see future work).
 - About 90 valid forward predictions exist so far (14 more are flagged as stored too close to kick-off); forward performance tracking only becomes meaningful after results arrive.
 - Model selection used the six primary leagues; seven further divisions were evaluated as an out-of-sample generalisation test; second and third tiers of the original countries are used for strength linkage and receive predictions but are not separately validated.

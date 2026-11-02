@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS sb_events (
     x REAL, y REAL,
     outcome TEXT,
     detail TEXT,
+    pattern TEXT,
     PRIMARY KEY(sb_match_id, seq)
 );
 
@@ -394,12 +395,19 @@ def migrate(con):
         con.execute("PRAGMA foreign_keys=ON")
 
 
+def add_columns(con):
+    cols = {r[1] for r in con.execute("PRAGMA table_info(sb_events)")}
+    if cols and "pattern" not in cols:
+        con.execute("ALTER TABLE sb_events ADD COLUMN pattern TEXT")
+
+
 def init(path=None) -> sqlite3.Connection:
     con = connect(path)
     con.executescript("CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL);")
     if con.execute("SELECT 1 FROM sqlite_master WHERE name='matches'").fetchone():
         migrate(con)
     con.executescript(SCHEMA)
+    add_columns(con)
     return con
 
 
