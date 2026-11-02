@@ -235,3 +235,57 @@ def matrix_probs(lh, la, rho):
     for k in range(len(lh)):
         out[k] = outcome_probs(dixon_coles_matrix(lh[k], la[k], rho))
     return out
+
+
+class PiRatings:
+    def __init__(self, lam=0.035, gamma=0.7, b=10.0, c=3.0):
+        self.lam, self.gamma, self.b, self.c = lam, gamma, b, c
+        self.home = {}
+        self.away = {}
+
+    def _gd(self, r):
+        return np.sign(r) * (self.b ** (abs(r) / self.c) - 1)
+
+    def expected_gd(self, home, away):
+        return self._gd(self.home.get(home, 0.0)) - self._gd(self.away.get(away, 0.0))
+
+    def update(self, home, away, hg, ag):
+        rh, ra = self.home.get(home, 0.0), self.away.get(away, 0.0)
+        err = (hg - ag) - (self._gd(rh) - self._gd(ra))
+        psi = self.c * np.log10(1 + abs(err)) * np.sign(err)
+        dh, da = psi * self.lam, -psi * self.lam
+        self.home[home] = rh + dh
+        self.away[home] = self.away.get(home, 0.0) + dh * self.gamma
+        self.away[away] = ra + da
+        self.home[away] = self.home.get(away, 0.0) + da * self.gamma
+
+
+class OnlinePoisson:
+    def __init__(self, lr=0.04, lr_level=0.005, tier_gap=0.25):
+        self.lr, self.lr_level, self.tier_gap = lr, lr_level, tier_gap
+        self.att = {}
+        self.dfn = {}
+        self.mu = {}
+        self.ha = {}
+
+    def _init(self, team, tier):
+        if team not in self.att:
+            self.att[team] = -self.tier_gap * (tier - 1) / 2
+            self.dfn[team] = -self.tier_gap * (tier - 1) / 2
+
+    def rates(self, home, away, tier):
+        self._init(home, tier)
+        self._init(away, tier)
+        mu = self.mu.get(tier, 0.25)
+        ha = self.ha.get(tier, 0.25)
+        return np.exp(mu + ha + self.att[home] - self.dfn[away]), np.exp(mu + self.att[away] - self.dfn[home])
+
+    def update(self, home, away, tier, hg, ag):
+        lh, la = self.rates(home, away, tier)
+        eh, ea = hg - lh, ag - la
+        self.att[home] += self.lr * eh
+        self.dfn[away] -= self.lr * eh
+        self.att[away] += self.lr * ea
+        self.dfn[home] -= self.lr * ea
+        self.mu[tier] = self.mu.get(tier, 0.25) + self.lr_level * (eh + ea) / 2
+        self.ha[tier] = self.ha.get(tier, 0.25) + self.lr_level * (eh - ea) / 2

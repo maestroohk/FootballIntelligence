@@ -3,7 +3,7 @@ import pandas as pd
 
 from . import metrics
 from .config import FINAL_TEST_SEASONS, FORWARD_SEASON, VALIDATION_SEASONS
-from .ratings import Elo, StrengthModel, matrix_probs, ordered_logit_fit, ordered_logit_predict, poisson_link_fit
+from .ratings import Elo, OnlinePoisson, PiRatings, StrengthModel, matrix_probs, ordered_logit_fit, ordered_logit_predict, poisson_link_fit
 from .scoreline import dixon_coles_matrix, outcome_probs, poisson_matrix
 
 PREDICT_FROM = pd.Timestamp("2007-07-01")
@@ -211,3 +211,50 @@ def full_report(oos, split, competitions):
         "seasons": [int(d["season"].min()), int(d["season"].max())],
         "dates": [str(d["date"].min().date()), str(d["date"].max().date())],
     }
+
+
+def _sequential(frame, make, predict, update):
+    pre = {}
+    for country in sorted(frame["country"].unique()):
+        f = frame[frame["country"] == country]
+        model = make()
+        dates = f["date"].to_numpy()
+        rows = f.to_dict("records")
+        i = 0
+        while i < len(rows):
+            j = i
+            while j < len(rows) and dates[j] == dates[i]:
+                j += 1
+            for r in rows[i:j]:
+                pre[r["match_id"]] = predict(model, r)
+            for r in rows[i:j]:
+                if r["status"] == "finished":
+                    update(model, r)
+            i = j
+    return pre
+
+
+def walk_forward_online_poisson(frame, name="online_poisson", lr=0.04, lr_level=0.005):
+    pre = _sequential(frame, lambda: OnlinePoisson(lr=lr, lr_level=lr_level), lambda m, r: m.rates(r["home"], r["away"], r["tier"]),
+                      lambda m, r: m.update(r["home"], r["away"], r["tier"], r["hg"], r["ag"]))
+    ids = frame.loc[frame["date"] >= PREDICT_FROM, "match_id"]
+    out = pd.DataFrame({"match_id": ids.to_numpy(), "lh": [pre[i][0] for i in ids], "la": [pre[i][1] for i in ids], "rho": -0.05, "both_known": True,
+                        "fit_cutoff": frame.set_index("match_id").loc[ids, "date"].to_numpy()})
+    return finalise(out, frame, name)
+
+
+def walk_forward_pi(frame, name="pi_ratings", lam=0.035, gamma=0.7):
+    pre = _sequential(frame, lambda: PiRatings(lam=lam, gamma=gamma), lambda m, r: m.expected_gd(r["home"], r["away"]), lambda m, r: m.update(r["home"], r["away"], r["hg"], r["ag"]))
+    g = frame.copy()
+    g["pi_gd"] = g["match_id"].map(pre)
+    outs = []
+    for season in sorted(g.loc[g["date"] >= PREDICT_FROM, "season"].unique()):
+        train = g[(g["season"] < season) & (g["season"] >= season - 4) & (g["status"] == "finished")]
+        target = g[g["season"] == season]
+        ch = poisson_link_fit(train["pi_gd"] * 400, train["hg"])
+        ca = poisson_link_fit(-train["pi_gd"] * 400, train["ag"])
+        x = target["pi_gd"].to_numpy()
+        o = pd.DataFrame({"match_id": target["match_id"].to_numpy(), "lh": np.exp(ch[0] + ch[1] * x), "la": np.exp(ca[0] - ca[1] * x), "rho": -0.05,
+                          "both_known": True, "fit_cutoff": pd.Timestamp(f"{season}-07-01")})
+        outs.append(finalise(o, frame, name))
+    return pd.concat(outs, ignore_index=True), g[["match_id", "pi_gd"]]

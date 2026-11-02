@@ -201,6 +201,31 @@ else
     </div>
 </div>
 
+@if (styleHome is { Matches: > 0 } && styleAway is { Matches: > 0 })
+{
+    <div class="card">
+        <div class="card-head"><h2>Style and tactical profile</h2><span class="sub">last @styleHome.Matches / @styleAway.Matches league matches before this fixture · descriptive</span></div>
+        <div class="table-wrap">
+            <table class="data">
+                <thead><tr><th class="num">@match.HomeName</th><th style="text-align:center">Per match</th><th>@match.AwayName</th><th>Edge</th></tr></thead>
+                <tbody>
+                    @foreach (var (label, h, a, higherIsBetter) in StyleRows())
+                    {
+                        var edge = h is null || a is null ? 0 : (h.Value - a.Value) / Math.Max(0.5, Math.Max(Math.Abs(h.Value), Math.Abs(a.Value))) * (higherIsBetter ? 1 : -1);
+                        <tr>
+                            <td class="num">@Fmt.Num(h, 1)</td><td class="dim" style="text-align:center">@label</td><td>@Fmt.Num(a, 1)</td>
+                            <td class="small @(Math.Abs(edge) < 0.1 ? "faint" : "")">@(Math.Abs(edge) < 0.1 ? "even" : edge > 0 ? match.HomeName : match.AwayName)</td>
+                        </tr>
+                    }
+                    <tr><td class="num">@Fmt.Pct(Ratio(styleHome.SotFor, styleHome.ShotsFor))</td><td class="dim" style="text-align:center">Shot accuracy</td><td>@Fmt.Pct(Ratio(styleAway.SotFor, styleAway.ShotsFor))</td><td></td></tr>
+                    <tr><td class="num">@Fmt.Pct(Ratio(styleHome.ShotsFor, (styleHome.ShotsFor ?? 0) + (styleHome.ShotsAgainst ?? 0)))</td><td class="dim" style="text-align:center">Shot share (territorial proxy)</td><td>@Fmt.Pct(Ratio(styleAway.ShotsFor, (styleAway.ShotsFor ?? 0) + (styleAway.ShotsAgainst ?? 0)))</td><td></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="small faint" style="margin-top:6px">Not opponent-adjusted and not causal: shot volume and possession do not by themselves imply dominance. The predictive weight of these signals is learned by the models (see LightGBM importance in the Model lab). Pressing (PPDA) and possession require event data, available only for StatsBomb matches.</div>
+    </div>
+}
+
 @if (match.Status == "finished" && match.Hs is not null)
 {
     <div class="card">
@@ -229,6 +254,8 @@ else
     private List<LineupRow> lineup = [];
     private List<(string Kind, string Text)> explain = [];
     private (long Home, long Away) history;
+    private StyleProfile? styleHome;
+    private StyleProfile? styleAway;
     private (double Attack, double Defence, int Rank, int Of)? strengthHome;
     private (double Attack, double Defence, int Rank, int Of)? strengthAway;
 
@@ -252,6 +279,8 @@ else
         awayForm = Football.Form(match.AwayTeamId, match.MatchDate, 6);
         h2h = Football.HeadToHead(match.HomeTeamId, match.AwayTeamId, match.MatchDate, 6);
         history = (Football.MatchesInPriorYear(match.HomeTeamId, match.MatchDate), Football.MatchesInPriorYear(match.AwayTeamId, match.MatchDate));
+        styleHome = Football.Style(match.HomeTeamId, match.MatchDate);
+        styleAway = Football.Style(match.AwayTeamId, match.MatchDate);
         var sb = Football.StatsBombMatchFor(Id);
         lineup = sb is null ? [] : Football.Lineup(sb.Value);
         LoadStrengths();
@@ -339,6 +368,21 @@ else
         var p = inv.Select(x => Math.Pow(x, k)).ToArray();
         var s = p.Sum();
         return p.Select(x => x / s).ToArray();
+    }
+
+    private static double? Ratio(double? a, double? b) => a is null || b is null || b == 0 ? null : a / b;
+
+    private IEnumerable<(string, double?, double?, bool)> StyleRows()
+    {
+        yield return ("Goals scored", styleHome!.GoalsFor, styleAway!.GoalsFor, true);
+        yield return ("Goals conceded", styleHome.GoalsAgainst, styleAway.GoalsAgainst, false);
+        yield return ("Shots", styleHome.ShotsFor, styleAway.ShotsFor, true);
+        yield return ("Shots conceded", styleHome.ShotsAgainst, styleAway.ShotsAgainst, false);
+        yield return ("Shots on target", styleHome.SotFor, styleAway.SotFor, true);
+        yield return ("On target conceded", styleHome.SotAgainst, styleAway.SotAgainst, false);
+        yield return ("Corners won", styleHome.CornersFor, styleAway.CornersFor, true);
+        yield return ("Fouls committed", styleHome.FoulsFor, styleAway.FoulsFor, false);
+        yield return ("Yellow cards", styleHome.Yellows, styleAway.Yellows, false);
     }
 
     private IEnumerable<(string, long?, long?)> StatRows()
