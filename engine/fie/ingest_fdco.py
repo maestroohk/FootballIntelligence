@@ -30,7 +30,7 @@ ODDS_SETS = [
 FIELD_CATALOG = [
     ("fthg/ftag", "observed", SOURCE, "Full-time goals"),
     ("hthg/htag", "observed", SOURCE, "Half-time goals; NULL where the source omits them"),
-    ("hs/aws, hst/ast", "observed", SOURCE, "Shots and shots on target; NULL when unavailable (common before ~2005 outside England)"),
+    ("hs/aws, hst/ast", "observed", SOURCE, "Shots and shots on target; NULL when the source does not provide them (most second tiers and the smaller top flights before 2017/18; English and big-five top flights are complete)"),
     ("hc/ac, hf/af, hy/ay, hr/ar", "observed", SOURCE, "Corners, fouls, cards"),
     ("odds", "observed", SOURCE, "Bookmaker decimal odds; closing odds from 2012/13 onwards"),
     ("rest_days", "derived", "engine", "Days since previous league match in the database (cup matches absent, so a lower bound on fatigue)"),
