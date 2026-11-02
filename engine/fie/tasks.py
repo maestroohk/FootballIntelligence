@@ -9,6 +9,13 @@ from . import backtest, db, ingest_fdco, ingest_statsbomb, metrics, research
 from .config import FINAL_TEST_SEASONS, FORWARD_SEASON, PRIMARY_COMPETITIONS, VALIDATION_SEASONS
 from .jobs import Cancelled, handler
 
+MODEL_VERSIONS = {"ensemble": "v2"}
+
+
+def model_version(name):
+    return f"{name}@{MODEL_VERSIONS.get(name, 'v1')}"
+
+
 NOTIFY_KINDS = {
     "ingest_history": "Historical ingestion", "ingest_statsbomb": "StatsBomb ingestion", "research_full": "Model research run",
     "train_inplay": "In-play model training", "final_test": "Final test evaluation", "daily_cycle": "Daily update cycle",
@@ -214,7 +221,7 @@ def register_versions(con, results, selection, best_dc, best_xg, best_elo):
             continue
         family = "benchmark" if name == "bookmaker_close" else name.split("_")[0]
         status = "champion" if name == selection["champion"] else "benchmark" if name == "bookmaker_close" else "challenger"
-        version = f"{name}@v1"
+        version = model_version(name)
         params = STRENGTH_CONFIGS.get(name) or ELO_CONFIGS.get(name) or {}
         con.execute("INSERT INTO model_versions(version, family, params, trained_through, created_at, status, notes) VALUES(?,?,?,?,?,?,?) "
                     "ON CONFLICT(version) DO UPDATE SET status=excluded.status, params=excluded.params",
@@ -223,7 +230,7 @@ def register_versions(con, results, selection, best_dc, best_xg, best_elo):
 
 def _champion_version(con):
     summary = db.get_kv(con, "research_summary")
-    return summary["selection"]["champion"], f"{summary['selection']['champion']}@v1"
+    return summary["selection"]["champion"], model_version(summary["selection"]["champion"])
 
 
 @handler("publish_predictions")
@@ -338,7 +345,7 @@ def train_inplay(ctx):
 
 
 def version_name(champ):
-    return f"{champ}@v1"
+    return model_version(champ)
 
 
 from . import experiments
@@ -388,7 +395,7 @@ def rollback(ctx):
     db.set_kv(con, "research_summary", summary)
     db.set_kv(con, "champion_history", history)
     con.execute("UPDATE model_versions SET status='challenger' WHERE status='champion'")
-    con.execute("UPDATE model_versions SET status='champion' WHERE version=?", (f"{previous['champion']}@v1",))
+    con.execute("UPDATE model_versions SET status='champion' WHERE version=?", (model_version(previous["champion"]),))
     db.notify(con, "warning", "Champion rolled back", f"{current['champion']} -> {previous['champion']}")
     return {"from": current["champion"], "to": previous["champion"]}
 from . import report

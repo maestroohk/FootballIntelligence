@@ -27,7 +27,7 @@ Session: 2 November 2026, started 21:14 (UTC+3), target end 05:14. All figures b
 | LightGBM (features) | 2007/08 to previous season, refit per season | 0.9953 | 0.9951 | 0.5943 | 0.0134 | 0.898 | 2.9026 |
 | LightGBM stacked on DC | as above | 0.9949 | 0.9940 | 0.5935 | 0.0139 | 0.898 | 2.8998 |
 | Multinomial logistic (1X2 only) | as above | 0.9954 | 0.9942 | 0.5938 | 0.0084 | — | — |
-| **Learned ensemble (champion)** | components as above; weights on previous 3 seasons | **0.9947** | **0.9949** | **0.5940** | **0.0143** | **0.897** | **2.8996** |
+| **Learned ensemble (champion, `ensemble@v2`)** | components as above; weights on previous 3 seasons | **0.9947** | **0.9949** | **0.5940** | **0.0143** | **0.897** | **2.8996** |
 | Bookmaker closing odds (benchmark) | market | 0.9811 | 0.9773 | 0.5825 | 0.0101 | — | — |
 
 Validation period 2012-08-10 to 2023-06-04; final test 2023-08-04 to 2026-11-01. The final test was first run once after every modelling choice was frozen; it was re-run once more only to add BTTS and over/under metrics after a metric-definition fix (the predictions did not change).
@@ -51,6 +51,7 @@ Calibration: the champion's draw rate is unbiased on validation (25.5% predicted
 - Held-out replay (636 matches, 3,816 checkpoints): hazard beats a constant-rate model by 0.0061 log loss [+0.0002, +0.0123] and linear extrapolation by 0.327 [+0.272, +0.382].
 - Half-time evaluation on 30,950 football-data.co.uk matches: hazard beats constant-rate by 0.0024 [+0.0020, +0.0029]; linear extrapolation is worse by 0.373.
 - P(goal in the next 10 minutes): 24.7% predicted vs 25.0% observed, ECE 0.004 over 10,176 checkpoints. Next-goal team log loss 0.936.
+- Leader goes on to win: 81.6% predicted vs 80.9% observed over 5,303 checkpoints with a lead (ECE 0.016).
 - In-match xG evidence term: no measurable gain (−0.0007 [−0.0029, +0.0015]) → not used, so accumulated xG never double-counts pre-match strength.
 - Second-half recalibration: ×1.04 for top divisions adopted (ECE 0.028 → 0.015 on 8,000 held-out matches); ×1.08 for lower divisions not adopted (CI spanned zero).
 - Replay robustness: duplicates, 2-minute-late deliveries and corrections are handled (one replay: 242 deliveries, 10 duplicates ignored, 7 late events re-ordered).
@@ -84,6 +85,7 @@ Every experiment with its hypothesis, numbers and decision is in the experiment 
 15. A ±4-day matching window merged two genuine Scottish Championship meetings a few days apart — tightened to exact dates for finished matches.
 16. Forward predictions were stored for same-day fixtures whose kick-off had already passed (their results were simply not yet ingested). Forward predictions now require a listed kick-off at least 3 hours in the future (local times vary by source); 14 existing rows were flagged `after_kickoff_possible` (rows stay immutable) and are excluded from forward evaluation and labelled in the UI.
 17. The Players page took 6.8 s because of an unindexed per-player subquery; an index brought it to 0.19 s.
+18. Version drift: the first published backtest predictions (`ensemble@v1`) were produced before the ensemble optimiser's iteration cap was raised from 4,000 to 6,000, which changed fitted weights in some seasons, while every evaluation figure since then refers to the newer fit. The current champion is now registered as `ensemble@v2` with its own predictions; v1 is retired and kept as history. Re-computing the final-test metrics from v2 reproduces the reported figures to within 1e-6.
 
 ## 6. Data-provider limitations
 
