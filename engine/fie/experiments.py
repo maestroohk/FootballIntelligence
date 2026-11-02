@@ -395,8 +395,15 @@ def inplay_windows(con, split_date="2016-02-01"):
                 elapsed_clock = lambda r: r[1] if r[0] == period else r[1] + (45 if period == 1 else 0)
                 in10 = any((r[0] == period and r[1] < clock + 10) for r in after)
                 nxt = after[0][2] if len(after) else "none"
+                fh_final = int((g[:, 2] == "home").sum()) if len(g) else 0
+                fa_final = int((g[:, 2] == "away").sum()) if len(g) else 0
+                lead = st["home_goals"] - st["away_goals"]
+                holds = None
+                if lead != 0:
+                    holds = int((fh_final > fa_final) if lead > 0 else (fa_final > fh_final))
                 rows.append({"clock": clock, "period": period, "p10": fc["p_goal_10"], "hit10": int(in10),
-                             "p_next": (fc["p_next_home"], fc["p_next_away"], fc["p_no_more"]), "next": {"home": 0, "away": 1, "none": 2}[nxt]})
+                             "p_next": (fc["p_next_home"], fc["p_next_away"], fc["p_no_more"]), "next": {"home": 0, "away": 1, "none": 2}[nxt],
+                             "p_hold": fc["p_leader_holds"], "holds": holds})
     df = pd.DataFrame(rows)
     p10 = df["p10"].to_numpy()
     hit = df["hit10"].to_numpy()
@@ -405,7 +412,12 @@ def inplay_windows(con, split_date="2016-02-01"):
     base_rate = hit.mean()
     ll10 = -(hit * np.log(np.clip(p10, 1e-9, 1)) + (1 - hit) * np.log(np.clip(1 - p10, 1e-9, 1))).mean()
     ll10_base = -(hit * np.log(base_rate) + (1 - hit) * np.log(1 - base_rate)).mean()
-    result = {"n_checkpoints": int(len(df)), "n_matches": int(df.shape[0] // 16),
+    lead_rows = df.dropna(subset=["holds"])
+    ph = lead_rows["p_hold"].to_numpy(dtype=float)
+    hh = lead_rows["holds"].to_numpy(dtype=float)
+    result_hold = {"n": int(len(lead_rows)), "mean_p": float(ph.mean()), "freq": float(hh.mean()), "ece": metrics.ece(ph, hh),
+                   "brier": float(((ph - hh) ** 2).mean()), "reliability": metrics.reliability(ph, hh)}
+    result = {"leader_holds": result_hold, "n_checkpoints": int(len(df)), "n_matches": int(df.shape[0] // 16),
               "goal_10min": {"mean_p": float(p10.mean()), "freq": float(base_rate), "ece": metrics.ece(p10, hit), "log_loss": float(ll10),
                              "log_loss_constant_base_rate": float(ll10_base), "reliability": metrics.reliability(p10, hit)},
               "next_goal": {"log_loss": float(metrics.log_loss_rows(pn, yn).mean()), "accuracy": float((pn.argmax(axis=1) == yn).mean()),
@@ -413,7 +425,8 @@ def inplay_windows(con, split_date="2016-02-01"):
     record(con, "In-play short-horizon and next-goal calibration (held-out replay)",
            "The hazard model's 10-minute goal probabilities and next-scorer probabilities should be calibrated on held-out StatsBomb matches, beating a constant base rate.",
            f"{result['n_checkpoints']} checkpoints every 5 minutes: P(goal in next 10') mean {p10.mean():.3f} vs observed {base_rate:.3f}, ECE {result['goal_10min']['ece']:.3f}, "
-           f"log loss {ll10:.4f} vs constant base rate {ll10_base:.4f}; next-goal (home/away/none) log loss {result['next_goal']['log_loss']:.4f}, accuracy {result['next_goal']['accuracy']:.3f}.",
+           f"log loss {ll10:.4f} vs constant base rate {ll10_base:.4f}; next-goal (home/away/none) log loss {result['next_goal']['log_loss']:.4f}, accuracy {result['next_goal']['accuracy']:.3f}; "
+           f"leader goes on to win: predicted {result_hold['mean_p']:.3f} vs observed {result_hold['freq']:.3f} over {result_hold['n']} checkpoints with a lead, ECE {result_hold['ece']:.3f}, Brier {result_hold['brier']:.4f}.",
            "keep (calibrated)" if result["goal_10min"]["ece"] < 0.03 else "investigate calibration", result)
     db.set_kv(con, "experiment_inplay_windows", result)
     return result

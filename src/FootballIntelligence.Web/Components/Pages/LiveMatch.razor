@@ -51,7 +51,12 @@
             </div>
             <h3 style="margin:18px 0 6px">Win probability over time</h3>
             <LineChart Series="probSeries" Markers="markers" XTicks="ticks" XMin="0" XMax="maxClock" YMin="0" YMax="1" Height="230" YFormat="@(v => Fmt.Pct(v))" />
-            <h3 style="margin:18px 0 6px">Goal expectation over time</h3>
+            @if (xgSeries.Any(x => x.Points.Count > 1))
+            {
+                <h3 style="margin:18px 0 6px">Accumulated xG (what has happened)</h3>
+                <LineChart Series="xgSeries" Markers="markers" XTicks="ticks" XMin="0" XMax="maxClock" YMin="0" YMax="@Math.Max(1, Math.Ceiling(xgSeries.SelectMany(s => s.Points).Select(p => p.Y).DefaultIfEmpty(1).Max()))" Height="150" />
+            }
+            <h3 style="margin:18px 0 6px">Goal expectation over time (what the model expects next)</h3>
             <LineChart Series="goalSeries" Markers="markers" XTicks="ticks" XMin="0" XMax="maxClock" YMin="0" YMax="@Math.Max(1, goalSeries.SelectMany(s => s.Points).Select(p => p.Y).DefaultIfEmpty(1).Max())" Height="170" />
         </div>
         <div class="stack" style="gap:16px">
@@ -63,7 +68,7 @@
                     {
                         <div class="small dim" style="border-top:1px solid var(--border-soft);padding-top:6px">
                             <span class="mono">@StateMinute(s)</span>
-                            @foreach (var e in Explanations(s).Where(e => e.Kind != "observation")) { <div>@e.Text</div> }
+                            @foreach (var e in Explanations(s).Where(e => e.Kind != "warn")) { <div>@e.Text</div> }
                         </div>
                     }
                 </div>
@@ -166,6 +171,7 @@ else
     private List<LineChart.Line> probSeries = [];
     private List<LineChart.Line> goalSeries = [];
     private List<LineChart.Marker> markers = [];
+    private List<LineChart.Line> xgSeries = [];
     private List<(string, double)> ticks = [];
     private double maxClock = 95;
     private JsonElement? prematch;
@@ -197,6 +203,20 @@ else
             new("P(another goal)", "var(--accent)", snapshots.Select(s => new LineChart.Point(X(s), s.PAnotherGoal)).ToList()),
             new("Expected remaining goals", "var(--warn)", snapshots.Select(s => new LineChart.Point(X(s), s.ExpRemaining)).ToList(), Dashed: true),
         ];
+        xgSeries = [];
+        foreach (var (side, color, name) in new[] { ("home", "var(--home)", session.HomeName ?? "Home"), ("away", "var(--away)", session.AwayName ?? "Away") })
+        {
+            var pts = new List<LineChart.Point> { new(0, 0) };
+            var total = 0.0;
+            foreach (var e in events.Where(e => e.Kind == "shot" && e.Side == side).OrderBy(e => EventX(e)))
+            {
+                pts.Add(new(EventX(e), total));
+                total += e.Xg ?? 0;
+                pts.Add(new(EventX(e), total));
+            }
+            pts.Add(new(Math.Max(pts[^1].X, snapshots.Select(X).DefaultIfEmpty(0).Max()), total));
+            xgSeries.Add(new($"{name} xG {total:F2}", color, pts));
+        }
         markers = events.Where(e => e.Kind is "goal" or "red_card").Select(e => new LineChart.Marker(EventX(e), e.Kind == "goal" ? "⚽" : "🟥", e.Side == "home" ? "var(--home)" : "var(--away)")).ToList();
         ticks = [("0'", 0), ("15'", 15), ("30'", 30), ("HT", 45 + HalfOffset), ("60'", 60 + HalfOffset), ("75'", 75 + HalfOffset), ("90'", 90 + HalfOffset)];
     }
