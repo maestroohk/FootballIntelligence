@@ -19,16 +19,16 @@ Champion: **ensemble**. Selection log: dixon_coles is the baseline champion; ens
 | DC + shot-xG 25% | time-weighted matches from the previous ~3 years, refit weekly | 2012-08-10 to 2023-06-04 | 26,057 | 0.9989 | 0.5967 | 0.2043 | 0.0173 | 0.511 | 0.894 | 1.298 | 2.8940 | 0.6872 | 0.6916 |
 | Dixon-Coles slow decay | time-weighted matches from the previous ~3 years, refit weekly | 2012-08-10 to 2023-06-04 | 26,057 | 0.9991 | 0.5968 | 0.2045 | 0.0076 | 0.508 | 0.903 | 1.306 | 2.8939 | 0.6855 | 0.6910 |
 | Dixon-Coles fast decay | time-weighted matches from the previous ~3 years, refit weekly | 2012-08-10 to 2023-06-04 | 26,057 | 0.9993 | 0.5969 | 0.2045 | 0.0071 | 0.511 | 0.903 | 1.307 | 2.8957 | 0.6863 | 0.6921 |
-| Elo K=20 | updated after every match; outcome/goal mapping refit each season on the 4 prior seasons | 2012-08-10 to 2023-06-04 | 26,057 | 1.0001 | 0.5973 | 0.2047 | 0.0106 | 0.510 | 0.903 | 1.325 | 2.9012 | 0.6894 | 0.6929 |
+| Elo K=20 | updated after every match; outcome/goal mapping refit each season on the 4 prior seasons | 2012-08-10 to 2023-06-04 | 26,057 | 0.9998 | 0.5971 | 0.2047 | 0.0096 | 0.511 | 0.904 | 1.325 | 2.9008 | 0.6891 | 0.6927 |
 | Dixon-Coles ridge 3 | time-weighted matches from the previous ~3 years, refit weekly | 2012-08-10 to 2023-06-04 | 26,057 | 1.0012 | 0.5982 | 0.2051 | 0.0101 | 0.508 | 0.903 | 1.305 | 2.8950 | 0.6846 | 0.6907 |
 | DC + shot-xG 50% | time-weighted matches from the previous ~3 years, refit weekly | 2012-08-10 to 2023-06-04 | 26,057 | 1.0022 | 0.5990 | 0.2051 | 0.0296 | 0.511 | 0.891 | 1.302 | 2.9069 | 0.6950 | 0.6944 |
-| Elo K=30 | updated after every match; outcome/goal mapping refit each season on the 4 prior seasons | 2012-08-10 to 2023-06-04 | 26,057 | 1.0031 | 0.5994 | 0.2057 | 0.0120 | 0.508 | 0.904 | 1.326 | 2.9050 | 0.6900 | 0.6927 |
+| Elo K=30 | updated after every match; outcome/goal mapping refit each season on the 4 prior seasons | 2012-08-10 to 2023-06-04 | 26,057 | 1.0026 | 0.5990 | 0.2055 | 0.0097 | 0.508 | 0.905 | 1.325 | 2.9043 | 0.6895 | 0.6925 |
 | DC + shot-xG 75% | time-weighted matches from the previous ~3 years, refit weekly | 2012-08-10 to 2023-06-04 | 26,057 | 1.0089 | 0.6037 | 0.2069 | 0.0406 | 0.510 | 0.893 | 1.315 | 2.9339 | 0.7100 | 0.7002 |
 | Frequency baseline | previous 5 seasons of the same league | 2012-08-10 to 2023-06-04 | 26,057 | 1.0708 | 0.6476 | 0.2289 | 0.0078 | 0.443 | 0.961 | 1.327 | 2.9987 | 0.6911 | 0.6922 |
 
 ## Final test (2023/24–2026/27 to date, untouched until all choices were frozen)
 
-First evaluated at 2026-11-02T20:22:57.889970Z.
+First evaluated at 2026-11-02T21:00:25.845885Z.
 
 | Model | Training window | Test period | Matches | Log loss | Brier | RPS | ECE | Accuracy | Goal MAE | Total-goals MAE | Score NLL | O2.5 log loss | BTTS log loss |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -371,3 +371,9 @@ Learned multipliers (hazard model):
 - Hypothesis: Teams whose recent StatsBomb xG exceeds their goals (for and against) have been unlucky and should regress upwards; adjusting the champion's goal rates by the log ratio of recent xG to recent goals (and by field-tilt difference) should improve held-out forecasts.
 - Result: Fitted on 587 matches before 2016-01-15, tested on 730. xG/goals adjustment: coefficient +0.21, log loss 0.9666 -> 0.9673 (diff -0.0007, CI -0.0039..+0.0025), score NLL diff -0.0057 (CI -0.0121..+0.0008). Adding field tilt (coefficient +0.06): log loss diff +0.0001 (CI -0.0031..+0.0035).
 - Decision: not adopted: no credible gain on one season of provider xG (the champion already uses shots on target)
+
+### Full reproduction from raw data
+
+- Hypothesis: An isolated run (separate database copy and cache directory) that recomputes every walk-forward model from the raw match table should reproduce the production validation results exactly.
+- Result: Recomputed 17 models from scratch (about 50 minutes at the 4-thread budget). Champion ensemble: identical predictions on all 26,057 validation and 6,912 completed final-test matches (max rate difference 0.0). 15 of 17 models identical; Elo K=20/K=30 differed by up to 5e-4 log loss because their cached predictions dated from the first run and Elo outcome mappings were fitted with an order-sensitive Nelder-Mead. After switching those fits to sorted inputs with tight L-BFGS (order-independent, verified by shuffling) all 17 models agree within 2e-8.
+- Decision: adopt order-independent fitting; pipeline reproducible from raw data

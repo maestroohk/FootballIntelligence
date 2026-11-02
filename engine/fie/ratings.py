@@ -195,6 +195,8 @@ def ordered_logit_fit(diff, y, weights=None):
     diff = np.asarray(diff, float) / 400
     y = np.asarray(y)
     w = np.ones(len(y)) if weights is None else np.asarray(weights)
+    order = np.lexsort((y, diff))
+    diff, y, w = diff[order], y[order], w[order]
 
     def nll(theta):
         b, c1, gap = theta
@@ -205,7 +207,7 @@ def ordered_logit_fit(diff, y, weights=None):
         p = np.column_stack([1 - p_away_or_draw, p_away_or_draw - p_away, p_away])
         return -(w * np.log(np.clip(p[np.arange(len(y)), y], 1e-12, 1))).sum()
 
-    res = minimize(nll, np.array([2.0, -1.0, 1.0]), method="Nelder-Mead", options={"maxiter": 2000, "xatol": 1e-5, "fatol": 1e-6})
+    res = minimize(nll, np.array([2.0, -1.0, 1.0]), method="L-BFGS-B", options={"ftol": 1e-13, "gtol": 1e-9, "maxiter": 2000})
     return res.x
 
 
@@ -221,6 +223,8 @@ def ordered_logit_predict(theta, diff):
 def poisson_link_fit(diff, goals):
     x = np.asarray(diff, float) / 400
     y = np.asarray(goals, float)
+    order = np.lexsort((y, x))
+    x, y = x[order], y[order]
 
     def nll(theta):
         eta = theta[0] + theta[1] * x
