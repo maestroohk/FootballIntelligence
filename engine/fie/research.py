@@ -1,5 +1,7 @@
 import json
+import os
 import time
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -10,7 +12,7 @@ from .config import CORE_COMPETITIONS, DATA, PRIMARY_COMPETITIONS, THREADS
 from .features import FEATURE_COLUMNS, apply_xg_proxy, fit_xg_proxy, load_matches, team_form_features
 from .scoreline import dixon_coles_matrix
 
-CACHE = DATA / "cache"
+CACHE = Path(os.environ.get("FIE_CACHE", DATA / "cache"))
 
 STRENGTH_DEFAULTS = {"xi": 0.0019, "ridge": 1.0, "window_days": 1100}
 

@@ -34,7 +34,11 @@
         <span class="sub">@rows.Count matches shown</span>
     </div>
     @if (rows.Count == 0) { <div class="empty">No matches for these filters.</div> }
-    @foreach (var m in rows) { <MatchLine Match="m" /> }
+    @foreach (var day in rows.GroupBy(m => m.MatchDate))
+    {
+        <h3 style="margin:12px 0 2px">@DateTime.Parse(day.Key, System.Globalization.CultureInfo.InvariantCulture).ToString("dddd dd MMM yyyy", System.Globalization.CultureInfo.InvariantCulture)</h3>
+        @foreach (var m in day) { <MatchLine Match="m" /> }
+    }
 </div>
 
 @code {

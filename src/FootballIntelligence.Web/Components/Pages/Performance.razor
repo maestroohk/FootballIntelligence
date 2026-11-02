@@ -32,6 +32,33 @@
     <LineChart Series="series" XTicks="ticks" YMin="@ymin" YMax="@ymax" Height="260" YFormat="@(v => v.ToString("0.000"))" />
 </div>
 
+@if (goalBins.Count > 0)
+{
+    <div class="card">
+        <div class="card-head"><h2>Goal-count calibration</h2><span class="sub">predicted vs observed share of matches by total goals · @goalN.ToString("N0") settled predictions, six primary leagues</span></div>
+        <div class="grid g2">
+            <div>
+                @foreach (var b in goalBins)
+                {
+                    <div class="row small" style="gap:8px;margin-bottom:4px">
+                        <span style="width:64px">@b.Label goals</span>
+                        <div style="flex:1">
+                            <div class="meter" title="predicted"><div style="width:@Fmt.Pct(b.Predicted / goalMax, 1);background:var(--accent)"></div></div>
+                            <div class="meter" title="observed" style="margin-top:2px"><div style="width:@Fmt.Pct(b.Observed / goalMax, 1);background:var(--info)"></div></div>
+                        </div>
+                        <span class="mono" style="width:120px;text-align:right">@Fmt.Pct(b.Predicted, 1) / @Fmt.Pct(b.Observed, 1)</span>
+                    </div>
+                }
+                <div class="row small dim" style="gap:14px;margin-top:6px"><span class="row" style="gap:6px"><span class="dot" style="background:var(--accent)"></span>predicted</span><span class="row" style="gap:6px"><span class="dot" style="background:var(--info)"></span>observed</span></div>
+            </div>
+            <div class="small dim">
+                <p>The predicted share is the average model probability of each total; the observed share is how often it happened. Large gaps would mean the goal model is over- or under-dispersed.</p>
+                <p>Mean predicted total @Fmt.Num(goalPredMean, 3) vs actual @Fmt.Num(goalObsMean, 3) goals per match; mean absolute total-goal error @Fmt.Num(goalMae, 3).</p>
+            </div>
+        </div>
+    </div>
+}
+
 @if (drift is not null)
 {
     <div class="card">
@@ -47,7 +74,7 @@
 <div class="card">
     <div class="card-head"><h2>Prediction history</h2><span class="sub">latest @history.Count settled and pending predictions</span></div>
     <div class="table-wrap">
-        <table class="data">
+        <table class="data compact">
             <thead><tr><th>Date</th><th>Comp</th><th>Match</th><th class="num">Result</th><th style="width:220px">Prediction</th><th class="num">P(actual)</th><th class="num">Exp. goals</th><th>Cutoff</th></tr></thead>
             <tbody>
                 @foreach (var m in history)
@@ -79,6 +106,10 @@
     private double ymin = 0.9, ymax = 1.1;
     private List<MatchRow> history = [];
     private JsonElement? drift;
+    private record GoalBin(string Label, double Predicted, double Observed);
+    private List<GoalBin> goalBins = [];
+    private double goalMax = 1, goalPredMean, goalObsMean, goalMae;
+    private long goalN;
 
     protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange;
 
@@ -108,6 +139,26 @@
         ticks = points.Select((p, i) => (p, i)).Where(x => x.p.Period.EndsWith("-08")).Select(x => (x.p.Period[..4], (double)x.i)).ToList();
         history = Research.PredictionHistory(champion, purpose, 60);
         drift = Research.KvJson("drift");
+        var rowsG = champion is null ? [] : Research.GoalRows(champion, purpose);
+        goalN = rowsG.Count;
+        goalBins = [];
+        if (goalN > 0)
+        {
+            var pred = new double[8];
+            var obs = new double[8];
+            foreach (var r in rowsG)
+            {
+                var m = ScoreModel.DixonColes(r.LambdaHome, r.LambdaAway, r.Rho);
+                for (var i = 0; i < m.Length; i++)
+                    for (var j = 0; j < m.Length; j++) pred[Math.Min(7, i + j)] += m[i][j];
+                obs[Math.Min(7, (int)(r.Fthg + r.Ftag))] += 1;
+            }
+            for (var k = 0; k < 8; k++) goalBins.Add(new(k == 7 ? "7+" : k.ToString(), pred[k] / goalN, obs[k] / goalN));
+            goalMax = Math.Max(0.01, goalBins.Max(b => Math.Max(b.Predicted, b.Observed)));
+            goalPredMean = rowsG.Average(r => r.LambdaHome + r.LambdaAway);
+            goalObsMean = rowsG.Average(r => (double)(r.Fthg + r.Ftag));
+            goalMae = rowsG.Average(r => Math.Abs(r.LambdaHome + r.LambdaAway - r.Fthg - r.Ftag));
+        }
     }
 
     private static List<LineChart.Point> Rolling(List<PerformancePoint> pts, Dictionary<string, double> index)
