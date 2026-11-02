@@ -27,10 +27,10 @@ Session: 2 November 2026, started 21:14 (UTC+3), target end 05:14. All figures b
 | LightGBM (features) | 2007/08 to previous season, refit per season | 0.9953 | 0.9951 | 0.5943 | 0.0134 | 0.898 | 2.9026 |
 | LightGBM stacked on DC | as above | 0.9949 | 0.9940 | 0.5935 | 0.0139 | 0.898 | 2.8998 |
 | Multinomial logistic (1X2 only) | as above | 0.9954 | 0.9942 | 0.5938 | 0.0084 | — | — |
-| **Learned ensemble (champion, `ensemble@v2`)** | components as above; weights on previous 3 seasons | **0.9947** | **0.9949** | **0.5940** | **0.0143** | **0.897** | **2.8996** |
+| **Learned ensemble (champion, `ensemble@v3`)** | components as above; weights on previous 3 seasons | **0.9947** | **0.9949** | **0.5940** | **0.0143** | **0.897** | **2.8996** |
 | Bookmaker closing odds (benchmark) | market | 0.9811 | 0.9773 | 0.5825 | 0.0101 | — | — |
 
-Validation period 2012-08-10 to 2023-06-04; final test 2023-08-04 to 2026-11-01. The final test was first run once after every modelling choice was frozen; it was re-run once more only to add BTTS and over/under metrics after a metric-definition fix (the predictions did not change).
+Validation period 2012-08-10 to 2023-06-04; final test 2023-08-04 to 2026-11-01. The final test was first run once after every modelling choice was frozen; it was re-computed twice more without any model choice being made from it: to add BTTS and over/under metrics, and as an audit after the reproducibility refit of the ensemble weights (`ensemble@v3`), which left the final-test predictions unchanged.
 
 Key paired comparisons (block bootstrap over league-seasons, 95% CI, positive = second model better):
 
@@ -85,7 +85,7 @@ Every experiment with its hypothesis, numbers and decision is in the experiment 
 15. A ±4-day matching window merged two genuine Scottish Championship meetings a few days apart — tightened to exact dates for finished matches.
 16. Forward predictions were stored for same-day fixtures whose kick-off had already passed (their results were simply not yet ingested). Forward predictions now require a listed kick-off at least 3 hours in the future (local times vary by source); 14 existing rows were flagged `after_kickoff_possible` (rows stay immutable) and are excluded from forward evaluation and labelled in the UI.
 17. The Players page took 6.8 s because of an unindexed per-player subquery; an index brought it to 0.19 s.
-18. Version drift: the first published backtest predictions (`ensemble@v1`) were produced before the ensemble optimiser's iteration cap was raised from 4,000 to 6,000, which changed fitted weights in some seasons, while every evaluation figure since then refers to the newer fit. The current champion is now registered as `ensemble@v2` with its own predictions; v1 is retired and kept as history. Re-computing the final-test metrics from v2 reproduces the reported figures to within 1e-6.
+18. Version drift: the first published backtest predictions (`ensemble@v1`) differed from the ensemble later used for evaluation in 9 of 15 seasons. I first attributed this to an optimiser iteration cap and registered `ensemble@v2`; a convergence check then showed the real cause: the weight objective has several local optima and Nelder–Mead landed on different ones when only the row order (floating-point summation order) changed after caches were merged. The fit now uses deterministic row order and six-start L-BFGS (`ensemble@v3`), which is identical under row shuffling, slightly better on validation (not significant) and unchanged on the final test. v1 and v2 are retired and kept as history.
 
 ## 6. Data-provider limitations
 

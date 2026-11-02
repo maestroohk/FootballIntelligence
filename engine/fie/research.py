@@ -159,7 +159,10 @@ def fit_ensemble_weights(components, frame_rows, spread=False):
         tau = np.where((hg == 1) & (ag == 1), 1 - rho, tau)
         return -(ll + np.log(np.clip(tau, 1e-9, None))).sum()
 
-    res = minimize(objective, np.zeros(k + 2 + (1 if spread else 0)), method="Nelder-Mead", options={"maxiter": 6000, "xatol": 1e-5, "fatol": 1e-4})
+    dim = k + 2 + (1 if spread else 0)
+    rng = np.random.default_rng(20261102)
+    starts = [np.zeros(dim)] + [np.concatenate([rng.normal(0, 1.5, k), np.zeros(dim - k)]) for _ in range(5)]
+    res = min((minimize(objective, x0, method="L-BFGS-B") for x0 in starts), key=lambda r: r.fun)
     _, _, rho, w, scale, s = rates(res.x)
     return {"weights": w.tolist(), "scale": float(scale), "rho": float(rho), "spread": float(s)}
 
@@ -177,7 +180,8 @@ def run_ensemble(component_oos, names, frame, name="ensemble", first_season=2012
     common = keyed[0].index
     for c in keyed[1:]:
         common = common.intersection(c.index)
-    base = frame.set_index("match_id").loc[common].reset_index()
+    common = common.sort_values()
+    base = frame.set_index("match_id").loc[common].reset_index().sort_values(["date", "match_id"]).reset_index(drop=True)
     outs = []
     fitted = {}
     for season in sorted(base.loc[base["season"] >= first_season, "season"].unique()):

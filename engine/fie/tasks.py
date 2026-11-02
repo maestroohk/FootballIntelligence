@@ -9,7 +9,7 @@ from . import backtest, db, ingest_fdco, ingest_statsbomb, metrics, research
 from .config import FINAL_TEST_SEASONS, FORWARD_SEASON, PRIMARY_COMPETITIONS, VALIDATION_SEASONS
 from .jobs import Cancelled, handler
 
-MODEL_VERSIONS = {"ensemble": "v2"}
+MODEL_VERSIONS = {"ensemble": "v3"}
 
 
 def model_version(name):

@@ -2,14 +2,14 @@
 
 Generated from the database by the `build_report` job; every number below is computed from stored out-of-sample predictions.
 
-Champion: **ensemble**. Selection log: dixon_coles is the baseline champion; ensemble beats dixon_coles on score NLL (diff 0.0095, 95% CI 0.0078..0.0114); dc_xg25 not promoted over ensemble: score NLL diff -0.0106, CI -0.0126..-0.0087.
+Champion: **ensemble**. Selection log: dixon_coles is the baseline champion; ensemble beats dixon_coles on score NLL (diff 0.0098, 95% CI 0.0081..0.0115); dc_xg25 not promoted over ensemble: score NLL diff -0.0109, CI -0.0127..-0.0090.
 
 ## Validation (2012/13–2022/23, six primary leagues, walk-forward)
 
 | Model | Training window | Test period | Matches | Log loss | Brier | RPS | ECE | Accuracy | Goal MAE | Total-goals MAE | Score NLL | O2.5 log loss | BTTS log loss |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Bookmaker closing odds (benchmark) | market closing odds (benchmark, not a model) | 2012-08-10 to 2023-06-04 | 26,053 | 0.9811 | 0.5844 | 0.1989 | 0.0054 | 0.522 | — | — | — | — | — |
-| Learned ensemble (champion) | component models refit as listed; blend weights fitted on the previous 3 seasons | 2012-08-10 to 2023-06-04 | 26,057 | 0.9948 | 0.5937 | 0.2031 | 0.0081 | 0.513 | 0.896 | 1.302 | 2.8834 | 0.6809 | 0.6884 |
+| Learned ensemble (champion) | component models refit as listed; blend weights fitted on the previous 3 seasons | 2012-08-10 to 2023-06-04 | 26,057 | 0.9947 | 0.5937 | 0.2031 | 0.0085 | 0.514 | 0.896 | 1.302 | 2.8832 | 0.6808 | 0.6883 |
 | LightGBM stacked on DC | all matches from 2007/08 to the previous season, refit each season | 2012-08-10 to 2023-06-04 | 26,057 | 0.9949 | 0.5938 | 0.2031 | 0.0062 | 0.513 | 0.896 | 1.303 | 2.8853 | 0.6822 | 0.6890 |
 | LightGBM features | all matches from 2007/08 to the previous season, refit each season | 2012-08-10 to 2023-06-04 | 26,057 | 0.9953 | 0.5941 | 0.2032 | 0.0067 | 0.512 | 0.896 | 1.304 | 2.8875 | 0.6826 | 0.6895 |
 | Multinomial logistic | all matches from 2007/08 to the previous season, refit each season | 2012-08-10 to 2023-06-04 | 26,057 | 0.9954 | 0.5938 | 0.2031 | 0.0071 | 0.515 | — | — | — | — | — |
@@ -28,16 +28,16 @@ Champion: **ensemble**. Selection log: dixon_coles is the baseline champion; ens
 
 ## Final test (2023/24–2026/27 to date, untouched until all choices were frozen)
 
-First evaluated at 2026-11-02T19:36:08.358258Z.
+First evaluated at 2026-11-02T20:22:57.889970Z.
 
 | Model | Training window | Test period | Matches | Log loss | Brier | RPS | ECE | Accuracy | Goal MAE | Total-goals MAE | Score NLL | O2.5 log loss | BTTS log loss |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Bookmaker closing odds (benchmark) | market closing odds (benchmark, not a model) | 2023-08-04 to 2026-11-01 | 7,515 | 0.9773 | 0.5825 | 0.1974 | 0.0101 | 0.531 | — | — | — | 0.6696 | — |
 | LightGBM stacked on DC | all matches from 2007/08 to the previous season, refit each season | 2023-08-04 to 2026-11-01 | 7,515 | 0.9940 | 0.5935 | 0.2026 | 0.0139 | 0.511 | 0.898 | 1.299 | 2.8998 | 0.6775 | 0.6849 |
 | Multinomial logistic | all matches from 2007/08 to the previous season, refit each season | 2023-08-04 to 2026-11-01 | 7,515 | 0.9942 | 0.5938 | 0.2026 | 0.0084 | 0.513 | — | — | — | — | — |
-| Learned ensemble (champion) | component models refit as listed; blend weights fitted on the previous 3 seasons | 2023-08-04 to 2026-11-01 | 7,515 | 0.9949 | 0.5940 | 0.2028 | 0.0143 | 0.512 | 0.897 | 1.297 | 2.8996 | 0.6774 | 0.6848 |
+| Learned ensemble (champion) | component models refit as listed; blend weights fitted on the previous 3 seasons | 2023-08-04 to 2026-11-01 | 7,515 | 0.9949 | 0.5940 | 0.2028 | 0.0142 | 0.512 | 0.897 | 1.297 | 2.8996 | 0.6774 | 0.6848 |
 | LightGBM features | all matches from 2007/08 to the previous season, refit each season | 2023-08-04 to 2026-11-01 | 7,515 | 0.9951 | 0.5943 | 0.2029 | 0.0134 | 0.513 | 0.898 | 1.301 | 2.9026 | 0.6785 | 0.6857 |
-| Elo K=15 | updated after every match; outcome/goal mapping refit each season on the 4 prior seasons | 2023-08-04 to 2026-11-01 | 7,515 | 0.9990 | 0.5968 | 0.2040 | 0.0088 | 0.511 | 0.905 | 1.326 | 2.9238 | 0.6906 | 0.6921 |
+| Elo K=15 | updated after every match; outcome/goal mapping refit each season on the 4 prior seasons | 2023-08-04 to 2026-11-01 | 7,515 | 0.9988 | 0.5967 | 0.2040 | 0.0072 | 0.510 | 0.906 | 1.325 | 2.9228 | 0.6899 | 0.6916 |
 | Dixon-Coles | time-weighted matches from the previous ~3 years, refit weekly | 2023-08-04 to 2026-11-01 | 7,515 | 0.9990 | 0.5969 | 0.2042 | 0.0123 | 0.509 | 0.901 | 1.298 | 2.9100 | 0.6810 | 0.6878 |
 | DC + shot-xG 25% | time-weighted matches from the previous ~3 years, refit weekly | 2023-08-04 to 2026-11-01 | 7,515 | 0.9993 | 0.5970 | 0.2043 | 0.0182 | 0.513 | 0.892 | 1.295 | 2.9146 | 0.6860 | 0.6909 |
 | Poisson (Maher) | time-weighted matches from the previous ~3 years, refit weekly | 2023-08-04 to 2026-11-01 | 7,515 | 0.9998 | 0.5972 | 0.2043 | 0.0159 | 0.509 | 0.901 | 1.298 | 2.9101 | 0.6810 | 0.6882 |
@@ -48,7 +48,7 @@ First evaluated at 2026-11-02T19:36:08.358258Z.
 | Model | Training window | Test period | Matches | Log loss | Brier | RPS | ECE | Accuracy | Goal MAE | Total-goals MAE | Score NLL | O2.5 log loss | BTTS log loss |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Bookmaker closing odds (benchmark) | market closing odds (benchmark, not a model) | 2012-07-28 to 2026-11-01 | 26,176 | 0.9583 | 0.5693 | 0.1927 | 0.0080 | 0.537 | — | — | — | — | — |
-| Learned ensemble (champion) | own-country ratings walk-forward; shared models trained on the original divisions only | 2012-07-28 to 2026-11-01 | 26,176 | 0.9751 | 0.5805 | 0.1978 | 0.0102 | 0.525 | 0.901 | 1.304 | 2.8907 | 0.6794 | 0.6879 |
+| Learned ensemble (champion) | own-country ratings walk-forward; shared models trained on the original divisions only | 2012-07-28 to 2026-11-01 | 26,176 | 0.9751 | 0.5805 | 0.1978 | 0.0103 | 0.525 | 0.901 | 1.304 | 2.8908 | 0.6794 | 0.6879 |
 | LightGBM features | own-country ratings walk-forward; shared models trained on the original divisions only | 2012-07-28 to 2026-11-01 | 26,176 | 0.9772 | 0.5819 | 0.1984 | 0.0110 | 0.524 | 0.901 | 1.310 | 2.8984 | 0.6824 | 0.6895 |
 | Elo K=15 | own-country ratings walk-forward; shared models trained on the original divisions only | 2012-07-28 to 2026-11-01 | 26,176 | 0.9795 | 0.5833 | 0.1991 | 0.0096 | 0.523 | 0.910 | 1.327 | 2.9084 | 0.6867 | 0.6924 |
 | Dixon-Coles | own-country ratings walk-forward; shared models trained on the original divisions only | 2012-07-28 to 2026-11-01 | 26,176 | 0.9813 | 0.5845 | 0.1996 | 0.0107 | 0.520 | 0.912 | 1.316 | 2.9090 | 0.6862 | 0.6928 |
@@ -88,24 +88,24 @@ First evaluated at 2026-11-02T19:36:08.358258Z.
 | Dixon-Coles vs LightGBM stacked on DC | log_loss | 26,057 | +0.0034 | +0.0023 .. +0.0047 | B better |
 | Dixon-Coles vs LightGBM stacked on DC | rps | 26,057 | +0.0011 | +0.0007 .. +0.0015 | B better |
 | Dixon-Coles vs LightGBM stacked on DC | score_nll | 26,057 | +0.0077 | +0.0056 .. +0.0097 | B better |
-| Dixon-Coles vs Learned ensemble (champion) | log_loss | 26,057 | +0.0036 | +0.0027 .. +0.0045 | B better |
+| Dixon-Coles vs Learned ensemble (champion) | log_loss | 26,057 | +0.0036 | +0.0028 .. +0.0045 | B better |
 | Dixon-Coles vs Learned ensemble (champion) | rps | 26,057 | +0.0011 | +0.0009 .. +0.0014 | B better |
-| Dixon-Coles vs Learned ensemble (champion) | score_nll | 26,057 | +0.0095 | +0.0078 .. +0.0114 | B better |
-| DC + shot-xG 25% vs Learned ensemble (champion) | log_loss | 26,057 | +0.0042 | +0.0032 .. +0.0052 | B better |
-| DC + shot-xG 25% vs Learned ensemble (champion) | rps | 26,057 | +0.0012 | +0.0009 .. +0.0015 | B better |
-| DC + shot-xG 25% vs Learned ensemble (champion) | score_nll | 26,057 | +0.0106 | +0.0087 .. +0.0126 | B better |
+| Dixon-Coles vs Learned ensemble (champion) | score_nll | 26,057 | +0.0098 | +0.0081 .. +0.0115 | B better |
+| DC + shot-xG 25% vs Learned ensemble (champion) | log_loss | 26,057 | +0.0042 | +0.0032 .. +0.0053 | B better |
+| DC + shot-xG 25% vs Learned ensemble (champion) | rps | 26,057 | +0.0012 | +0.0010 .. +0.0015 | B better |
+| DC + shot-xG 25% vs Learned ensemble (champion) | score_nll | 26,057 | +0.0109 | +0.0090 .. +0.0127 | B better |
 | Multinomial logistic vs Dixon-Coles | log_loss | 26,057 | -0.0030 | -0.0046 .. -0.0014 | A better |
 | Multinomial logistic vs Dixon-Coles | rps | 26,057 | -0.0011 | -0.0015 .. -0.0007 | A better |
-| Learned ensemble (champion) vs Bookmaker closing odds (benchmark) | log_loss | 26,053 | +0.0137 | +0.0115 .. +0.0156 | B better |
+| Learned ensemble (champion) vs Bookmaker closing odds (benchmark) | log_loss | 26,053 | +0.0136 | +0.0115 .. +0.0156 | B better |
 | Learned ensemble (champion) vs Bookmaker closing odds (benchmark) | rps | 26,053 | +0.0042 | +0.0036 .. +0.0048 | B better |
 
 ## Paired comparisons, final test
 
 | Comparison (A vs B) | Metric | n | Mean A − B | 95% CI | Verdict |
 |---|---|---:|---:|---|---|
-| Elo K=15 vs Learned ensemble (champion) | log_loss | 7,515 | +0.0041 | +0.0029 .. +0.0052 | B better |
-| Elo K=15 vs Learned ensemble (champion) | rps | 7,515 | +0.0013 | +0.0008 .. +0.0016 | B better |
-| Elo K=15 vs Learned ensemble (champion) | score_nll | 7,515 | +0.0242 | +0.0166 .. +0.0336 | B better |
+| Elo K=15 vs Learned ensemble (champion) | log_loss | 7,515 | +0.0039 | +0.0026 .. +0.0051 | B better |
+| Elo K=15 vs Learned ensemble (champion) | rps | 7,515 | +0.0012 | +0.0008 .. +0.0016 | B better |
+| Elo K=15 vs Learned ensemble (champion) | score_nll | 7,515 | +0.0232 | +0.0162 .. +0.0318 | B better |
 | Dixon-Coles vs Learned ensemble (champion) | log_loss | 7,515 | +0.0041 | +0.0022 .. +0.0060 | B better |
 | Dixon-Coles vs Learned ensemble (champion) | rps | 7,515 | +0.0014 | +0.0009 .. +0.0020 | B better |
 | Dixon-Coles vs Learned ensemble (champion) | score_nll | 7,515 | +0.0104 | +0.0065 .. +0.0142 | B better |
@@ -117,7 +117,7 @@ First evaluated at 2026-11-02T19:36:08.358258Z.
 | DC + shot-xG 25% vs Learned ensemble (champion) | score_nll | 7,515 | +0.0150 | +0.0099 .. +0.0210 | B better |
 | LightGBM features vs Learned ensemble (champion) | log_loss | 7,515 | +0.0002 | -0.0006 .. +0.0011 | inconclusive |
 | LightGBM features vs Learned ensemble (champion) | rps | 7,515 | +0.0001 | -0.0001 .. +0.0003 | inconclusive |
-| LightGBM features vs Learned ensemble (champion) | score_nll | 7,515 | +0.0031 | +0.0020 .. +0.0040 | B better |
+| LightGBM features vs Learned ensemble (champion) | score_nll | 7,515 | +0.0030 | +0.0020 .. +0.0040 | B better |
 | Learned ensemble (champion) vs Bookmaker closing odds (benchmark) | log_loss | 7,515 | +0.0176 | +0.0148 .. +0.0208 | B better |
 | Learned ensemble (champion) vs Bookmaker closing odds (benchmark) | rps | 7,515 | +0.0054 | +0.0045 .. +0.0064 | B better |
 
@@ -126,9 +126,9 @@ First evaluated at 2026-11-02T19:36:08.358258Z.
 | League | Matches | Log loss | RPS | ECE | Accuracy | Goal MAE |
 |---|---:|---:|---:|---:|---:|---:|
 | D1 | 990 | 0.9822 | 0.1990 | 0.0303 | 0.518 | 0.989 |
-| E0 | 1,229 | 0.9869 | 0.2020 | 0.0190 | 0.516 | 0.930 |
+| E0 | 1,229 | 0.9869 | 0.2020 | 0.0194 | 0.516 | 0.930 |
 | E1 | 1,812 | 1.0403 | 0.2168 | 0.0096 | 0.460 | 0.862 |
-| F1 | 998 | 0.9944 | 0.2069 | 0.0181 | 0.529 | 0.951 |
+| F1 | 998 | 0.9944 | 0.2069 | 0.0189 | 0.529 | 0.951 |
 | I1 | 1,238 | 0.9754 | 0.1928 | 0.0332 | 0.534 | 0.850 |
 | SP1 | 1,248 | 0.9668 | 0.1928 | 0.0382 | 0.543 | 0.846 |
 
@@ -136,29 +136,29 @@ First evaluated at 2026-11-02T19:36:08.358258Z.
 
 | Top-outcome probability | Matches | Mean predicted | Hit rate | Log loss |
 |---|---:|---:|---:|---:|
-| (0.0, 0.4] | 1,216 | 0.381 | 0.358 | 1.0939 |
-| (0.4, 0.5] | 3,012 | 0.447 | 0.452 | 1.0657 |
+| (0.0, 0.4] | 1,214 | 0.381 | 0.358 | 1.0936 |
+| (0.4, 0.5] | 3,014 | 0.447 | 0.452 | 1.0658 |
 | (0.5, 0.6] | 1,771 | 0.545 | 0.543 | 0.9981 |
 | (0.6, 0.7] | 1,023 | 0.644 | 0.678 | 0.8388 |
 | (0.7, 1.0] | 493 | 0.760 | 0.799 | 0.6307 |
 
 | Outcome | Bin | Matches | Mean predicted | Observed |
 |---|---|---:|---:|---:|
-| home | 0.1–0.2 | 419 | 0.163 | 0.117 |
-| home | 0.2–0.3 | 1,059 | 0.253 | 0.236 |
-| home | 0.3–0.4 | 1,622 | 0.353 | 0.342 |
-| home | 0.4–0.5 | 1,983 | 0.447 | 0.449 |
+| home | 0.1–0.2 | 418 | 0.163 | 0.117 |
+| home | 0.2–0.3 | 1,062 | 0.253 | 0.235 |
+| home | 0.3–0.4 | 1,619 | 0.353 | 0.343 |
+| home | 0.4–0.5 | 1,984 | 0.447 | 0.449 |
 | home | 0.5–0.6 | 1,180 | 0.546 | 0.535 |
 | home | 0.6–0.7 | 802 | 0.645 | 0.690 |
 | home | 0.7–0.8 | 312 | 0.741 | 0.782 |
 | home | 0.8–0.9 | 105 | 0.833 | 0.848 |
 | draw | 0.1–0.2 | 805 | 0.170 | 0.155 |
 | draw | 0.2–0.3 | 6,587 | 0.256 | 0.268 |
-| away | 0.0–0.1 | 279 | 0.074 | 0.057 |
-| away | 0.1–0.2 | 1,354 | 0.155 | 0.123 |
-| away | 0.2–0.3 | 2,128 | 0.254 | 0.247 |
-| away | 0.3–0.4 | 1,837 | 0.344 | 0.336 |
-| away | 0.4–0.5 | 1,029 | 0.447 | 0.458 |
+| away | 0.0–0.1 | 280 | 0.075 | 0.061 |
+| away | 0.1–0.2 | 1,354 | 0.156 | 0.123 |
+| away | 0.2–0.3 | 2,127 | 0.254 | 0.247 |
+| away | 0.3–0.4 | 1,836 | 0.344 | 0.337 |
+| away | 0.4–0.5 | 1,030 | 0.447 | 0.457 |
 | away | 0.5–0.6 | 591 | 0.544 | 0.560 |
 | away | 0.6–0.7 | 221 | 0.639 | 0.638 |
 
@@ -167,15 +167,15 @@ First evaluated at 2026-11-02T19:36:08.358258Z.
 | Season | dixon_coles | dc_xg25 | elo_k15 | gbm_features | scale | ρ |
 |---|---:|---:|---:|---:|---:|---:|
 | 2012 | 0.00 | 0.42 | 0.25 | 0.33 | +0.020 | -0.074 |
-| 2013 | 0.00 | 0.37 | 0.25 | 0.37 | +0.019 | -0.069 |
+| 2013 | 0.00 | 0.37 | 0.26 | 0.37 | +0.019 | -0.069 |
 | 2014 | 0.12 | 0.21 | 0.21 | 0.45 | +0.012 | -0.053 |
 | 2015 | 0.18 | 0.16 | 0.15 | 0.51 | +0.008 | -0.042 |
 | 2016 | 0.37 | 0.00 | 0.13 | 0.50 | +0.001 | -0.049 |
-| 2017 | 0.40 | 0.00 | 0.00 | 0.60 | +0.008 | -0.069 |
+| 2017 | 0.39 | 0.00 | 0.09 | 0.52 | +0.006 | -0.069 |
 | 2018 | 0.24 | 0.15 | 0.09 | 0.52 | +0.015 | -0.069 |
 | 2019 | 0.00 | 0.43 | 0.00 | 0.57 | +0.032 | -0.066 |
 | 2020 | 0.00 | 0.36 | 0.00 | 0.64 | +0.029 | -0.054 |
-| 2021 | 0.00 | 0.00 | 0.00 | 1.00 | +0.017 | -0.053 |
+| 2021 | 0.00 | 0.32 | 0.00 | 0.68 | +0.032 | -0.053 |
 | 2022 | 0.00 | 0.23 | 0.00 | 0.77 | +0.030 | -0.050 |
 | 2023 | 0.00 | 0.22 | 0.00 | 0.78 | +0.019 | -0.043 |
 | 2024 | 0.00 | 0.25 | 0.00 | 0.75 | +0.020 | -0.042 |
@@ -359,3 +359,9 @@ Learned multipliers (hazard model):
 - Hypothesis: The hazard model's 10-minute goal probabilities and next-scorer probabilities should be calibrated on held-out StatsBomb matches, beating a constant base rate.
 - Result: 10176 checkpoints every 5 minutes: P(goal in next 10') mean 0.247 vs observed 0.250, ECE 0.004, log loss 0.5595 vs constant base rate 0.5628; next-goal (home/away/none) log loss 0.9360, accuracy 0.546; leader goes on to win: predicted 0.816 vs observed 0.809 over 5303 checkpoints with a lead, ECE 0.016, Brier 0.1299.
 - Decision: keep (calibrated)
+
+### Reproducible ensemble weight fitting
+
+- Hypothesis: The Nelder-Mead fit of ensemble weights can stop at different local optima when only the floating-point summation order of the training rows changes; deterministic ordering plus multi-start L-BFGS should make the fit reproducible without hurting accuracy.
+- Result: Season 2017 example: Nelder-Mead objective 38,587.30 vs multi-start L-BFGS 38,585.69 (different weights). New fit is identical after shuffling input rows (max rate difference 0.0). Validation log loss diff +0.00005 (CI -0.00004..+0.00014), score NLL +0.00022 (CI -0.00009..+0.00059); final-test predictions unchanged (same weights for 2023-2026).
+- Decision: adopt for reproducibility as ensemble@v3 (accuracy unchanged)
