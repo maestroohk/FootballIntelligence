@@ -1,5 +1,5 @@
 .venv/
-data/
+/data/
 **/bin/
 **/obj/
 __pycache__/
