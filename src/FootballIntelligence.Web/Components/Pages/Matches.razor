@@ -127,12 +127,11 @@
         }
         else if (view == "upcoming")
         {
-            rows = Football.Upcoming(150, comp).Where(m => string.IsNullOrEmpty(team) || m.HomeName.Contains(team, StringComparison.OrdinalIgnoreCase) || m.AwayName.Contains(team, StringComparison.OrdinalIgnoreCase)).ToList();
+            rows = Football.Upcoming(150, comp, string.IsNullOrWhiteSpace(team) ? null : team.Trim());
         }
         else
         {
-            rows = Football.Search(comp, long.TryParse(season, out var s) ? s : null, string.IsNullOrWhiteSpace(team) ? null : team, 150)
-                .Where(m => m.Status == "finished").ToList();
+            rows = Football.Search(comp, long.TryParse(season, out var s) ? s : null, string.IsNullOrWhiteSpace(team) ? null : team, 150, "finished");
         }
     }
 }

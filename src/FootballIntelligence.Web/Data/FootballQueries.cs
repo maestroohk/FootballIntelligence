@@ -19,9 +19,14 @@ public class FootballQueries(Database db)
             ORDER BY CASE p2.purpose WHEN 'forward' THEN 0 ELSE 1 END, CASE WHEN p2.model_version LIKE 'bookmaker%' THEN 1 ELSE 0 END, p2.prediction_id DESC LIMIT 1)
         """;
 
-    public List<MatchRow> Upcoming(int limit, string? competition = null) => db.Query<MatchRow>(
-        MatchSelect + " WHERE m.status='scheduled' AND m.match_date >= @today AND (@competition IS NULL OR m.competition=@competition) ORDER BY m.match_date, m.kickoff LIMIT @limit",
-        new { limit, competition, today = DateTime.Now.ToString("yyyy-MM-dd") }).ToList();
+    private const string TeamFilter = """
+        (@team IS NULL OR th.name LIKE '%'||@team||'%' OR ta.name LIKE '%'||@team||'%'
+         OR EXISTS (SELECT 1 FROM team_aliases a WHERE a.team_id IN (m.home_team_id, m.away_team_id) AND a.alias LIKE '%'||@team||'%'))
+        """;
+
+    public List<MatchRow> Upcoming(int limit, string? competition = null, string? team = null) => db.Query<MatchRow>(
+        MatchSelect + $" WHERE m.status='scheduled' AND m.match_date >= @today AND (@competition IS NULL OR m.competition=@competition) AND {TeamFilter} ORDER BY m.match_date, m.kickoff LIMIT @limit",
+        new { limit, competition, team, today = DateTime.Now.ToString("yyyy-MM-dd") }).ToList();
 
     public List<MatchRow> AwaitingResult(int limit) => db.Query<MatchRow>(
         MatchSelect + " WHERE m.status='scheduled' AND m.match_date < @today ORDER BY m.match_date DESC LIMIT @limit",
@@ -33,14 +38,14 @@ public class FootballQueries(Database db)
 
     public List<MatchRow> OnDate(string date) => db.Query<MatchRow>(MatchSelect + " WHERE m.match_date=@date ORDER BY m.kickoff, m.competition", new { date }).ToList();
 
-    public List<MatchRow> Search(string? competition, long? season, string? team, int limit) => db.Query<MatchRow>(
-        MatchSelect + """
+    public List<MatchRow> Search(string? competition, long? season, string? team, int limit, string? status = null) => db.Query<MatchRow>(
+        MatchSelect + $"""
          WHERE (@competition IS NULL OR m.competition=@competition)
+           AND (@status IS NULL OR m.status=@status)
            AND (@season IS NULL OR m.season=@season)
-           AND (@team IS NULL OR th.name LIKE '%'||@team||'%' OR ta.name LIKE '%'||@team||'%'
-                OR EXISTS (SELECT 1 FROM team_aliases a WHERE a.team_id IN (m.home_team_id, m.away_team_id) AND a.alias LIKE '%'||@team||'%'))
+           AND {TeamFilter}
          ORDER BY m.match_date DESC, m.match_id DESC LIMIT @limit
-        """, new { competition, season, team, limit }).ToList();
+        """, new { competition, season, team, limit, status }).ToList();
 
     public MatchRow? Match(long id) => db.Single<MatchRow>(MatchSelect + " WHERE m.match_id=@id", new { id });
 
