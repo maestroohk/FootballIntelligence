@@ -83,7 +83,7 @@ Downloads are cached in `data/raw/` and the database is `data/football.db`; both
 
 ## Team crests
 
-Teams are shown with a generated shield in consistent team colours. To show official crests, add image files you are licensed to use as `src/FootballIntelligence.Web/wwwroot/crests/{team_id}.svg` (or `.png` / `.webp`); the app picks them up automatically and falls back to the shield otherwise. No logos are hotlinked or bundled. Team names shown in the app come from the canonical team record plus provider aliases (for example football-data.co.uk's `Man United` is displayed as `Manchester United`), so aliases never create duplicate teams.
+Teams are shown with a generated shield in the club's real colours (a curated list in `Services/TeamIdentity.cs`, with a hashed colour for other teams) and leagues with their country flag. Each team has a profile page (`/team/{id}`) with record, home/away split, form, fixtures and the league table computed from stored results. To show official crests, add image files you are licensed to use as `src/FootballIntelligence.Web/wwwroot/crests/{slug}.svg` (slug of the team name, e.g. `manchester-united.svg`; `{team_id}` also works, and `.png` / `.webp` are accepted); the app picks them up automatically and falls back to the shield otherwise. No logos are hotlinked or bundled. Team names shown in the app come from the canonical team record plus provider aliases (for example football-data.co.uk's `Man United` is displayed as `Manchester United`), so aliases never create duplicate teams.
 
 ## Configuration
 
@@ -102,6 +102,8 @@ Teams are shown with a generated shield in consistent team colours. To show offi
 `appsettings.json` → `Engine` holds the database, Python and engine paths and `StartWorker`.
 
 ## Continuing on another Windows laptop
+
+Downloads use the Windows certificate store (`truststore`), so they work behind HTTPS-inspecting corporate proxies. Some corporate web filters block football-data.co.uk (rated as gambling); on such a network the history and odds cannot be downloaded, so copy `data/` from another machine or run `setup.ps1` on an unfiltered network.
 
 1. Install Git, the .NET 10 SDK and Python 3.12 (the `py` launcher is used if present).
 2. Clone and set up:

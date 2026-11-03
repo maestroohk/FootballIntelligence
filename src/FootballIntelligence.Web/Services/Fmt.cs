@@ -43,14 +43,6 @@ public static class Fmt
         return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : name.Length >= 3 ? name[..3].ToUpperInvariant() : name.ToUpperInvariant();
     }
 
-    public static string TeamColor(string name)
-    {
-        var h = 0;
-        foreach (var c in name) h = (h * 31 + c) & 0x7fffffff;
-        var hue = h % 360;
-        return $"hsl({hue},45%,38%)";
-    }
-
     public static string Minute(double clock, long period = 0)
     {
         var m = (int)Math.Floor(clock) + 1;
@@ -81,10 +73,18 @@ public static class Fmt
 
     public static (string Primary, string Secondary) TeamColors(string name)
     {
+        if (TeamIdentity.KnownColors(name) is { } known) return known;
         var h = 0;
         foreach (var c in name) h = (h * 31 + c) & 0x7fffffff;
         var hue = h % 360;
         return ($"hsl({hue},55%,42%)", $"hsl({(hue + 140) % 360},45%,88%)");
+    }
+
+    public static bool IsLight(string color)
+    {
+        if (!color.StartsWith('#') || color.Length != 7) return false;
+        var r = Convert.ToInt32(color[1..3], 16); var g = Convert.ToInt32(color[3..5], 16); var b = Convert.ToInt32(color[5..7], 16);
+        return 0.299 * r + 0.587 * g + 0.114 * b > 170;
     }
 
     public static string ModelLabel(string? version) => version is null ? "—" : version.Split('@')[0] switch

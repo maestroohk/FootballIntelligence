@@ -34,6 +34,22 @@
             <button class="tab @(view == "date" ? "active" : "")" @onclick='() => SetView("date")'>By date</button>
         </div>
     </div>
+    <div class="league-filter">
+        <button class="lf @(competition == "" ? "active" : "")" @onclick='() => SetCompetition("")'>All leagues</button>
+        @foreach (var c in competitions)
+        {
+            <button class="lf @(competition == c ? "active" : "")" @onclick="() => SetCompetition(c)"><LeagueChip Code="@c" /></button>
+        }
+    </div>
+    @if (teams.Count > 0)
+    {
+        <div class="team-chips">
+            @foreach (var t in teams)
+            {
+                <a class="team-chip" href="team/@t.TeamId"><Crest Name="@t.Name" TeamId="@t.TeamId" />@t.Name<span class="small faint">@(t.Competition is null ? "" : Fmt.CompetitionName(t.Competition))</span></a>
+            }
+        </div>
+    }
 </div>
 
 <div class="card">
@@ -67,12 +83,19 @@
         Load();
     }
     private List<MatchRow> rows = [];
+    private List<TeamInfo> teams = [];
 
     protected override void OnInitialized()
     {
-        competitions = Football.Competitions();
+        competitions = Football.Competitions().OrderBy(c => Array.IndexOf(["E0", "SP1", "D1", "I1", "F1"], c) is var i && i < 0 ? 99 : i).ToList();
         Load();
         if (rows.Count == 0) SetView("results");
+    }
+
+    private void SetCompetition(string c)
+    {
+        competition = c;
+        Load();
     }
 
     private void SetView(string v)
@@ -84,6 +107,7 @@
     private void Load()
     {
         string? comp = string.IsNullOrEmpty(competition) ? null : competition;
+        teams = team.Trim().Length >= 3 ? Football.FindTeams(team.Trim(), 8) : [];
         if (view == "date")
         {
             rows = Football.OnDate(day.ToString("yyyy-MM-dd")).Where(m => (string.IsNullOrEmpty(competition) || m.Competition == competition)

@@ -9,8 +9,8 @@ else
     <svg class="crest @(Large ? "lg" : "")" viewBox="0 0 40 46" role="img" aria-label="@Name">
         <title>@Name</title>
         <path d="M20 1 L38 7 V22 C38 34 30 41 20 45 C10 41 2 34 2 22 V7 Z" fill="@primary" stroke="@secondary" stroke-width="2" />
-        <path d="M20 1 L38 7 V14 H2 V7 Z" fill="@secondary" opacity=".22" />
-        <text x="20" y="29" text-anchor="middle" font-size="@(Fmt.Initials(Name).Length > 2 ? 11 : 13)" font-weight="800" fill="#fff" font-family="Inter, sans-serif">@Fmt.Initials(Name)</text>
+        <path d="M20 1 L38 7 V14 H2 V7 Z" fill="@secondary" opacity=".55" />
+        <text x="20" y="31" text-anchor="middle" font-size="@(Fmt.Initials(Name).Length > 2 ? 11 : 13)" font-weight="800" fill="@(Fmt.IsLight(primary) ? "#111" : "#fff")" font-family="Inter, sans-serif">@Fmt.Initials(Name)</text>
     </svg>
 }
 
@@ -25,12 +25,15 @@ else
     {
         get
         {
-            if (TeamId is null) return null;
             available ??= Directory.Exists(Path.Combine(Env.WebRootPath, "crests"))
                 ? Directory.GetFiles(Path.Combine(Env.WebRootPath, "crests")).Select(Path.GetFileName).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase)
                 : [];
+            var slug = TeamIdentity.Slug(Name);
             foreach (var ext in new[] { "svg", "png", "webp" })
-                if (available.Contains($"{TeamId}.{ext}")) return $"crests/{TeamId}.{ext}";
+            {
+                if (available.Contains($"{slug}.{ext}")) return $"crests/{slug}.{ext}";
+                if (TeamId is not null && available.Contains($"{TeamId}.{ext}")) return $"crests/{TeamId}.{ext}";
+            }
             return null;
         }
     }

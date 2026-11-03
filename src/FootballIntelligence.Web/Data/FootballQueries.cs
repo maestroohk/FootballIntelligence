@@ -99,6 +99,41 @@ public class FootballQueries(Database db)
         WHERE a.sb_match_id=@sbMatchId ORDER BY a.side DESC, a.started DESC, a.minute_on
         """, new { sbMatchId }).ToList();
 
+    public TeamInfo? Team(long id) => db.Single<TeamInfo>($"""
+        SELECT t.team_id, {Database.DisplayName("t.team_id", "t.name")} name, t.country,
+               (SELECT m.competition FROM matches m WHERE m.home_team_id=t.team_id OR m.away_team_id=t.team_id ORDER BY m.match_date DESC LIMIT 1) competition,
+               (SELECT m.season FROM matches m WHERE (m.home_team_id=t.team_id OR m.away_team_id=t.team_id) AND m.status='finished' ORDER BY m.match_date DESC LIMIT 1) season,
+               (SELECT MAX(m.match_date) FROM matches m WHERE (m.home_team_id=t.team_id OR m.away_team_id=t.team_id) AND m.status='finished') last_played
+        FROM teams t WHERE t.team_id=@id
+        """, new { id });
+
+    public List<TeamInfo> FindTeams(string search, int limit) => db.Query<TeamInfo>($"""
+        SELECT t.team_id, {Database.DisplayName("t.team_id", "t.name")} name, t.country,
+               (SELECT m.competition FROM matches m WHERE m.home_team_id=t.team_id OR m.away_team_id=t.team_id ORDER BY m.match_date DESC LIMIT 1) competition,
+               NULL season,
+               (SELECT MAX(m.match_date) FROM matches m WHERE (m.home_team_id=t.team_id OR m.away_team_id=t.team_id) AND m.status='finished') last_played
+        FROM teams t
+        WHERE t.name LIKE '%'||@search||'%' OR EXISTS (SELECT 1 FROM team_aliases a WHERE a.team_id=t.team_id AND a.alias LIKE '%'||@search||'%')
+        ORDER BY last_played DESC LIMIT @limit
+        """, new { search, limit }).ToList();
+
+    public List<MatchRow> TeamMatches(long teamId, string status, int limit) => db.Query<MatchRow>(
+        MatchSelect + $" WHERE (m.home_team_id=@teamId OR m.away_team_id=@teamId) AND m.status=@status ORDER BY m.match_date {(status == "finished" ? "DESC" : "ASC")}, m.kickoff LIMIT @limit",
+        new { teamId, status, limit }).ToList();
+
+    public List<StandingRow> Standings(string competition, long season) => db.Query<StandingRow>($"""
+        WITH rows AS (
+            SELECT home_team_id team_id, fthg gf, ftag ga, CASE WHEN fthg>ftag THEN 3 WHEN fthg=ftag THEN 1 ELSE 0 END pts, 1 home FROM matches
+            WHERE competition=@competition AND season=@season AND status='finished'
+            UNION ALL
+            SELECT away_team_id, ftag, fthg, CASE WHEN ftag>fthg THEN 3 WHEN ftag=fthg THEN 1 ELSE 0 END, 0 FROM matches
+            WHERE competition=@competition AND season=@season AND status='finished')
+        SELECT r.team_id, {Database.DisplayName("r.team_id", "t.name")} name, COUNT(*) played, SUM(r.pts=3) won, SUM(r.pts=1) drawn, SUM(r.pts=0) lost,
+               SUM(r.gf) goals_for, SUM(r.ga) goals_against, SUM(r.pts) points
+        FROM rows r JOIN teams t ON t.team_id=r.team_id
+        GROUP BY r.team_id ORDER BY points DESC, SUM(r.gf)-SUM(r.ga) DESC, SUM(r.gf) DESC, name
+        """, new { competition, season }).ToList();
+
     public List<string> Competitions() => db.Query<string>("SELECT code FROM competitions ORDER BY tier, code").ToList();
 
     public List<PlayerSummary> Players(string? search, string? team, string? position, int limit) => db.Query<PlayerSummary>("""

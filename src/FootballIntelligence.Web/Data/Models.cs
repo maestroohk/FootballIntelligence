@@ -367,3 +367,26 @@ public class TeamTactics
     public double GoalsAgainst { get; set; }
     public double PerMatch(double v) => Matches > 0 ? v / Matches : 0;
 }
+
+public class TeamInfo
+{
+    public long TeamId { get; set; }
+    public string Name { get; set; } = "";
+    public string Country { get; set; } = "";
+    public string? Competition { get; set; }
+    public long? Season { get; set; }
+    public string? LastPlayed { get; set; }
+}
+
+public class StandingRow
+{
+    public long TeamId { get; set; }
+    public string Name { get; set; } = "";
+    public long Played { get; set; }
+    public long Won { get; set; }
+    public long Drawn { get; set; }
+    public long Lost { get; set; }
+    public long GoalsFor { get; set; }
+    public long GoalsAgainst { get; set; }
+    public long Points { get; set; }
+}

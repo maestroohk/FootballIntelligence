@@ -1,0 +1,132 @@
+@page "/team/{Id:long}"
+@inherits FeedComponent
+@inject FootballQueries Football
+
+<PageTitle>@(team?.Name ?? "Team") · Football Intelligence</PageTitle>
+
+@if (team is null)
+{
+    <div class="empty">Team not found.</div>
+    return;
+}
+
+@{ var (primary, secondary) = Fmt.TeamColors(team.Name); }
+<div class="card team-hero" style="--team:@primary;--team2:@secondary">
+    <Crest Name="@team.Name" TeamId="@team.TeamId" Large="true" />
+    <div class="stack" style="gap:6px">
+        <h1>@team.Name</h1>
+        <div class="row">
+            @if (team.Competition is not null) { <LeagueChip Code="@team.Competition" /> }
+            @if (team.Season is not null) { <span class="small faint">@team.Season/@((team.Season + 1) % 100)</span> }
+        </div>
+        <div class="row small">
+            @if (Stale) { <span class="badge warn">Historical data · last match @team.LastPlayed</span> }
+            else if (team.LastPlayed is not null) { <span class="badge ok">Current season · last result @team.LastPlayed</span> }
+            @if (upcoming.Count > 0) { <span class="badge info">@upcoming.Count upcoming fixture@(upcoming.Count == 1 ? "" : "s")</span> }
+        </div>
+    </div>
+    @if (me is not null)
+    {
+        <div class="team-record">
+            <div><span class="value">@(table.FindIndex(r => r.TeamId == team.TeamId) + 1)</span><span class="label">Position</span></div>
+            <div><span class="value">@me.Points</span><span class="label">Points</span></div>
+            <div><span class="value">@me.Won-@me.Drawn-@me.Lost</span><span class="label">W-D-L</span></div>
+            <div><span class="value">@me.GoalsFor:@me.GoalsAgainst</span><span class="label">Goals</span></div>
+        </div>
+    }
+</div>
+
+<div class="grid g-main-side">
+    <div class="stack" style="gap:16px">
+        <div class="card">
+            <div class="card-head"><h2>Upcoming fixtures</h2><span class="sub">probabilities from stored forward predictions</span></div>
+            @if (upcoming.Count == 0) { <div class="empty">No scheduled fixtures are known for this team.</div> }
+            @foreach (var m in upcoming) { <MatchLine Match="m" /> }
+        </div>
+        <div class="card">
+            <div class="card-head"><h2>Recent results</h2><span class="sub">with the prediction stored for each match</span></div>
+            @foreach (var m in results.Take(12)) { <MatchLine Match="m" /> }
+        </div>
+    </div>
+    <div class="stack" style="gap:16px">
+        <div class="card">
+            <div class="card-head"><h2>Form</h2><span class="sub">last 10, oldest to newest</span></div>
+            <div class="row" style="gap:4px">
+                @foreach (var m in results.Take(10).Reverse())
+                {
+                    var o = Outcome(m);
+                    <a href="matches/@m.MatchId" class="form-pill @o" title="@m.MatchDate @m.HomeName @m.Fthg–@m.Ftag @m.AwayName">@o</a>
+                }
+            </div>
+            @if (season.Count > 0)
+            {
+                <table class="data" style="margin-top:12px">
+                    <thead><tr><th>@team.Season/@((team.Season + 1) % 100)</th><th class="num">P</th><th class="num">W</th><th class="num">D</th><th class="num">L</th><th class="num">GF</th><th class="num">GA</th><th class="num">Pts/g</th></tr></thead>
+                    <tbody>
+                        @foreach (var (label, rows) in new[] { ("Home", season.Where(m => m.HomeTeamId == team.TeamId).ToList()), ("Away", season.Where(m => m.AwayTeamId == team.TeamId).ToList()), ("All", season) })
+                        {
+                            var w = rows.Count(m => Outcome(m) == "W"); var d = rows.Count(m => Outcome(m) == "D");
+                            <tr>
+                                <td>@label</td><td class="num">@rows.Count</td><td class="num">@w</td><td class="num">@d</td><td class="num">@(rows.Count - w - d)</td>
+                                <td class="num">@rows.Sum(m => GoalsFor(m))</td><td class="num">@rows.Sum(m => GoalsAgainst(m))</td>
+                                <td class="num">@(rows.Count == 0 ? "—" : ((3.0 * w + d) / rows.Count).ToString("F2", System.Globalization.CultureInfo.InvariantCulture))</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+        @if (table.Count > 0)
+        {
+            <div class="card">
+                <div class="card-head"><h2>@Fmt.CompetitionName(team.Competition!) table</h2><span class="sub">computed from results in the database</span></div>
+                <table class="data standings">
+                    <thead><tr><th class="num">#</th><th>Team</th><th class="num">P</th><th class="num">GD</th><th class="num">Pts</th></tr></thead>
+                    <tbody>
+                        @for (var i = 0; i < table.Count; i++)
+                        {
+                            var r = table[i];
+                            <tr class="@(r.TeamId == team.TeamId ? "me" : "")">
+                                <td class="num faint">@(i + 1)</td>
+                                <td><a href="team/@r.TeamId"><Crest Name="@r.Name" TeamId="@r.TeamId" />@r.Name</a></td>
+                                <td class="num">@r.Played</td><td class="num">@((r.GoalsFor - r.GoalsAgainst).ToString("+0;-0;0"))</td><td class="num"><b>@r.Points</b></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private TeamInfo? team;
+    private List<MatchRow> upcoming = [];
+    private List<MatchRow> results = [];
+    private List<MatchRow> season = [];
+    private List<StandingRow> table = [];
+    private StandingRow? me;
+
+    private bool Stale => team?.LastPlayed is null || DateTime.Parse(team.LastPlayed, System.Globalization.CultureInfo.InvariantCulture) < DateTime.Today.AddDays(-120);
+
+    protected override void OnParametersSet() => Load();
+
+    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange;
+
+    protected override void Load()
+    {
+        team = Football.Team(Id);
+        if (team is null) return;
+        upcoming = Football.TeamMatches(Id, "scheduled", 10).Where(m => string.CompareOrdinal(m.MatchDate, DateTime.Today.ToString("yyyy-MM-dd")) >= 0).ToList();
+        results = Football.TeamMatches(Id, "finished", 60);
+        season = results.Where(m => m.Season == team.Season && m.Competition == team.Competition).ToList();
+        table = team.Competition is null || team.Season is null ? [] : Football.Standings(team.Competition, team.Season.Value);
+        me = table.FirstOrDefault(r => r.TeamId == Id);
+    }
+
+    private long GoalsFor(MatchRow m) => (m.HomeTeamId == Id ? m.Fthg : m.Ftag) ?? 0;
+    private long GoalsAgainst(MatchRow m) => (m.HomeTeamId == Id ? m.Ftag : m.Fthg) ?? 0;
+    private string Outcome(MatchRow m) => GoalsFor(m) > GoalsAgainst(m) ? "W" : GoalsFor(m) == GoalsAgainst(m) ? "D" : "L";
+}

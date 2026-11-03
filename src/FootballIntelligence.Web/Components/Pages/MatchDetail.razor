@@ -11,7 +11,7 @@
 }
 
 <div class="card hero">
-    <div class="side"><Crest Name="@match.HomeName" TeamId="@match.HomeTeamId" Large="true" /><div class="name">@match.HomeName</div><div class="small dim">Home</div></div>
+    <div class="side"><Crest Name="@match.HomeName" TeamId="@match.HomeTeamId" Large="true" /><div class="name"><a href="team/@match.HomeTeamId">@match.HomeName</a></div><div class="small dim">Home</div></div>
     <div class="center">
         <div class="row" style="justify-content:center"><LeagueChip Code="@match.Competition" /><span class="small faint">@match.Season/@((match.Season + 1) % 100)</span></div>
         <div class="big-score">@(match.Fthg is null ? "vs" : $"{match.Fthg} – {match.Ftag}")</div>
@@ -23,7 +23,7 @@
             else if (match.Purpose == "backtest") { <span class="badge">walk-forward backtest prediction</span> }
         </div>
     </div>
-    <div class="side"><Crest Name="@match.AwayName" TeamId="@match.AwayTeamId" Large="true" /><div class="name">@match.AwayName</div><div class="small dim">Away</div></div>
+    <div class="side"><Crest Name="@match.AwayName" TeamId="@match.AwayTeamId" Large="true" /><div class="name"><a href="team/@match.AwayTeamId">@match.AwayName</a></div><div class="small dim">Away</div></div>
 </div>
 
 @if (mk is null)

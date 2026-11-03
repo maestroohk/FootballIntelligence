@@ -1,4 +1,4 @@
-<span class="league-chip" title="@Fmt.CompetitionName(Code)"><span class="league-dot" style="background:@Fmt.LeagueColor(Code)"></span>@if (ShowCountry && Fmt.Country(Code) != "") {<span class="country">@Fmt.Country(Code)</span>}@(Short ? Code : Fmt.CompetitionName(Code))</span>
+<span class="league-chip" title="@Fmt.CompetitionName(Code)"><span class="league-dot" style="background:@Fmt.LeagueColor(Code)"></span>@if (ShowCountry && Fmt.Country(Code) != "") {<Flag Country="@Fmt.Country(Code)" />}@(Short ? Code : Fmt.CompetitionName(Code))</span>
 
 @code {
     [Parameter, EditorRequired] public string Code { get; set; } = "";
