@@ -21,18 +21,25 @@ public class ValueQueries(Database db)
         SELECT d.decision_id, d.created_at, d.match_id, d.rule, d.decision, d.reason, d.market, d.line, d.selection, d.bookmaker, d.odds,
                d.odds_observed_at, d.model_prob, d.market_prob, d.ev, d.stake, m.match_date, m.kickoff, m.competition,
                {Database.DisplayName("m.home_team_id", "th.name")} home_name, {Database.DisplayName("m.away_team_id", "ta.name")} away_name,
-               s.home_goals, s.away_goals, s.profit, s.settled_at
+               s.home_goals, s.away_goals, s.profit, s.settled_at, s.outcome, d.match_date planned_date,
+               COALESCE({Closing("d.bookmaker")}, {Closing("'pinnacle'")}, {Closing("'market_avg'")}) closing_odds
         FROM paper_decisions d JOIN matches m ON m.match_id = d.match_id
         JOIN teams th ON th.team_id = m.home_team_id JOIN teams ta ON ta.team_id = m.away_team_id
         LEFT JOIN paper_settlements s ON s.decision_id = d.decision_id
         ORDER BY d.decision = 'bet' DESC, m.match_date DESC, d.ev DESC LIMIT @limit
         """, new { limit }).ToList();
 
+    private static string Closing(string book) =>
+        $"(SELECT o.odds FROM market_odds o WHERE o.match_id = d.match_id AND o.market = d.market AND o.line = d.line AND o.selection = d.selection AND o.timing = 'close' AND o.bookmaker = {book})";
+
+    public MarketEfficiency? Efficiency() => Kv<MarketEfficiency>("market_efficiency");
+
     public bool PaperExists() => db.Single<long>("SELECT COUNT(*) FROM sqlite_master WHERE name = 'paper_decisions'") > 0;
 
     public List<ExperimentRow> MarketExperiments() => db.Query<ExperimentRow>("""
         SELECT * FROM experiments
         WHERE name LIKE '%bet%' OR name LIKE '%market%' OR name LIKE '%bookmaker%' OR name LIKE '%favourite%' OR name LIKE '%calibration%' OR name LIKE '%price%'
+           OR name LIKE '%distribution%' OR name LIKE '%stakes%'
         ORDER BY experiment_id DESC
         """).ToList();
 }
@@ -186,6 +193,74 @@ public class PaperDecisionRow
     public long? AwayGoals { get; set; }
     public double? Profit { get; set; }
     public string? SettledAt { get; set; }
+    public string? Outcome { get; set; }
+    public string? PlannedDate { get; set; }
+    public double? ClosingOdds { get; set; }
+    public double? Clv => Outcome == "settled" && ClosingOdds is > 1 && Odds is not null ? Odds / ClosingOdds - 1 : null;
+}
+
+public class MarketEfficiency
+{
+    public string Scope { get; set; } = "";
+    public Dictionary<string, BookEfficiency> Bookmakers { get; set; } = [];
+    public Dictionary<string, List<OddsBandRow>> Longshot { get; set; } = [];
+    public Dictionary<string, List<DrawBandRow>> Draws { get; set; } = [];
+    public List<LeagueEfficiency> Leagues { get; set; } = [];
+    public List<BandRule> BandRules { get; set; } = [];
+    public OpeningClosing? OpeningVsClosing { get; set; }
+}
+
+public class BookEfficiency
+{
+    public long Matches { get; set; }
+    public double MeanMargin { get; set; }
+    public double RoiAll { get; set; }
+}
+
+public class OddsBandRow
+{
+    public string Band { get; set; } = "";
+    public long N { get; set; }
+    public double MarketProb { get; set; }
+    public double WinRate { get; set; }
+    public double Roi { get; set; }
+}
+
+public class DrawBandRow
+{
+    public string Band { get; set; } = "";
+    public long N { get; set; }
+    public double MarketProb { get; set; }
+    public double Rate { get; set; }
+}
+
+public class LeagueEfficiency
+{
+    public string Competition { get; set; } = "";
+    public long Matches { get; set; }
+    public double Margin { get; set; }
+    public double LogLoss { get; set; }
+    public double RoiPinnacle { get; set; }
+    public double? RoiBestPrice { get; set; }
+}
+
+public class BandRule
+{
+    public string Bookmaker { get; set; } = "";
+    public double OddsMin { get; set; }
+    public double OddsMax { get; set; }
+    public StrategySummary? Development { get; set; }
+    public StrategySummary? Holdout { get; set; }
+    public StrategySummary? Final { get; set; }
+}
+
+public class OpeningClosing
+{
+    public long N { get; set; }
+    public double PreCloseLogLoss { get; set; }
+    public double CloseLogLoss { get; set; }
+    public double ShareMovedTowardsResult { get; set; }
+    public double ShareMovedAgainstResult { get; set; }
 }
 
 public static class ValueFmt
@@ -214,6 +289,13 @@ public static class ValueFmt
     }
 
     private static string Signed(double v) => v == 0 ? "0" : (v > 0 ? "+" : "−") + Math.Abs(v).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    public static string Band(string band)
+    {
+        var parts = band.Trim('[', ')', ']', '(').Split(',', StringSplitOptions.TrimEntries);
+        if (parts.Length != 2 || !double.TryParse(parts[0], System.Globalization.CultureInfo.InvariantCulture, out var lo) || !double.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var hi)) return band;
+        return hi >= 100 ? $"{lo:0.00}+" : $"{lo:0.00}–{hi:0.00}";
+    }
 
     public static string Ci(List<double>? ci) => ci is { Count: 2 } ? $"[{Fmt.Pct(ci[0], 1)}, {Fmt.Pct(ci[1], 1)}]" : "";
 }

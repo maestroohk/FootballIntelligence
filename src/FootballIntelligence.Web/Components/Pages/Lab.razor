@@ -234,16 +234,49 @@ else if (tab == "inplay")
 }
 else
 {
+    @if (challengers.Count > 0)
+    {
+        <div class="card">
+            <div class="card-head"><h2>Challenger studies</h2><span class="sub">gain = baseline log loss − candidate log loss (positive means the candidate is better) · 95% CI from block bootstrap over league-seasons</span></div>
+            <div class="table-wrap">
+                <table class="data compact">
+                    <thead><tr><th>Study</th><th>Candidate</th><th>Baseline</th><th>Evaluated on</th><th class="num">n</th><th class="num">Gain</th><th class="num">95% CI</th><th>Status</th></tr></thead>
+                    <tbody>
+                        @foreach (var c in challengers)
+                        {
+                            <tr>
+                                <td class="small">@c.Study</td><td>@c.Candidate</td><td class="small dim">@c.Baseline</td><td class="small dim">@c.Period</td>
+                                <td class="num">@c.N.ToString("N0")</td>
+                                <td class="num @(c.Low > 0 ? "good" : c.High < 0 ? "bad" : "")">@Fmt.Signed(c.Gain, 5)</td>
+                                <td class="num small dim">[@Fmt.Signed(c.Low, 5), @Fmt.Signed(c.High, 5)]</td>
+                                <td><span class="badge @(c.Passed ? "ok" : "")">@(c.Passed ? "passed" : "not promoted")</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="small faint" style="margin-top:6px">For scale: the opening Pinnacle prices beat the champion by about 0.012 log loss. A candidate is promoted only if it passes its pre-registered criterion on validation seasons; later seasons are used once, for confirmation.</div>
+        </div>
+    }
     <div class="card">
-        <div class="card-head"><h2>Experiment log</h2><span class="sub">hypothesis → measured result → decision</span></div>
+        <div class="card-head">
+            <h2>Experiment log</h2>
+            <div class="tabs" style="border:none">
+                @foreach (var f in new[] { "all", "adopted", "rejected", "inconclusive" })
+                {
+                    <button class="tab @(decisionFilter == f ? "active" : "")" @onclick="() => decisionFilter = f">@f (@experiments.Count(e => f == "all" || DecisionKind(e.Decision) == f))</button>
+                }
+            </div>
+        </div>
         @if (experiments.Count == 0) { <div class="empty">No experiments recorded.</div> }
-        @foreach (var e in experiments)
+        @foreach (var e in experiments.Where(e => decisionFilter == "all" || DecisionKind(e.Decision) == decisionFilter))
         {
+            var kind = DecisionKind(e.Decision);
             <div style="padding:10px 0;border-bottom:1px solid var(--border-soft)">
-                <div class="spread"><b>@e.Name</b><span class="small faint">@Fmt.Local(e.CreatedAt)</span></div>
+                <div class="spread"><b>@e.Name</b><span class="small faint">#@e.ExperimentId · @Fmt.Local(e.CreatedAt)</span></div>
                 <div class="small dim">Hypothesis: @e.Hypothesis</div>
                 <div class="small">Result: @e.Result</div>
-                <div class="small"><span class="badge @(e.Decision?.StartsWith("adopt") == true ? "ok" : e.Decision?.StartsWith("reject") == true ? "bad" : "")">@e.Decision</span></div>
+                <div class="small"><span class="badge @(kind == "adopted" ? "ok" : kind == "rejected" ? "bad" : "warn")">@kind</span> @e.Decision</div>
             </div>
         }
     </div>
@@ -271,6 +304,56 @@ else
     private List<(string, double)> importance = [];
     private List<ModelVersionRow> versions = [];
     private List<ExperimentRow> experiments = [];
+    private List<ChallengerRow> challengers = [];
+    private string decisionFilter = "all";
+
+    private static readonly Dictionary<string, string> ShapeNames = new()
+    {
+        ["bivariate_poisson"] = "Bivariate Poisson",
+        ["com_poisson"] = "Conway–Maxwell–Poisson",
+        ["gap_rho"] = "Gap-dependent ρ",
+        ["diagonal_gap"] = "Gap-dependent draw inflation",
+    };
+
+    private record ChallengerRow(string Study, string Candidate, string Baseline, string Period, long N, double Gain, double Low, double High, bool Passed);
+
+    private static string DecisionKind(string? d)
+    {
+        var x = (d ?? "").ToLowerInvariant();
+        if (x.StartsWith("inconclusive") || x.StartsWith("not adopted") || x.StartsWith("not promoted") || x.StartsWith("future")) return "inconclusive";
+        if (x.StartsWith("reject")) return "rejected";
+        if (x.StartsWith("adopt") || x.StartsWith("keep") || x.StartsWith("confirmed")) return "adopted";
+        return "inconclusive";
+    }
+
+    private void LoadChallengers()
+    {
+        challengers = [];
+        ChallengerRow Row(string study, string cand, string baseline, string period, JsonElement cmp, bool passed) =>
+            new(study, cand, baseline, period, cmp.GetProperty("n").GetInt64(), cmp.GetProperty("mean_diff").GetDouble(), cmp.GetProperty("ci_low").GetDouble(), cmp.GetProperty("ci_high").GetDouble(), passed);
+        if (Research.KvJson("shape_study") is { } shape && shape.TryGetProperty("candidates", out var cands))
+        {
+            foreach (var c in cands.EnumerateObject())
+            {
+                var v = c.Value.GetProperty("validation_primary").GetProperty("log_loss_vs_base");
+                challengers.Add(Row("Score distribution", ShapeNames.GetValueOrDefault(c.Name, c.Name), "Dixon–Coles, same expected goals", "validation 2013–2022 · 6 leagues", v, c.Value.GetProperty("passed_validation").GetBoolean()));
+            }
+        }
+        if (Research.KvJson("market_model_study") is { } mk)
+        {
+            var v = mk.GetProperty("periods").GetProperty("validation_2013_2022").GetProperty("primary");
+            var passed = mk.GetProperty("passed_validation");
+            challengers.Add(Row("Market-informed", "market + champion", "Pinnacle pre-closing, recalibrated", "validation 2013–2022 · 6 leagues", v.GetProperty("champion_info_vs_recalibrated"), passed.GetProperty("champion_info_vs_recalibrated").GetBoolean()));
+            challengers.Add(Row("Market-informed", "market + football features", "Pinnacle pre-closing, recalibrated", "validation 2013–2022 · 6 leagues", v.GetProperty("football_info_vs_recalibrated"), passed.GetProperty("football_info_vs_recalibrated").GetBoolean()));
+        }
+        if (Research.KvJson("stakes_study") is { } st)
+        {
+            var v = st.GetProperty("periods").GetProperty("validation_2013_2022");
+            var passed = st.GetProperty("passed_validation").GetBoolean();
+            challengers.Add(Row("Match stakes", "champion + table stakes", "champion, recalibrated", "validation 2013–2022 · round-robin leagues", v.GetProperty("all").GetProperty("stakes_vs_recalibrated"), passed));
+            challengers.Add(Row("Match stakes", "champion + table stakes", "champion, recalibrated", "validation · last 20% of season", v.GetProperty("late_season").GetProperty("stakes_vs_recalibrated"), passed));
+        }
+    }
     private List<(string At, string Champion, string Reason)> championHistory = [];
 
     protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange;
@@ -374,6 +457,7 @@ else
         else if (tab == "experiments")
         {
             experiments = Research.Experiments();
+            LoadChallengers();
         }
     }
 }

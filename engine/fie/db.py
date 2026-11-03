@@ -423,9 +423,9 @@ def init(path=None) -> sqlite3.Connection:
     con.executescript(SCHEMA)
     add_columns(con)
     from .odds import SCHEMA as ODDS_SCHEMA
-    from .paper import SCHEMA as PAPER_SCHEMA
+    from .paper import ensure as ensure_paper
     con.executescript(ODDS_SCHEMA)
-    con.executescript(PAPER_SCHEMA)
+    ensure_paper(con)
     return con
 
 

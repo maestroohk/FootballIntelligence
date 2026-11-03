@@ -20,12 +20,24 @@
     <div class="callout warn">No champion model on this computer. Showing <b>@champion</b>, the model with the most stored @(purpose == "forward" ? "pre-match" : "walk-forward") predictions here.</div>
 }
 
-<div class="grid g4">
-    <Kpi Label="Predictions evaluated" Value="@points.Sum(p => p.N).ToString("N0")" Note="@Fmt.ModelLabel(champion)" />
-    <Kpi Label="Log loss" Value="@Fmt.Num(Weighted(p => p.LogLoss), 4)" Note="@($"bookmaker close {Fmt.Num(bookLogLoss, 4)} on the same months")" />
-    <Kpi Label="Top-outcome accuracy" Value="@Fmt.Pct(Weighted(p => p.Accuracy), 1)" Note="not the optimisation target" />
-    <Kpi Label="Goal MAE (per team)" Value="@Fmt.Num(Weighted(p => p.GoalMae ?? double.NaN), 3)" Note="|expected − actual| goals" />
+<div class="grid g3">
+    <div class="card">
+        <div class="card-head"><h2>Probability quality</h2><span class="sub">what the model optimises</span></div>
+        <div class="grid g2">
+            <Kpi Label="Log loss" Value="@Fmt.Num(Weighted(p => p.LogLoss), 4)" Note="@($"{points.Sum(p => p.N):N0} predictions · lower is better")" />
+            <Kpi Label="Goal error" Value="@Fmt.Num(Weighted(p => p.GoalMae ?? double.NaN), 3)" Note="mean |expected − actual| goals per team" />
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-head"><h2>Classification</h2><span class="sub">how often the favourite outcome happened</span></div>
+        <Kpi Label="Top-outcome accuracy" Value="@Fmt.Pct(Weighted(p => p.Accuracy), 1)" Note="ignores how confident the forecast was, so it is not used to choose models" />
+    </div>
+    <div class="card">
+        <div class="card-head"><h2>Market comparison</h2><span class="sub">same months, de-vigged closing prices</span></div>
+        <Kpi Label="Bookmaker close log loss" Value="@Fmt.Num(bookLogLoss, 4)" Note="@(Weighted(p => p.LogLoss) is { } ll && bookLogLoss is { } bl ? $"model is {Fmt.Num(ll - bl, 4)} {(ll > bl ? "worse" : "better")}" : "no benchmark on this computer")" />
+    </div>
 </div>
+<div class="callout small">Profit and loss against bookmaker prices is a different question from forecast accuracy and is kept separate: simulated historical returns and the forward paper portfolio are on <a href="value">Value research</a>.</div>
 
 @if (purpose == "forward" && points.Count == 0)
 {

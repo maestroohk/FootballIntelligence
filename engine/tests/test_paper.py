@@ -84,3 +84,64 @@ def test_row_prices_parses_books_timings_and_lines():
     assert ("ou", 2.5, "under", "pinnacle", "pre_close") in keys
     assert ("ah", -0.25, "home", "pinnacle", "pre_close") in keys
     assert not any(m == "ah" and timing == "close" for m, _, _, _, timing, _ in out)
+
+
+def test_decision_records_the_scheduled_date(con):
+    _prices(con, 1, 2.6, 4.5, 7.0)
+    paper.record(con)
+    assert tuple(con.execute("SELECT match_date, kickoff FROM paper_decisions WHERE match_id = 1").fetchone()) == ("2099-01-10", "15:00")
+
+
+def test_rescheduled_match_is_void(con):
+    _prices(con, 1, 2.6, 4.5, 7.0)
+    paper.record(con)
+    con.execute("UPDATE matches SET match_date = '2099-01-25', status = 'finished', fthg = 2, ftag = 0 WHERE match_id = 1")
+    assert paper.settle_open(con) == 1
+    row = con.execute("SELECT outcome, profit FROM paper_settlements").fetchone()
+    assert tuple(row) == ("void", 0.0)
+    s = paper.summary(con)
+    assert s["void"] == 1 and s["settled"] == 0 and s["open"] == 0 and s["profit"] == 0.0
+
+
+def test_match_without_result_is_void_only_after_grace_period(con):
+    _prices(con, 1, 2.6, 4.5, 7.0)
+    paper.record(con)
+    assert paper.settle_open(con, today="2099-01-20") == 0
+    assert paper.settle_open(con, today="2099-01-30") == 1
+    assert con.execute("SELECT outcome FROM paper_settlements").fetchone()[0] == "void"
+
+
+def test_settlements_are_immutable_and_report_clv_and_drawdown(con):
+    _prices(con, 1, 2.6, 4.5, 7.0)
+    _prices(con, 2, 2.6, 4.5, 7.0)
+    paper.record(con)
+    con.execute("INSERT INTO market_odds VALUES(1,'1x2',0.0,'home','bet365','close',2.4,'documented: closing prices collected at kick-off','test')")
+    con.execute("UPDATE matches SET status = 'finished', fthg = 2, ftag = 1 WHERE match_id = 1")
+    con.execute("UPDATE matches SET status = 'finished', fthg = 0, ftag = 1 WHERE match_id = 2")
+    assert paper.settle_open(con) == 2
+    with pytest.raises(sqlite3.DatabaseError):
+        con.execute("UPDATE paper_settlements SET profit = 5")
+    s = paper.summary(con)
+    assert s["profit"] == pytest.approx(0.6) and s["max_drawdown"] == pytest.approx(1.0)
+    assert s["clv_n"] == 1 and s["clv_mean"] == pytest.approx(2.6 / 2.4 - 1)
+
+
+def test_legacy_tables_are_migrated(tmp_path):
+    c = sqlite3.connect(tmp_path / "old.db")
+    c.executescript("""CREATE TABLE matches(match_id INTEGER PRIMARY KEY, match_date TEXT, kickoff TEXT, updated_at TEXT);
+        INSERT INTO matches VALUES(1, '2099-01-10', '15:00', '2099-01-01T00:00:00Z');
+        CREATE TABLE paper_decisions (decision_id INTEGER PRIMARY KEY, created_at TEXT NOT NULL, match_id INTEGER NOT NULL, prediction_id INTEGER NOT NULL,
+            rule TEXT NOT NULL, decision TEXT NOT NULL, reason TEXT NOT NULL, market TEXT, line REAL, selection TEXT, bookmaker TEXT,
+            odds REAL, odds_observed_at TEXT, model_prob REAL, market_prob REAL, ev REAL, stake REAL, UNIQUE(match_id, rule));
+        CREATE TABLE paper_settlements (decision_id INTEGER PRIMARY KEY, settled_at TEXT NOT NULL, home_goals INTEGER NOT NULL,
+            away_goals INTEGER NOT NULL, profit REAL NOT NULL);
+        INSERT INTO paper_decisions(decision_id, created_at, match_id, prediction_id, rule, decision, reason, stake)
+            VALUES(1, '2099-01-02T00:00:00Z', 1, 1, 'r', 'bet', 'x', 1.0);
+        INSERT INTO paper_settlements VALUES(1, '2099-01-11', 1, 0, 0.9);""")
+    c.row_factory = sqlite3.Row
+    c.isolation_level = None
+    paper.ensure(c)
+    assert tuple(c.execute("SELECT match_date, kickoff FROM paper_decisions").fetchone()) == ("2099-01-10", "15:00")
+    assert tuple(c.execute("SELECT outcome, profit FROM paper_settlements").fetchone()) == ("settled", 0.9)
+    with pytest.raises(sqlite3.DatabaseError):
+        c.execute("UPDATE paper_decisions SET odds = 2")

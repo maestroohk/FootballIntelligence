@@ -108,6 +108,18 @@ All results are simulated with 1-unit level stakes; nothing places bets. Prices:
 - Baselines: backing every selection loses about the bookmaker margin (match result at Pinnacle −5.1%); backing the Pinnacle favourite loses −2.2%. Closing-line value of the chosen rules is close to zero or negative (best: Asian handicap at Pinnacle +0.2%, beating the close 48% of the time).
 - Conclusion: no repeatable out-of-sample advantage over realistic market prices has been demonstrated. A paper portfolio (rule `research-ev5`, explicitly unvalidated) now records forward decisions from live-recorded prices so that any future claim rests on prices captured before kick-off.
 
+## 6b. Why the model trails the market
+
+Each study fitted its parameters walk-forward from earlier seasons only, was judged on validation 2013/14–2022/23 against a criterion fixed beforehand, and used 2023/24 onwards only as a single confirmation. Gains are in log loss, with 95% intervals from a block bootstrap over league-seasons; for scale, the opening Pinnacle prices beat the champion by about 0.012.
+
+- **Score-distribution shape.** Given the champion's expected goals, the goal difference is under-dispersed (variance ratio 0.944) and draws are under-predicted in close matches (28.7% vs 30.5%) and over-predicted in lopsided ones (19.8% vs 16.7%). Keeping expected goals fixed, a bivariate Poisson (+0.00016 [+0.00004, +0.00028], scoreline likelihood not better), Conway–Maxwell–Poisson (+0.00011 [−0.00004, +0.00025]), gap-dependent Dixon–Coles ρ (−0.00001) and gap-dependent draw inflation (−0.00019) all failed. Draw inflation corrects the band averages almost exactly yet does not improve log loss, so shape explains almost none of the gap: the deficit is per-match information about team strength.
+- **Market-informed challenger.** On Pinnacle pre-closing prices recalibrated walk-forward, adding the champion's disagreement gains +0.00001 [−0.00025, +0.00024] and adding football features (Elo, rest, congestion, promotion, shot-based form) is significantly worse (−0.00049 [−0.00091, −0.00007]). Nothing the model knows is missing from the market. Historical price collection times are not published, so these are sensitivity analyses.
+- **Where the gap sits.** It is spread evenly across leagues and tiers, is concentrated where model and market disagree most (top fifth of disagreement: 61% of the gap), and doubles in May (0.027).
+- **End-of-season stakes.** Table-based indicators (nothing to play for or relegated, relegation fight, title or top-four chase) gain +0.00038 [−0.00004, +0.00079] overall and +0.0021 [−0.0001, +0.0041] in the last fifth of the season, but nothing from 2023 onwards: inconclusive, not adopted.
+- **Market efficiency.** Longshots lose far more than the margin (odds 8+: −23% at Pinnacle); favourites under 1.50 are fair at Pinnacle (+0.1% [−1.7%, +1.8%] from 2020). At the best available price the same favourites return +2.0% [+0.3%, +3.5%], which equals the premium of the highest quote over Pinnacle and is not an executable strategy. Closing prices are more accurate than pre-closing ones (0.9937 vs 0.9969), consistent with late team news.
+
+No new model or rule demonstrates a statistically defensible, executable out-of-sample advantage. The champion is unchanged.
+
 ## 7. Incomplete or partial features
 
 - Live tracking of real matches is untested end to end (no API key); replay mode is fully working.

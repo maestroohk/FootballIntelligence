@@ -1,5 +1,6 @@
 import os
 
+import numpy as np
 import pandas as pd
 
 from . import db
@@ -24,15 +25,19 @@ CREATE TABLE IF NOT EXISTS paper_decisions (
     reason TEXT NOT NULL,
     market TEXT, line REAL, selection TEXT, bookmaker TEXT,
     odds REAL, odds_observed_at TEXT, model_prob REAL, market_prob REAL, ev REAL, stake REAL,
+    match_date TEXT, kickoff TEXT,
     UNIQUE(match_id, rule)
 );
 CREATE TABLE IF NOT EXISTS paper_settlements (
     decision_id INTEGER PRIMARY KEY REFERENCES paper_decisions(decision_id),
     settled_at TEXT NOT NULL,
-    home_goals INTEGER NOT NULL,
-    away_goals INTEGER NOT NULL,
-    profit REAL NOT NULL
+    home_goals INTEGER,
+    away_goals INTEGER,
+    profit REAL NOT NULL,
+    outcome TEXT NOT NULL DEFAULT 'settled'
 );
+CREATE TRIGGER IF NOT EXISTS paper_settlements_immutable BEFORE UPDATE ON paper_settlements
+BEGIN SELECT RAISE(ABORT, 'paper settlements are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS paper_decisions_immutable BEFORE UPDATE ON paper_decisions
 BEGIN SELECT RAISE(ABORT, 'paper decisions are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS paper_decisions_no_delete BEFORE DELETE ON paper_decisions
@@ -40,8 +45,34 @@ BEGIN SELECT RAISE(ABORT, 'paper decisions are immutable'); END;
 """
 
 
+def _schema(con):
+    for statement in SCHEMA.split(";\n"):
+        if statement.strip():
+            con.execute(statement)
+
+
+def ensure(con):
+    cols = {r[1] for r in con.execute("PRAGMA table_info(paper_decisions)")}
+    scols = {r[1] for r in con.execute("PRAGMA table_info(paper_settlements)")}
+    with db.transaction(con):
+        if cols and "match_date" not in cols:
+            con.execute("DROP TRIGGER IF EXISTS paper_decisions_immutable")
+            con.execute("ALTER TABLE paper_decisions ADD COLUMN match_date TEXT")
+            con.execute("ALTER TABLE paper_decisions ADD COLUMN kickoff TEXT")
+            con.execute("""UPDATE paper_decisions SET match_date = m.match_date, kickoff = m.kickoff FROM matches m
+                           WHERE m.match_id = paper_decisions.match_id AND m.updated_at <= paper_decisions.created_at""")
+        if scols and "outcome" not in scols:
+            con.execute("DROP TRIGGER IF EXISTS paper_settlements_immutable")
+            con.execute("ALTER TABLE paper_settlements RENAME TO paper_settlements_old")
+        _schema(con)
+        if scols and "outcome" not in scols:
+            con.execute("""INSERT INTO paper_settlements(decision_id, settled_at, home_goals, away_goals, profit)
+                           SELECT decision_id, settled_at, home_goals, away_goals, profit FROM paper_settlements_old""")
+            con.execute("DROP TABLE paper_settlements_old")
+
+
 def record(con, rule=RULE):
-    con.executescript(SCHEMA)
+    ensure(con)
     rows = con.execute("""
         SELECT p.prediction_id, p.match_id, p.lambda_home, p.lambda_away, p.markets, m.match_date, m.kickoff, m.competition
         FROM predictions p JOIN matches m ON m.match_id = p.match_id
@@ -95,33 +126,58 @@ def record(con, rule=RULE):
             used[day] = used.get(day, 0) + rule["stake"]
         b = best or {}
         con.execute("""INSERT INTO paper_decisions(created_at, match_id, prediction_id, rule, decision, reason, market, line, selection, bookmaker,
-                       odds, odds_observed_at, model_prob, market_prob, ev, stake) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       odds, odds_observed_at, model_prob, market_prob, ev, stake, match_date, kickoff) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (db.now(), r["match_id"], r["prediction_id"], rule["name"], decision, reason, b.get("market"), b.get("line"), b.get("selection"),
                      b.get("bookmaker"), b.get("odds"), b.get("observed"), b.get("model_prob"), b.get("market_prob"), b.get("ev"),
-                     rule["stake"] if decision == "bet" else 0.0))
+                     rule["stake"] if decision == "bet" else 0.0, r["match_date"], r["kickoff"]))
         made[decision] += 1
     return made
 
 
-def settle_open(con):
-    con.executescript(SCHEMA)
-    rows = con.execute("""SELECT d.*, m.fthg, m.ftag FROM paper_decisions d JOIN matches m ON m.match_id = d.match_id
-                          WHERE d.decision = 'bet' AND m.status = 'finished' AND m.fthg IS NOT NULL
-                            AND d.decision_id NOT IN (SELECT decision_id FROM paper_settlements)""").fetchall()
+MOVED_DAYS = 2
+MISSING_DAYS = 14
+
+CLOSING = "COALESCE(" + ", ".join(
+    f"""(SELECT o.odds FROM market_odds o WHERE o.match_id = d.match_id AND o.market = d.market AND o.line = d.line
+         AND o.selection = d.selection AND o.timing = 'close' AND o.bookmaker = {book})""" for book in ("d.bookmaker", "'pinnacle'", "'market_avg'")) + ")"
+
+
+def settle_open(con, today=None):
+    ensure(con)
+    today = pd.Timestamp(today) if today else pd.Timestamp.now(tz="UTC").tz_localize(None).normalize()
+    rows = con.execute("""SELECT d.*, m.fthg, m.ftag, m.status, m.match_date AS played_date FROM paper_decisions d JOIN matches m ON m.match_id = d.match_id
+                          WHERE d.decision = 'bet' AND d.decision_id NOT IN (SELECT decision_id FROM paper_settlements)""").fetchall()
+    n = 0
     for r in rows:
-        profit = settle(r["market"], r["line"], r["selection"], r["odds"], r["fthg"], r["ftag"]) * r["stake"]
-        con.execute("INSERT INTO paper_settlements VALUES(?,?,?,?,?)", (r["decision_id"], db.now(), r["fthg"], r["ftag"], profit))
-    return len(rows)
+        planned = pd.Timestamp(r["match_date"] or r["played_date"])
+        moved = abs((pd.Timestamp(r["played_date"]) - planned).days) > MOVED_DAYS
+        missing = r["status"] != "finished" and (today - planned).days > MISSING_DAYS
+        if moved or missing:
+            con.execute("INSERT INTO paper_settlements(decision_id, settled_at, profit, outcome) VALUES(?,?,0,'void')", (r["decision_id"], db.now()))
+        elif r["status"] == "finished" and r["fthg"] is not None:
+            profit = settle(r["market"], r["line"], r["selection"], r["odds"], r["fthg"], r["ftag"]) * r["stake"]
+            con.execute("INSERT INTO paper_settlements(decision_id, settled_at, home_goals, away_goals, profit) VALUES(?,?,?,?,?)",
+                        (r["decision_id"], db.now(), r["fthg"], r["ftag"], profit))
+        else:
+            continue
+        n += 1
+    return n
 
 
 def summary(con):
-    con.executescript(SCHEMA)
-    d = pd.read_sql_query("""SELECT d.*, s.profit, s.settled_at FROM paper_decisions d LEFT JOIN paper_settlements s USING(decision_id)""", con)
+    ensure(con)
+    d = pd.read_sql_query(f"""SELECT d.*, s.profit, s.settled_at, s.outcome, {CLOSING} AS closing_odds
+                              FROM paper_decisions d LEFT JOIN paper_settlements s USING(decision_id)""", con)
     bets = d[d["decision"] == "bet"]
-    settled = bets.dropna(subset=["profit"])
+    done = bets.dropna(subset=["profit"])
+    settled = done[done["outcome"] == "settled"].sort_values(["match_date", "decision_id"])
+    cum = settled["profit"].cumsum().to_numpy()
+    drawdown = float((np.maximum.accumulate(np.concatenate([[0.0], cum]))[1:] - cum).max()) if len(cum) else 0.0
+    clv = (settled["odds"] / settled["closing_odds"] - 1).dropna()
     return {"rule": RULE, "bankroll": BANKROLL, "decisions": int(len(d)), "bets": int(len(bets)), "no_bets": int((d["decision"] == "no_bet").sum()),
-            "settled": int(len(settled)), "open": int(len(bets) - len(settled)), "profit": float(settled["profit"].sum()) if len(settled) else 0.0,
-            "roi": float(settled["profit"].sum() / settled["stake"].sum()) if len(settled) else None}
+            "settled": int(len(settled)), "void": int((done["outcome"] == "void").sum()), "open": int(len(bets) - len(done)),
+            "profit": float(settled["profit"].sum()), "roi": float(settled["profit"].sum() / settled["stake"].sum()) if len(settled) else None,
+            "max_drawdown": drawdown, "clv_mean": float(clv.mean()) if len(clv) else None, "clv_n": int(len(clv))}
 
 
 def board(con):

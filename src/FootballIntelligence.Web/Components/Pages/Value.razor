@@ -200,6 +200,93 @@ else if (tab == "backtest")
         </div>
     }
 }
+else if (tab == "market")
+{
+    @if (efficiency is null)
+    {
+        <div class="card"><div class="empty">Market efficiency has not been analysed. Run the <span class="mono">market_efficiency</span> job.</div></div>
+    }
+    else
+    {
+        <div class="callout">Descriptive summaries of bookmaker prices against results from 2020/21 onwards, with every match-result selection backed at 1 unit. They show where prices are least efficient; they are not a strategy.</div>
+        <div class="grid g4">
+            @foreach (var (book, b) in efficiency.Bookmakers.OrderBy(b => b.Value.MeanMargin))
+            {
+                <Kpi Label="@($"Back everything · {ValueFmt.Book(book)}")" Value="@($"{Fmt.Signed(b.RoiAll * 100, 1)}%")" Note="@($"margin {Fmt.Pct(b.MeanMargin, 1)} · {b.Matches:N0} matches")" />
+            }
+        </div>
+        <div class="card">
+            <div class="card-head"><h2>Favourite–longshot bias</h2><span class="sub">return from backing every selection in each odds band</span></div>
+            <div class="table-wrap">
+                <table class="data compact">
+                    <thead><tr><th>Odds</th>@foreach (var book in LongshotBooks) { <th class="num">@ValueFmt.Book(book)</th> }<th class="num">Pinnacle implied → actual</th></tr></thead>
+                    <tbody>
+                        @foreach (var band in efficiency.Longshot.GetValueOrDefault("pinnacle", []))
+                        {
+                            <tr>
+                                <td class="mono">@ValueFmt.Band(band.Band)</td>
+                                @foreach (var book in LongshotBooks)
+                                {
+                                    var r = efficiency.Longshot.GetValueOrDefault(book, []).FirstOrDefault(x => x.Band == band.Band);
+                                    <td class="num @(r?.Roi >= 0 ? "good" : "")">@(r is null ? "—" : $"{Fmt.Signed(r.Roi * 100, 1)}%")</td>
+                                }
+                                <td class="num dim">@Fmt.Pct(band.MarketProb, 1) → @Fmt.Pct(band.WinRate, 1)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="small faint" style="margin-top:6px">Longshots lose far more than the margin; short favourites are close to fair. “Best available” is the highest quote across many bookmakers at an unknown time, not a price one account can reliably take.</div>
+        </div>
+        <div class="grid g2">
+            <div class="card">
+                <div class="card-head"><h2>Odds-band rules</h2><span class="sub">band chosen on 2012/13–2019/20, then applied unchanged</span></div>
+                <div class="table-wrap">
+                    <table class="data compact">
+                        <thead><tr><th>Bookmaker</th><th>Band</th><th class="num">Development</th><th class="num">Holdout</th><th class="num">Final</th></tr></thead>
+                        <tbody>
+                            @foreach (var r in efficiency.BandRules)
+                            {
+                                <tr><td>@ValueFmt.Book(r.Bookmaker)</td><td class="mono">@r.OddsMin.ToString("0.00")–@r.OddsMax.ToString("0.00")</td><td class="num">@Roi(r.Development, false)</td><td class="num">@Roi(r.Holdout, true)</td><td class="num">@Roi(r.Final, true)</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="small faint" style="margin-top:6px">At Pinnacle the band breaks even. The best-price return equals the premium of the highest quote over Pinnacle, so it is recorded as a sensitivity result, not an executable edge.</div>
+            </div>
+            <div class="card">
+                <div class="card-head"><h2>Draws and price movement</h2><span class="sub">Pinnacle</span></div>
+                <table class="data compact">
+                    <thead><tr><th>Market draw probability</th><th class="num">n</th><th class="num">Implied</th><th class="num">Actual</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in efficiency.Draws.GetValueOrDefault("pinnacle", []).OrderBy(r => r.MarketProb))
+                        {
+                            <tr><td class="mono">@r.Band</td><td class="num">@r.N.ToString("N0")</td><td class="num">@Fmt.Pct(r.MarketProb, 1)</td><td class="num">@Fmt.Pct(r.Rate, 1)</td></tr>
+                        }
+                    </tbody>
+                </table>
+                @if (efficiency.OpeningVsClosing is { } oc)
+                {
+                    <p class="small dim" style="margin-top:10px">Closing prices are more accurate than pre-closing ones (log loss @oc.CloseLogLoss.ToString("0.0000") vs @oc.PreCloseLogLoss.ToString("0.0000"), @oc.N.ToString("N0") matches). The eventual result's price shortened in @Fmt.Pct(oc.ShareMovedTowardsResult) of matches and drifted in @Fmt.Pct(oc.ShareMovedAgainstResult): late team news reaches the market before kick-off.</p>
+                }
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-head"><h2>By league</h2><span class="sub">Pinnacle, 2020/21 onwards</span></div>
+            <div class="table-wrap">
+                <table class="data compact">
+                    <thead><tr><th>League</th><th class="num">Matches</th><th class="num">Margin</th><th class="num">Log loss</th><th class="num">Back all · Pinnacle</th><th class="num">Back all · best price</th></tr></thead>
+                    <tbody>
+                        @foreach (var l in efficiency.Leagues.OrderBy(l => l.LogLoss))
+                        {
+                            <tr><td>@Fmt.CompetitionName(l.Competition)</td><td class="num">@l.Matches.ToString("N0")</td><td class="num">@Fmt.Pct(l.Margin, 1)</td><td class="num">@l.LogLoss.ToString("0.0000")</td><td class="num">@Fmt.Signed(l.RoiPinnacle * 100, 1)%</td><td class="num">@(l.RoiBestPrice is null ? "—" : $"{Fmt.Signed(l.RoiBestPrice * 100, 1)}%")</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
 else if (tab == "paper")
 {
     <div class="callout">
@@ -212,13 +299,19 @@ else if (tab == "paper")
     else
     {
         var bets = decisions.Where(d => d.Decision == "bet").ToList();
-        var settled = bets.Where(d => d.Profit is not null).ToList();
+        var settled = bets.Where(d => d.Outcome == "settled").OrderBy(d => d.PlannedDate).ToList();
+        var voided = bets.Count(d => d.Outcome == "void");
         var profit = settled.Sum(d => d.Profit!.Value);
+        var peak = 0.0;
+        var run = 0.0;
+        var drawdown = 0.0;
+        foreach (var d in settled) { run += d.Profit!.Value; peak = Math.Max(peak, run); drawdown = Math.Max(drawdown, peak - run); }
+        var clv = settled.Where(d => d.Clv is not null).Select(d => d.Clv!.Value).ToList();
         <div class="grid g4">
             <Kpi Label="Paper selections" Value="@bets.Count.ToString()" Note="@($"{decisions.Count(d => d.Decision == "no_bet")} no-bet decisions")" />
-            <Kpi Label="Settled" Value="@settled.Count.ToString()" Note="@($"{bets.Count - settled.Count} open")" />
+            <Kpi Label="Settled" Value="@settled.Count.ToString()" Note="@($"{bets.Count - settled.Count - voided} open · {voided} void · max drawdown {drawdown:0.00} u")" />
             <Kpi Label="Paper profit" Value="@($"{Fmt.Signed(profit, 2)} u")" Note="@(settled.Count == 0 ? "nothing settled yet" : $"return {Fmt.Signed(profit / settled.Sum(d => d.Stake) * 100, 1)}% on {settled.Count}")" Color="@(profit >= 0 ? null : "var(--danger)")" />
-            <Kpi Label="Notional bankroll" Value="@($"{bankroll + profit:0.0} u")" Note="@($"started at {bankroll:0} u · far too few results to judge")" />
+            <Kpi Label="Closing-line value" Value="@(clv.Count == 0 ? "—" : $"{Fmt.Signed(clv.Average() * 100, 1)}%")" Note="@(clv.Count == 0 ? "needs closing prices after kick-off" : $"{clv.Count(c => c > 0)} of {clv.Count} beat the close · bankroll {bankroll + profit:0.0} u of {bankroll:0}")" />
         </div>
         <div class="card">
             <div class="card-head"><h2>Decisions</h2><span class="sub">latest @decisions.Count</span></div>
@@ -236,7 +329,8 @@ else if (tab == "paper")
                                 <td class="num">@Fmt.Pct(d.ModelProb, 1)</td>
                                 <td class="num">@Fmt.Pct(d.MarketProb, 1)</td>
                                 <td class="num">@(d.Ev is null ? "—" : $"{Fmt.Signed(d.Ev * 100, 1)}%")</td>
-                                <td>@(d.Decision != "bet" ? "" : d.Profit is null ? "open" : $"{d.HomeGoals}–{d.AwayGoals} · {Fmt.Signed(d.Profit, 2)} u")</td>
+                                <td>@(d.Decision != "bet" ? "" : d.Outcome is null ? "open" : d.Outcome == "void" ? "void: postponed or no result" : $"{d.HomeGoals}–{d.AwayGoals} · {Fmt.Signed(d.Profit, 2)} u")
+                                    @if (d.Clv is not null) { <div class="faint">close @d.ClosingOdds?.ToString("0.00") · CLV @Fmt.Signed(d.Clv * 100, 1)%</div> }</td>
                                 <td class="small faint" title="price observed @d.OddsObservedAt">@Fmt.Local(d.CreatedAt)</td>
                             </tr>
                         }
@@ -290,18 +384,20 @@ else
 }
 
 @code {
-    private static readonly (string, string)[] Tabs = [("prices", "Upcoming prices"), ("backtest", "Strategy backtests"), ("paper", "Paper portfolio"), ("log", "Research log")];
+    private static readonly (string, string)[] Tabs = [("prices", "Upcoming prices"), ("backtest", "Strategy backtests"), ("market", "Market efficiency"), ("paper", "Paper portfolio"), ("log", "Research log")];
     private string tab = "prices";
     private ValueBoard? board;
     private StrategyResults? strategy;
     private StrategyRule? selectedRule;
     private List<PaperDecisionRow> decisions = [];
     private List<ExperimentRow> experiments = [];
+    private MarketEfficiency? efficiency;
     private int edgeRules;
     private string market = "";
     private string book = "";
     private double minEv = -1;
     private bool eligibleOnly = true;
+    private static readonly string[] LongshotBooks = ["pinnacle", "bet365", "market_avg", "market_max"];
     private const string PaperRule = "research-ev5 (model EV ≥ +5%, odds 1.50–4.00, Bet365 or market average, max 10 units per day)";
     private readonly double bankroll = double.TryParse(Environment.GetEnvironmentVariable("FIE_PAPER_BANKROLL"), System.Globalization.CultureInfo.InvariantCulture, out var b) ? b : 100;
 
@@ -335,6 +431,7 @@ else
         strategy = Values.Strategy();
         decisions = Values.PaperExists() ? Values.PaperDecisions() : [];
         experiments = Values.MarketExperiments();
+        efficiency = Values.Efficiency();
         edgeRules = strategy?.Rules.Count(r => r.Holdout?.RoiCi is { Count: 2 } h && h[0] > 0 && r.Final?.RoiCi is { Count: 2 } f && f[0] > 0) ?? 0;
         selectedRule = strategy?.Rules.FirstOrDefault(r => r.Market == selectedRule?.Market && r.Bookmaker == selectedRule?.Bookmaker)
                        ?? strategy?.Rules.FirstOrDefault(r => r.Selected is not null);
