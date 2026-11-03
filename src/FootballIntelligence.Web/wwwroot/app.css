@@ -359,6 +359,15 @@ details.card[open] > summary h2::after { content: " ▾"; }
 .ops-item .btn { align-self: flex-start; margin-top: 4px; }
 .cmp-players { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 .cmp-player { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--border); border-left-width: 3px; border-radius: 8px; background: var(--bg-elev); }
+.cmp-row { padding: 8px 0; border-bottom: 1px solid var(--border-soft); }
+.cmp-row b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.cmp-win { color: var(--accent); }
+.cmp-bar { display: flex; gap: 3px; height: 8px; margin: 5px 0 3px; }
+.cmp-bar span { display: block; height: 100%; border-radius: 4px; }
+.cmp-bar .h { background: var(--home); }
+.cmp-bar .a { background: var(--away); }
+.open-meter { position: relative; height: 10px; border-radius: 5px; background: linear-gradient(90deg, var(--accent), var(--warn)); margin: 18px 0 6px; }
+.open-meter span { position: absolute; top: -5px; width: 4px; height: 20px; margin-left: -2px; border-radius: 2px; background: var(--text); box-shadow: 0 0 0 2px var(--panel); }
 @media (max-width: 1400px) {
     .g-main-side { grid-template-columns: minmax(0, 1fr) 320px; }
 }
