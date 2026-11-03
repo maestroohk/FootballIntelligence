@@ -252,9 +252,11 @@ def weakness_report(con, min_n=200):
         SELECT p.match_id, p.purpose, p.model_version, p.p_home, p.p_draw, p.p_away, p.lambda_home lh, p.lambda_away la,
                m.competition, m.season, m.match_date, m.home_team_id home, m.away_team_id away, m.fthg hg, m.ftag ag
         FROM predictions p JOIN matches m ON m.match_id=p.match_id
-        WHERE m.status='finished' AND m.fthg IS NOT NULL AND p.model_version NOT LIKE 'bookmaker%'
-          AND p.prediction_id NOT IN (SELECT prediction_id FROM prediction_flags)
-          AND p.prediction_id = (SELECT MAX(p2.prediction_id) FROM predictions p2 WHERE p2.match_id=p.match_id AND p2.purpose=p.purpose AND p2.model_version NOT LIKE 'bookmaker%')""", con)
+        WHERE m.status='finished' AND m.fthg IS NOT NULL
+          AND p.prediction_id = (SELECT p2.prediction_id FROM predictions p2
+                                 WHERE p2.match_id=p.match_id AND p2.model_version NOT LIKE 'bookmaker%'
+                                   AND p2.prediction_id NOT IN (SELECT prediction_id FROM prediction_flags)
+                                 ORDER BY p2.purpose='forward' DESC, p2.prediction_id DESC LIMIT 1)""", con)
     out = {"at": db.now(), "n": int(len(d)), "min_n": min_n, "findings": [], "by_league": [], "by_season": [], "sources": {}}
     if d.empty:
         db.set_kv(con, "weaknesses", out)

@@ -227,7 +227,9 @@ def league_guard(con, selection, history, oos):
     log = db.get_kv(con, "promotion_log", [])
     entry = {"at": db.now(), "candidate": candidate, "previous": previous, "leagues": {}}
     if previous is None or previous == candidate or previous not in oos:
-        entry["decision"] = "initial" if previous is None else "kept"
+        entry["decision"] = "initial" if previous is None else "kept" if previous == candidate else "promoted"
+        if previous is not None and previous != candidate:
+            entry["reason"] = f"{previous} was not evaluated in this run, so no league-by-league comparison was possible"
         log.append(entry)
         db.set_kv(con, "promotion_log", log[-50:])
         return selection

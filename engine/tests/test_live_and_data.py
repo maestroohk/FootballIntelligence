@@ -238,3 +238,15 @@ def test_kickoff_guard_uses_the_leagues_utc_offset():
     assert not forward.safely_before_kickoff(istanbul_local.strftime("%Y-%m-%d"), istanbul_local.strftime("%H:%M"), "T1")
     london_local = now + timedelta(hours=5)
     assert forward.safely_before_kickoff(london_local.strftime("%Y-%m-%d"), london_local.strftime("%H:%M"), "E0")
+
+
+def test_weakness_report_scores_each_match_once_preferring_the_pre_match_forecast(con):
+    from fie import forward
+    con.execute("INSERT INTO competitions VALUES('E0','PL','ENG',1)")
+    con.execute("INSERT INTO teams(team_id, name, country) VALUES(1,'A','ENG'),(2,'B','ENG')")
+    con.execute("INSERT INTO matches(match_id, competition, season, match_date, home_team_id, away_team_id, status, source, first_seen, updated_at) VALUES(1,'E0',2026,'2026-11-01',1,2,'scheduled','t',?,?)", (db.now(), db.now()))
+    con.execute("INSERT INTO predictions(match_id, model_version, purpose, created_at, data_cutoff, p_home, p_draw, p_away) VALUES(1,'m','forward',?,'2026-10-30',.5,.3,.2)", (db.now(),))
+    con.execute("UPDATE matches SET status='finished', fthg=1, ftag=0 WHERE match_id=1")
+    con.execute("INSERT INTO predictions(match_id, model_version, purpose, created_at, data_cutoff, p_home, p_draw, p_away) VALUES(1,'m','backtest',?,'2026-10-30',.4,.3,.3)", (db.now(),))
+    report = forward.weakness_report(con)
+    assert report["n"] == 1 and report["sources"] == {"forward": 1}
