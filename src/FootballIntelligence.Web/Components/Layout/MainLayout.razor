@@ -5,6 +5,7 @@
 @inject EngineSupervisor Supervisor
 @inject Database Db
 @inject ViewMode Mode
+@inject UserTime Clock
 @inject IJSRuntime JS
 
 <div class="shell">
@@ -57,6 +58,9 @@
                 }
             </div>
             <div class="row small">
+                <select class="input tz-select" title="Time zone for kick-off times" value="@Clock.ZoneId" @onchange="SetZone">
+                    @foreach (var (id, label) in UserTime.Choices) { <option value="@id">@label</option> }
+                </select>
                 <div class="mode-switch" role="group" aria-label="Experience">
                     <button class="@(Mode.Analyst ? "" : "active")" @onclick="() => SetMode(false)">Fan</button>
                     <button class="@(Mode.Analyst ? "active" : "")" @onclick="() => SetMode(true)">Analyst</button>
@@ -87,12 +91,14 @@
         Refresh();
         Feed.Changed += OnChanged;
         Mode.Changed += OnMode;
+        Clock.Changed += OnMode;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
         try { Mode.Set(await JS.InvokeAsync<string?>("localStorage.getItem", "fi-mode") == "analyst"); } catch (JSException) { }
+        try { Clock.Set(await JS.InvokeAsync<string?>("localStorage.getItem", "fi-tz")); } catch (JSException) { }
     }
 
     private async Task SetMode(bool analyst)
@@ -102,6 +108,12 @@
     }
 
     private void OnMode() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task SetZone(ChangeEventArgs e)
+    {
+        Clock.Set(e.Value?.ToString());
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "fi-tz", Clock.ZoneId); } catch (JSException) { }
+    }
 
     private void Refresh()
     {
@@ -117,5 +129,6 @@
     {
         Feed.Changed -= OnChanged;
         Mode.Changed -= OnMode;
+        Clock.Changed -= OnMode;
     }
 }

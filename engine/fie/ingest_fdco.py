@@ -131,7 +131,28 @@ def find_existing(con, code, season, home, away, date, status):
     pending = [r for r in rows if r["status"] in ("scheduled", "result_missing")]
     if pending:
         return min(pending, key=lambda r: abs((datetime.fromisoformat(r["match_date"]) - target).days))
+    if status == "scheduled":
+        played = [r for r in rows if r["status"] == "finished" and abs((datetime.fromisoformat(r["match_date"]) - target).days) <= SAME_FIXTURE_DAYS]
+        if played:
+            return played[0]
     return None
+
+
+SAME_FIXTURE_DAYS = 10
+
+
+def reconcile_duplicates(con):
+    stamp = db.now()
+    rows = con.execute("""SELECT s.match_id FROM matches s WHERE s.status IN ('scheduled', 'result_missing') AND EXISTS (
+                              SELECT 1 FROM matches f WHERE f.competition = s.competition AND f.season = s.season AND f.home_team_id = s.home_team_id
+                              AND f.away_team_id = s.away_team_id AND f.match_id <> s.match_id AND f.status = 'finished' AND f.source <> s.source
+                              AND ABS(julianday(f.match_date) - julianday(s.match_date)) <= ?)""", (SAME_FIXTURE_DAYS,)).fetchall()
+    ids = [r[0] for r in rows]
+    for mid in ids:
+        con.execute("UPDATE matches SET status = 'duplicate', updated_at = ? WHERE match_id = ?", (stamp, mid))
+        con.execute("""INSERT OR IGNORE INTO prediction_flags(prediction_id, flag, reason, flagged_at)
+                       SELECT prediction_id, 'duplicate_fixture', 'fixture row superseded by the played match', ? FROM predictions WHERE match_id = ?""", (stamp, mid))
+    return len(ids)
 
 
 def upsert_rows(con, frame: pd.DataFrame, code: str, season: int, scheduled=False):
@@ -143,8 +164,8 @@ def upsert_rows(con, frame: pd.DataFrame, code: str, season: int, scheduled=Fals
         if not date:
             counts["skipped"] += 1
             continue
-        home = get_or_create_team(con, str(row["HomeTeam"]).strip(), country, SOURCE)
-        away = get_or_create_team(con, str(row["AwayTeam"]).strip(), country, SOURCE)
+        home = get_or_create_team(con, str(row["HomeTeam"]).strip(), country, SOURCE, season)
+        away = get_or_create_team(con, str(row["AwayTeam"]).strip(), country, SOURCE, season)
         fthg, ftag = _int(row, "FTHG"), _int(row, "FTAG")
         if fthg is None:
             fthg, ftag = _int(row, "HG"), _int(row, "AG")
@@ -225,6 +246,7 @@ def ingest_history(con, seasons=None, codes=None, progress=None, refresh_current
         totals["files"] += 1
         if progress:
             progress(i + 1, len(units), f"{code} {season}: +{counts['inserted']} ~{counts['updated']}")
+    totals["duplicates_reconciled"] = reconcile_duplicates(con)
     totals["stale_fixtures_marked"] = mark_stale_fixtures(con)
     return totals
 

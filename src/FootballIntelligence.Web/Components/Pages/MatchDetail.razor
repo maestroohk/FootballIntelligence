@@ -2,6 +2,7 @@
 @inject FootballQueries Football
 @inject ResearchQueries Research
 @inject ViewMode Mode
+@inject UserTime Clock
 @implements IDisposable
 
 <PageTitle>@(match is null ? "Match" : $"{match.HomeName} v {match.AwayName}") · Football Intelligence</PageTitle>
@@ -17,7 +18,7 @@
     <div class="center">
         <div class="row" style="justify-content:center"><LeagueChip Code="@match.Competition" /><span class="small faint">@match.Season/@((match.Season + 1) % 100)</span></div>
         <div class="big-score">@(match.Fthg is null ? "vs" : $"{match.Fthg} – {match.Ftag}")</div>
-        <div class="small dim">@FriendlyDate @(match.Kickoff is null ? "· kick-off time not announced" : $"· {match.Kickoff} local time")@(match.Hthg is not null ? $" · half-time {match.Hthg}–{match.Htag}" : "")</div>
+        <div class="small dim">@FriendlyDate @(match.Kickoff is null ? "· kick-off time not announced" : $"· {Clock.Time(match)} {Clock.Label} time")@(match.Hthg is not null ? $" · half-time {match.Hthg}–{match.Htag}" : "")</div>
         <div class="row" style="justify-content:center;margin-top:8px">
             <span class="badge @(match.Status == "finished" ? "" : "info")">@StatusLabel</span>
             @if (match.Purpose == "forward" && match.PredictionFlag is not null) { <span class="badge warn" title="@match.PredictionFlag">forward prediction stored close to kick-off · excluded from evaluation</span> }
@@ -266,6 +267,41 @@ else
     </div>
 }
 
+@if (forecasts.Count > 0)
+{
+    <div class="card">
+        <div class="card-head"><h2>Forecast record</h2><span class="sub">every forecast stored for this match · stored forecasts are never edited</span></div>
+        <div class="table-wrap">
+            <table class="data compact">
+                <thead><tr><th>Stored</th><th>Kind</th><th>Model</th><th class="num">Home</th><th class="num">Draw</th><th class="num">Away</th>
+                    @if (match.Status == "finished") { <th class="num">Chance given to the result</th><th>Most likely result</th> }</tr></thead>
+                <tbody>
+                    @foreach (var f in forecasts.Take(Mode.Analyst ? 20 : 3))
+                    {
+                        var actual = match.Result switch { "H" => f.PHome, "D" => f.PDraw, "A" => f.PAway, _ => (double?)null };
+                        var top = f.PHome >= f.PDraw && f.PHome >= f.PAway ? "H" : f.PDraw >= f.PAway ? "D" : "A";
+                        <tr class="@(f.Flag is null ? "" : "dim")">
+                            <td class="small">@Fmt.Local(f.CreatedAt)</td>
+                            <td class="small">@(f.Flag is not null ? "not eligible" : f.Purpose == "forward" ? "pre-match" : "re-forecast")<div class="faint">@(f.Flag ?? $"results before {f.DataCutoff}")</div></td>
+                            <td class="small">@f.ModelVersion</td>
+                            <td class="num">@Fmt.Pct(f.PHome, 1)</td><td class="num">@Fmt.Pct(f.PDraw, 1)</td><td class="num">@Fmt.Pct(f.PAway, 1)</td>
+                            @if (match.Status == "finished")
+                            {
+                                <td class="num @(actual > 0.45 ? "good" : actual < 0.2 ? "bad" : "")">@Fmt.Pct(actual, 1)</td>
+                                <td class="small">@(top == match.Result ? "✓ happened" : "✗ did not happen")</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (match.Status == "finished")
+        {
+            <div class="small faint" style="margin-top:6px">A good forecast gives the actual result a high probability; being “right” about the most likely result is a cruder measure. Only pre-match forecasts count towards the live record.</div>
+        }
+    </div>
+}
+
 @if (match.Status == "finished" && match.Hs is not null)
 {
     <div class="card">
@@ -287,6 +323,7 @@ else
     [Parameter] public long Id { get; set; }
 
     private MatchRow? match;
+    private List<StoredForecast> forecasts = [];
     private Markets? mk;
     private List<OddsRow> odds = [];
     private List<OddsRow> recorded = [];
@@ -301,7 +338,7 @@ else
     private (double Attack, double Defence, int Rank, int Of)? strengthHome;
     private (double Attack, double Defence, int Rank, int Of)? strengthAway;
 
-    private string FriendlyDate => DateTime.TryParse(match?.MatchDate, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d)
+    private string FriendlyDate => DateTime.TryParse(match is null ? null : Clock.Date(match), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d)
         ? d.ToString("dddd d MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture) : match?.MatchDate ?? "";
 
     private string StatusLabel => match?.Status switch
@@ -321,6 +358,7 @@ else
     protected override void OnParametersSet()
     {
         match = Football.Match(Id);
+        forecasts = Football.Forecasts(Id);
         if (match is null) return;
         mk = Markets.FromJson(match.Markets);
         if (mk is null && match.LambdaHome is not null)

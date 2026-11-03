@@ -120,9 +120,68 @@ public class OperationsQueries(Database db)
 
     public bool InPlayTrained() => db.Single<long>("SELECT COUNT(*) FROM live_model WHERE status='champion'") > 0;
 
+    public PredictionCoverage? ForecastCoverage() => db.Kv("prediction_coverage") is { } v ? JsonSerializer.Deserialize<PredictionCoverage>(v, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower }) : null;
+
+    public DateTime? NextCycle(bool light)
+    {
+        var raw = db.Kv("scheduler_last_cycle");
+        if (raw is null || !DateTime.TryParse(JsonSerializer.Deserialize<string>(raw), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal, out var last)) return null;
+        var hours = double.TryParse(Environment.GetEnvironmentVariable("FIE_CYCLE_HOURS"), System.Globalization.CultureInfo.InvariantCulture, out var h) ? h : light ? 24 : 6;
+        return hours <= 0 ? null : last.AddHours(hours);
+    }
+
+    public List<JobRow> RecentFailures(int days = 7) => db.Query<JobRow>("""
+        SELECT * FROM jobs WHERE status = 'failed' AND kind IN ('daily_cycle', 'predict_upcoming', 'ingest_fixtures', 'evaluate_forward', 'paper_cycle')
+          AND finished_at > @since AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.kind = jobs.kind AND j.status = 'succeeded' AND j.job_id > jobs.job_id)
+        ORDER BY job_id DESC
+        """, new { since = DateTime.UtcNow.AddDays(-days).ToString("o") }).ToList();
+
+    public List<StaleLeague> StaleLeagues() => db.Query<StaleLeague>("""
+        SELECT competition, MAX(CASE WHEN status = 'finished' THEN match_date END) latest_result,
+               SUM(status = 'scheduled' AND match_date < date('now', '-1 day')) overdue
+        FROM matches WHERE season = (SELECT MAX(season) FROM matches WHERE status = 'finished') GROUP BY competition
+        HAVING overdue > 0 OR latest_result < date('now', '-14 day')
+        """).ToList();
+
     public JsonElement? Assets() => db.Kv("assets_status") is { } v ? JsonDocument.Parse(v).RootElement.Clone() : null;
 
     public static string Now() => DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ");
+}
+
+public class PredictionCoverage
+{
+    public string GeneratedAt { get; set; } = "";
+    public string ModelVersion { get; set; } = "";
+    public int HorizonDays { get; set; }
+    public int FixturesInWindow { get; set; }
+    public int Predicted { get; set; }
+    public int LaterFixtures { get; set; }
+    public List<MissingForecast> Missing { get; set; } = [];
+    public Dictionary<string, LeagueCoverage> Leagues { get; set; } = [];
+}
+
+public class MissingForecast
+{
+    public long MatchId { get; set; }
+    public string Competition { get; set; } = "";
+    public string Date { get; set; } = "";
+    public string? Kickoff { get; set; }
+    public string Home { get; set; } = "";
+    public string Away { get; set; } = "";
+    public string Reason { get; set; } = "";
+}
+
+public class LeagueCoverage
+{
+    public int Fixtures { get; set; }
+    public int Predicted { get; set; }
+}
+
+public class StaleLeague
+{
+    public string Competition { get; set; } = "";
+    public string? LatestResult { get; set; }
+    public long Overdue { get; set; }
 }
 
 public record WorkerStatus(DateTime? LastHeartbeat, bool Alive, bool DatabaseExists);

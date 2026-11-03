@@ -1,5 +1,7 @@
 @page "/matches"
 @inject FootballQueries Football
+@inject UserTime Clock
+@implements IDisposable
 
 <PageTitle>Matches · Football Intelligence</PageTitle>
 
@@ -30,6 +32,7 @@
         <div class="tabs" style="border:none">
             <button class="tab @(view == "today" ? "active" : "")" @onclick='() => SetView("today")'>Today</button>
             <button class="tab @(view == "tomorrow" ? "active" : "")" @onclick='() => SetView("tomorrow")'>Tomorrow</button>
+            <button class="tab @(view == "weekend" ? "active" : "")" @onclick='() => SetView("weekend")'>This weekend</button>
             <button class="tab @(view == "week" ? "active" : "")" @onclick='() => SetView("week")'>This week</button>
             <button class="tab @(view == "upcoming" ? "active" : "")" @onclick='() => SetView("upcoming")'>Upcoming</button>
             <button class="tab @(view == "results" ? "active" : "")" @onclick='() => SetView("results")'>Results</button>
@@ -47,6 +50,18 @@
                     <b>@d.ToString("dd MMM", System.Globalization.CultureInfo.InvariantCulture)</b>
                 </button>
             }
+        </div>
+    }
+    @if (view != "results")
+    {
+        <div class="row small" style="margin-top:8px">
+            <span class="dim">Forecast</span>
+            <div class="mode-switch" role="group" aria-label="Forecast filter">
+                @foreach (var (key, label) in new[] { ("", "All"), ("with", "With forecast"), ("without", "Without") })
+                {
+                    <button class="@(predFilter == key ? "active" : "")" @onclick="() => predFilter = key">@label</button>
+                }
+            </div>
         </div>
     }
     <div class="league-filter">
@@ -70,10 +85,10 @@
 <div class="card matches-list">
     <div class="card-head">
         <h2>@Title</h2>
-        <span class="sub">@rows.Count@(rows.Count >= limit ? "+" : "") matches · dates and kick-off times are local to each league</span>
+        <span class="sub">@Shown.Count@(rows.Count >= limit ? "+" : "") matches · kick-off times in @Clock.Label time</span>
     </div>
-    @if (rows.Count == 0) { <div class="empty">@EmptyText</div> }
-    @foreach (var day in rows.GroupBy(m => m.MatchDate))
+    @if (Shown.Count == 0) { <div class="empty">@(rows.Count > 0 ? "No matches match the forecast filter." : EmptyText)</div> }
+    @foreach (var day in Shown.GroupBy(m => m.MatchDate))
     {
         <div class="day-head">@DateTime.Parse(day.Key, System.Globalization.CultureInfo.InvariantCulture).ToString("dddd dd MMM yyyy", System.Globalization.CultureInfo.InvariantCulture)</div>
         @foreach (var league in day.GroupBy(m => m.Competition))
@@ -102,6 +117,28 @@
         Load();
     }
     private List<MatchRow> rows = [];
+    private string predFilter = "";
+
+    private List<MatchRow> Shown => predFilter switch
+    {
+        "with" => rows.Where(m => m.PHome is not null && m.PredictionFlag is null).ToList(),
+        "without" => rows.Where(m => m.PHome is null || m.PredictionFlag is not null).ToList(),
+        _ => rows,
+    };
+
+    private static (DateTime From, DateTime To) Weekend
+    {
+        get
+        {
+            var t = DateTime.Today;
+            var friday = t.DayOfWeek switch { DayOfWeek.Saturday => t.AddDays(-1), DayOfWeek.Sunday => t.AddDays(-2), _ => t.AddDays(((int)DayOfWeek.Friday - (int)t.DayOfWeek + 7) % 7) };
+            return (friday < t ? t : friday, friday.AddDays(3));
+        }
+    }
+
+    private void OnClock() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Clock.Changed -= OnClock;
     private List<TeamInfo> teams = [];
 
     [SupplyParameterFromQuery(Name = "team")] public string? TeamQuery { get; set; }
@@ -109,6 +146,7 @@
     protected override void OnInitialized()
     {
         if (!string.IsNullOrWhiteSpace(TeamQuery)) team = TeamQuery;
+        Clock.Changed += OnClock;
         competitions = Football.Competitions().OrderBy(c => Array.IndexOf(["E0", "SP1", "D1", "I1", "F1"], c) is var i && i < 0 ? 99 : i).ToList();
         SetView("today");
         if (rows.Count == 0) SetView("week");
@@ -143,6 +181,7 @@
         "today" => "Today · " + DateTime.Today.ToString("dddd d MMMM", System.Globalization.CultureInfo.InvariantCulture),
         "tomorrow" => "Tomorrow · " + DateTime.Today.AddDays(1).ToString("dddd d MMMM", System.Globalization.CultureInfo.InvariantCulture),
         "week" => "Next 7 days",
+        "weekend" => "This weekend · " + Weekend.From.ToString("d MMM", System.Globalization.CultureInfo.InvariantCulture) + "–" + Weekend.To.ToString("d MMM", System.Globalization.CultureInfo.InvariantCulture),
         "upcoming" => "Upcoming fixtures",
         "date" => day.ToString("dddd dd MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture),
         _ => "Results"
@@ -168,6 +207,7 @@
             "today" => (today, today),
             "tomorrow" => (today.AddDays(1), today.AddDays(1)),
             "week" => (today, today.AddDays(6)),
+            "weekend" => Weekend,
             "date" => (day, day),
             _ => (DateTime.MinValue, DateTime.MinValue)
         };

@@ -3,7 +3,7 @@ namespace FootballIntelligence.Web.Data;
 public class FootballQueries(Database db)
 {
     private static readonly string MatchSelect = $"""
-        SELECT m.match_id, m.competition, c.name competition_name, m.season, m.match_date, m.kickoff, m.status,
+        SELECT m.match_id, m.competition, c.name competition_name, m.season, m.match_date, m.kickoff, m.status, m.source,
                m.home_team_id, m.away_team_id, {Database.DisplayName("th.team_id", "th.name")} home_name, {Database.DisplayName("ta.team_id", "ta.name")} away_name,
                m.fthg, m.ftag, m.hthg, m.htag, m.hs, m.aws, m.hst, m.ast, m.hc, m.ac, m.hf, m.af, m.hy, m.ay, m.hr, m.ar, m.referee,
                p.p_home, p.p_draw, p.p_away, p.lambda_home, p.lambda_away, p.model_version, p.purpose,
@@ -16,7 +16,9 @@ public class FootballQueries(Database db)
         LEFT JOIN predictions p ON p.prediction_id = (
             SELECT p2.prediction_id FROM predictions p2
             WHERE p2.match_id = m.match_id
-            ORDER BY CASE p2.purpose WHEN 'forward' THEN 0 ELSE 1 END, CASE WHEN p2.model_version LIKE 'bookmaker%' THEN 1 ELSE 0 END, p2.prediction_id DESC LIMIT 1)
+            ORDER BY CASE WHEN p2.model_version LIKE 'bookmaker%' THEN 3
+                          WHEN p2.purpose = 'forward' AND NOT EXISTS (SELECT 1 FROM prediction_flags f2 WHERE f2.prediction_id = p2.prediction_id) THEN 0
+                          WHEN p2.purpose = 'forward' THEN 2 ELSE 1 END, p2.prediction_id DESC LIMIT 1)
         """;
 
     private const string TeamFilter = """
@@ -29,7 +31,7 @@ public class FootballQueries(Database db)
         new { limit, competition, team, today = DateTime.Now.ToString("yyyy-MM-dd") }).ToList();
 
     public List<MatchRow> Between(string from, string to, string? competition, string? team, int limit) => db.Query<MatchRow>(
-        MatchSelect + $" WHERE m.match_date BETWEEN @from AND @to AND (@competition IS NULL OR m.competition=@competition) AND {TeamFilter} ORDER BY m.match_date, m.kickoff, m.competition LIMIT @limit",
+        MatchSelect + $" WHERE m.status <> 'duplicate' AND m.match_date BETWEEN @from AND @to AND (@competition IS NULL OR m.competition=@competition) AND {TeamFilter} ORDER BY m.match_date, m.kickoff, m.competition LIMIT @limit",
         new { from, to, competition, team, limit }).ToList();
 
     public List<MatchRow> AwaitingResult(int limit) => db.Query<MatchRow>(
@@ -40,16 +42,23 @@ public class FootballQueries(Database db)
         MatchSelect + " WHERE m.status='finished' AND (@competition IS NULL OR m.competition=@competition) ORDER BY m.match_date DESC, m.match_id DESC LIMIT @limit",
         new { limit, competition }).ToList();
 
-    public List<MatchRow> OnDate(string date) => db.Query<MatchRow>(MatchSelect + " WHERE m.match_date=@date ORDER BY m.kickoff, m.competition", new { date }).ToList();
+    public List<MatchRow> OnDate(string date) => db.Query<MatchRow>(MatchSelect + " WHERE m.match_date=@date AND m.status <> 'duplicate' ORDER BY m.kickoff, m.competition", new { date }).ToList();
 
     public List<MatchRow> Search(string? competition, long? season, string? team, int limit, string? status = null) => db.Query<MatchRow>(
         MatchSelect + $"""
          WHERE (@competition IS NULL OR m.competition=@competition)
-           AND (@status IS NULL OR m.status=@status)
+           AND (@status IS NULL OR m.status=@status) AND m.status <> 'duplicate'
            AND (@season IS NULL OR m.season=@season)
            AND {TeamFilter}
          ORDER BY m.match_date DESC, m.match_id DESC LIMIT @limit
         """, new { competition, season, team, limit, status }).ToList();
+
+    public List<StoredForecast> Forecasts(long id) => db.Query<StoredForecast>("""
+        SELECT p.prediction_id, p.model_version, p.purpose, p.created_at, p.data_cutoff, p.p_home, p.p_draw, p.p_away, p.lambda_home, p.lambda_away,
+               (SELECT f.reason FROM prediction_flags f WHERE f.prediction_id = p.prediction_id LIMIT 1) flag
+        FROM predictions p WHERE p.match_id = @id AND p.model_version NOT LIKE 'bookmaker%'
+        ORDER BY p.purpose = 'forward' DESC, p.prediction_id DESC
+        """, new { id }).ToList();
 
     public MatchRow? Match(long id) => db.Single<MatchRow>(MatchSelect + " WHERE m.match_id=@id", new { id });
 

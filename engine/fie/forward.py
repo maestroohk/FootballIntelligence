@@ -320,3 +320,38 @@ def weakness_report(con, min_n=200):
     if new:
         db.notify(con, "warning", "Systematic weakness detected", "; ".join(f["question"] for f in new[:3]))
     return out
+
+
+def coverage_report(con, oos_champion, version, horizon_days=FORWARD_HORIZON_DAYS):
+    today = date.today().isoformat()
+    until = (date.today() + timedelta(days=horizon_days)).isoformat()
+    produced = set(oos_champion.loc[oos_champion["status"] == "scheduled", "match_id"].astype(int))
+    rows = con.execute("""SELECT m.match_id, m.competition, m.match_date, m.kickoff, th.name home, ta.name away,
+                                 (SELECT COUNT(*) FROM matches h WHERE h.status = 'finished' AND m.home_team_id IN (h.home_team_id, h.away_team_id)) home_n,
+                                 (SELECT COUNT(*) FROM matches a WHERE a.status = 'finished' AND m.away_team_id IN (a.home_team_id, a.away_team_id)) away_n,
+                                 EXISTS (SELECT 1 FROM predictions p WHERE p.match_id = m.match_id AND p.purpose = 'forward'
+                                         AND p.prediction_id NOT IN (SELECT prediction_id FROM prediction_flags)) predicted
+                          FROM matches m JOIN teams th ON th.team_id = m.home_team_id JOIN teams ta ON ta.team_id = m.away_team_id
+                          WHERE m.status = 'scheduled' AND m.match_date BETWEEN ? AND ?""", (today, until)).fetchall()
+    missing, leagues = [], {}
+    for r in rows:
+        lg = leagues.setdefault(r["competition"], {"fixtures": 0, "predicted": 0})
+        lg["fixtures"] += 1
+        if r["predicted"]:
+            lg["predicted"] += 1
+            continue
+        if r["home_n"] == 0 or r["away_n"] == 0:
+            reason = f"no match history for {r['home'] if r['home_n'] == 0 else r['away']}"
+        elif not safely_before_kickoff(r["match_date"], r["kickoff"], r["competition"]):
+            reason = "too close to kick-off for a pre-match forecast"
+        elif r["match_id"] not in produced:
+            reason = "not produced by the last model run; it will be included in the next update cycle"
+        else:
+            reason = "waiting for the next prediction run"
+        missing.append({"match_id": r["match_id"], "competition": r["competition"], "date": r["match_date"], "kickoff": r["kickoff"],
+                        "home": r["home"], "away": r["away"], "reason": reason})
+    later = con.execute("SELECT COUNT(*) FROM matches WHERE status = 'scheduled' AND match_date > ?", (until,)).fetchone()[0]
+    out = {"generated_at": db.now(), "model_version": version, "horizon_days": horizon_days, "fixtures_in_window": len(rows),
+           "predicted": sum(1 for r in rows if r["predicted"]), "missing": missing, "leagues": leagues, "later_fixtures": later}
+    db.set_kv(con, "prediction_coverage", out)
+    return out

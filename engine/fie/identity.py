@@ -115,13 +115,15 @@ MANUAL_ALIASES = {
     },
 }
 
-STOP_TOKENS = {"fc", "cf", "afc", "sc", "ac", "as", "ss", "us", "ud", "cd", "rc", "rcd", "sv", "vfl", "vfb", "tsg", "fsv", "club", "de", "the", "calcio", "1", "04", "05", "96", "98", "1899"}
+SYNONYMS = {"utd": "united", "weds": "wednesday", "st": "saint"}
+
+STOP_TOKENS = {"fc", "cf", "afc", "kv", "sc", "ac", "as", "ss", "us", "ud", "cd", "rc", "rcd", "sv", "vfl", "vfb", "tsg", "fsv", "club", "de", "the", "calcio", "1", "04", "05", "96", "98", "1899"}
 
 
 def normalise(name: str) -> str:
     text = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
     text = re.sub(r"[^a-z0-9 ]+", " ", text)
-    tokens = [t for t in text.split() if t not in STOP_TOKENS]
+    tokens = [SYNONYMS.get(t, t) for t in text.split() if t not in STOP_TOKENS]
     return " ".join(tokens)
 
 
@@ -155,11 +157,50 @@ def resolve_team(con, alias: str, source: str, country: str, candidates=None, mi
     return None, "unresolved"
 
 
-def get_or_create_team(con, name: str, country: str, source: str) -> int:
+def get_or_create_team(con, name: str, country: str, source: str, season=None) -> int:
     row = con.execute("SELECT team_id FROM team_aliases WHERE alias=? AND source=? AND country=?", (name, source, country)).fetchone()
     if row:
         return row["team_id"]
+    if season is not None:
+        active = [(r["team_id"], r["name"]) for r in con.execute("""SELECT DISTINCT t.team_id, t.name FROM teams t JOIN matches m ON t.team_id IN (m.home_team_id, m.away_team_id)
+                                                                    WHERE t.country = ? AND m.season >= ? AND m.status = 'finished'""", (country, season - 1))]
+        tid, _ = resolve_team(con, name, source, country, active, min_score=0.85)
+        if tid is not None:
+            return tid
+        from . import db
+        db.notify(con, "warning", f"New team created: {name}", f"{country}: no existing team matched this {source} name, so it starts without history")
     con.execute("INSERT OR IGNORE INTO teams(name, country) VALUES(?,?)", (name, country))
     team_id = con.execute("SELECT team_id FROM teams WHERE name=? AND country=?", (name, country)).fetchone()["team_id"]
     con.execute("INSERT OR REPLACE INTO team_aliases VALUES(?,?,?,?,?)", (name, source, country, team_id, "canonical"))
     return team_id
+
+
+def repair_new_teams(con):
+    from . import db
+    stamp = db.now()
+    merged = []
+    candidates = con.execute("""SELECT t.team_id, t.name, t.country FROM teams t
+                                WHERE NOT EXISTS (SELECT 1 FROM matches m WHERE t.team_id IN (m.home_team_id, m.away_team_id) AND m.status = 'finished')
+                                  AND EXISTS (SELECT 1 FROM matches m WHERE t.team_id IN (m.home_team_id, m.away_team_id) AND m.status = 'scheduled')""").fetchall()
+    for t in candidates:
+        season = con.execute("SELECT MAX(season) FROM matches WHERE ? IN (home_team_id, away_team_id)", (t["team_id"],)).fetchone()[0]
+        active = [(r["team_id"], r["name"]) for r in con.execute("""SELECT DISTINCT tt.team_id, tt.name FROM teams tt JOIN matches m ON tt.team_id IN (m.home_team_id, m.away_team_id)
+                                                                     WHERE tt.country = ? AND m.season >= ? AND m.status = 'finished'""", (t["country"], season - 1))]
+        scored = sorted(((similarity(t["name"], name), tid) for tid, name in active), reverse=True)
+        if not scored or scored[0][0] < 0.85 or (len(scored) > 1 and scored[0][0] - scored[1][0] < 0.05):
+            continue
+        real = scored[0][1]
+        con.execute("UPDATE team_aliases SET team_id = ? WHERE team_id = ?", (real, t["team_id"]))
+        for m in con.execute("SELECT * FROM matches WHERE status = 'scheduled' AND ? IN (home_team_id, away_team_id)", (t["team_id"],)).fetchall():
+            home = real if m["home_team_id"] == t["team_id"] else m["home_team_id"]
+            away = real if m["away_team_id"] == t["team_id"] else m["away_team_id"]
+            con.execute("UPDATE matches SET status = 'duplicate', updated_at = ? WHERE match_id = ?", (stamp, m["match_id"]))
+            con.execute("""INSERT OR IGNORE INTO prediction_flags(prediction_id, flag, reason, flagged_at)
+                           SELECT prediction_id, 'team_identity', 'a team was stored under a new name without history', ? FROM predictions WHERE match_id = ?""", (stamp, m["match_id"]))
+            twin = con.execute("SELECT 1 FROM matches WHERE competition = ? AND season = ? AND home_team_id = ? AND away_team_id = ? AND status IN ('scheduled', 'finished')",
+                               (m["competition"], m["season"], home, away)).fetchone()
+            if not twin:
+                con.execute("""INSERT INTO matches(competition, season, match_date, kickoff, home_team_id, away_team_id, status, source, first_seen, updated_at)
+                               VALUES(?,?,?,?,?,?,'scheduled',?,?,?)""", (m["competition"], m["season"], m["match_date"], m["kickoff"], home, away, m["source"], stamp, stamp))
+        merged.append({"from": t["name"], "to": con.execute("SELECT name FROM teams WHERE team_id = ?", (real,)).fetchone()[0]})
+    return merged

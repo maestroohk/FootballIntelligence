@@ -312,9 +312,10 @@ def predict_upcoming(ctx, lookback_days=21):
     n_fwd = forward.publish_forward(con, oos[champ] if champ in oos else research.load_cached(f"oos_{champ}"), version, comps)
     n_back = forward.publish_backtest(con, research.load_cached(f"oos_{champ}"), version, since_season=CURRENT_SEASON_PUBLISH)
     forward.team_strengths(con, research.load_cached("frame"), db.get_kv(con, "research_summary"))
+    cov = forward.coverage_report(con, oos[champ] if champ in oos else research.load_cached(f"oos_{champ}"), version)
     if n_fwd:
         db.notify(con, "success", f"{n_fwd} new forward predictions stored", version, seen=True)
-    return {"forward": n_fwd, "backtest_new": n_back}
+    return {"forward": n_fwd, "backtest_new": n_back, "fixtures_in_window": cov["fixtures_in_window"], "predicted": cov["predicted"], "missing": len(cov["missing"])}
 
 
 CURRENT_SEASON_PUBLISH = 2026
@@ -358,6 +359,10 @@ def daily_cycle(ctx, trigger="manual"):
     except Exception as exc:
         ctx.log(f"openfootball failed: {exc}", "warning")
         of = None
+    with db.transaction(ctx.con):
+        from .identity import repair_new_teams
+        res["teams_merged"] = repair_new_teams(ctx.con)
+        res["duplicates_reconciled"] = ingest_fdco.reconcile_duplicates(ctx.con)
     ctx.stage("recording market prices")
     try:
         from . import odds

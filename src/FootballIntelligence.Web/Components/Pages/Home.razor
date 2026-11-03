@@ -41,6 +41,18 @@
             }
         </div>
 
+        @if (today.Count > 0 && tomorrow.Count > 0)
+        {
+            <div class="card">
+                <div class="card-head"><h2>Tomorrow</h2><a class="small" href="matches">@tomorrow.Count matches →</a></div>
+                @foreach (var league in tomorrow.GroupBy(m => m.Competition).OrderBy(g => LeagueOrder(g.Key)))
+                {
+                    <div class="league-head"><LeagueChip Code="@league.Key" /><span class="small faint">@league.Count()</span></div>
+                    @foreach (var m in league.Take(6)) { <MatchLine Match="m" ShowDate="false" /> }
+                }
+            </div>
+        }
+
         @if (featured.Count > 0)
         {
             <div class="card">
@@ -102,16 +114,15 @@
                 <div class="small faint" style="margin-top:8px">Hit rate alone does not show whether probabilities are well judged; the Learning page tracks calibration and log loss against baselines.</div>
             }
         </div>
+        <EngineStatus Compact="true" @key="@($"engine-{statusKey}")" />
         <div class="card">
-            <div class="card-head"><h2>Data freshness</h2><a href="data" class="small">Data health →</a></div>
+            <div class="card-head"><h2>Data sources</h2><a href="data" class="small">Data health →</a></div>
             <div class="spread small" style="padding:4px 0"><span class="dim">Latest result</span><span>@(latestResult ?? "none")</span></div>
-            <div class="spread small" style="padding:4px 0"><span class="dim">Future fixtures known</span><span>@upcoming.Count</span></div>
-            <div class="spread small" style="padding:4px 0"><span class="dim">Prediction engine</span><span class="@(engineReady ? "" : "warn")">@(engineReady ? "ready" : "not restored")</span></div>
             @foreach (var p in providers)
             {
                 <div class="spread small" style="padding:4px 0">
                     <span class="row"><span class="dot @(p.Status == "ok" ? "ok" : p.Status == "not_configured" ? "warn" : "bad")"></span>@p.Provider</span>
-                    <span class="dim">@(p.LastSuccess is null ? p.Status : Fmt.Ago(p.LastSuccess))</span>
+                    <span class="dim">@(p.LastSuccess is null ? (p.Status == "not_configured" ? "not configured" : p.Status) : Fmt.Ago(p.LastSuccess))</span>
                 </div>
             }
         </div>
@@ -161,6 +172,8 @@
 @code {
     private List<MatchRow> upcoming = [];
     private List<MatchRow> today = [];
+    private List<MatchRow> tomorrow = [];
+    private int statusKey;
     private List<MatchRow> nextMatches = [];
     private string? nextDay;
     private List<(MatchRow, string)> featured = [];
@@ -186,6 +199,8 @@
     {
         upcoming = Football.Upcoming(500);
         today = Football.OnDate(DateTime.Today.ToString("yyyy-MM-dd"));
+        tomorrow = Football.OnDate(DateTime.Today.AddDays(1).ToString("yyyy-MM-dd"));
+        statusKey++;
         nextDay = upcoming.FirstOrDefault()?.MatchDate;
         nextMatches = nextDay is null ? [] : upcoming.Where(m => m.MatchDate == nextDay).ToList();
         var week = DateTime.Today.AddDays(8).ToString("yyyy-MM-dd");

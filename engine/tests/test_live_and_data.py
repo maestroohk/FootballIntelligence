@@ -187,6 +187,23 @@ def test_repeated_meetings_and_rescheduled_fixtures(con):
 
 
 
+def test_planned_fixture_does_not_duplicate_a_match_played_on_another_day(con):
+    from fie import ingest_fdco
+    ingest_fdco.ensure_reference(con)
+    played = pd.DataFrame([{"Date": "30/10/2026", "HomeTeam": "Nice", "AwayTeam": "Rennes", "FTHG": 2, "FTAG": 1}])
+    ingest_fdco.upsert_rows(con, played, "F1", 2026)
+    row = con.execute("SELECT match_id, home_team_id, away_team_id FROM matches WHERE competition = 'F1'").fetchone()
+    assert ingest_fdco.find_existing(con, "F1", 2026, row["home_team_id"], row["away_team_id"], "2026-10-31", "scheduled")["match_id"] == row["match_id"]
+    assert ingest_fdco.find_existing(con, "F1", 2026, row["home_team_id"], row["away_team_id"], "2027-03-01", "scheduled") is None
+    con.execute("INSERT INTO matches(match_id, competition, season, match_date, home_team_id, away_team_id, status, source, first_seen, updated_at) "
+                "VALUES(999, 'F1', 2026, '2026-10-31', ?, ?, 'scheduled', 'OpenFootball', ?, ?)", (row["home_team_id"], row["away_team_id"], db.now(), db.now()))
+    con.execute("INSERT INTO predictions(match_id, model_version, purpose, created_at, data_cutoff, p_home, p_draw, p_away) VALUES(999,'m','forward',?,'2026-10-29',.5,.3,.2)", (db.now(),))
+    assert ingest_fdco.reconcile_duplicates(con) == 1
+    assert con.execute("SELECT status FROM matches WHERE match_id = 999").fetchone()[0] == "duplicate"
+    assert con.execute("SELECT flag FROM prediction_flags").fetchone()[0] == "duplicate_fixture"
+    assert ingest_fdco.reconcile_duplicates(con) == 0
+
+
 def test_forward_predictions_require_future_kickoff(con):
     from datetime import datetime, timedelta, timezone
     from fie import forward
@@ -269,3 +286,24 @@ def test_feed_normalisation_handles_duplicates_order_corrections_and_bad_events(
     assert second["score"] == [1, 1]
     row = con.execute("SELECT mode, home_goals, away_goals, minute FROM live_sessions WHERE live_id=?", (session,)).fetchone()
     assert tuple(row) == ("simulated", 1, 1, 81.0)
+
+
+def test_new_team_spelling_is_merged_into_the_established_team(con):
+    from fie.identity import get_or_create_team, repair_new_teams
+    con.execute("INSERT INTO competitions VALUES('E1','Championship','ENG',2)")
+    con.execute("INSERT INTO teams(team_id, name, country) VALUES(1,'Sheffield United','ENG'),(2,'Sheffield Weds','ENG'),(3,'Preston','ENG'),(4,'Sheffield Utd','ENG'),(5,'Wrexham','ENG')")
+    for mid, h, a in ((1, 1, 2), (2, 1, 3), (3, 2, 3)):
+        con.execute("INSERT INTO matches(match_id, competition, season, match_date, home_team_id, away_team_id, status, fthg, ftag, source, first_seen, updated_at) "
+                    "VALUES(?,'E1',2026,'2026-09-01',?,?,'finished',1,0,'t',?,?)", (mid, h, a, db.now(), db.now()))
+    for mid, h, a in ((10, 3, 4), (11, 5, 3)):
+        con.execute("INSERT INTO matches(match_id, competition, season, match_date, kickoff, home_team_id, away_team_id, status, source, first_seen, updated_at) "
+                    "VALUES(?,'E1',2026,'2026-11-03','19:45',?,?,'scheduled','t',?,?)", (mid, h, a, db.now(), db.now()))
+    con.execute("INSERT INTO predictions(match_id, model_version, purpose, created_at, data_cutoff, p_home, p_draw, p_away) VALUES(10,'m','forward',?,'2026-11-01',.3,.3,.4)", (db.now(),))
+    assert repair_new_teams(con) == [{"from": "Sheffield Utd", "to": "Sheffield United"}]
+    assert con.execute("SELECT status FROM matches WHERE match_id = 10").fetchone()[0] == "duplicate"
+    assert con.execute("SELECT flag FROM prediction_flags").fetchone()[0] == "team_identity"
+    fixed = con.execute("SELECT match_date, kickoff FROM matches WHERE status = 'scheduled' AND home_team_id = 3 AND away_team_id = 1").fetchone()
+    assert tuple(fixed) == ("2026-11-03", "19:45")
+    assert con.execute("SELECT status FROM matches WHERE match_id = 11").fetchone()[0] == "scheduled"
+    assert repair_new_teams(con) == []
+    assert get_or_create_team(con, "Sheffield Utd", "ENG", "football-data.co.uk", 2026) == 1

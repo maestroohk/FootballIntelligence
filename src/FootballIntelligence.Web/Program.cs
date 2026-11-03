@@ -15,6 +15,7 @@ builder.Services.AddSingleton<ResearchQueries>();
 builder.Services.AddSingleton<OperationsQueries>();
 builder.Services.AddSingleton<ValueQueries>();
 builder.Services.AddScoped<ViewMode>();
+builder.Services.AddScoped<UserTime>();
 builder.Services.AddSingleton<ChangeFeed>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ChangeFeed>());
 builder.Services.AddSingleton<EngineSupervisor>();

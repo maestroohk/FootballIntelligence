@@ -413,3 +413,13 @@ details.card[open] > summary h2::after { content: " ▾"; }
     .crest.lg { width: 44px; height: 44px; font-size: 15px; }
     .match-line { grid-template-columns: 52px minmax(0,1fr) 40px minmax(0,1fr); gap: 6px; }
 }
+.tz-select { padding: 4px 8px; font-size: 12px; max-width: 140px; }
+.coverage-line { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.coverage-line .value { font-size: 22px; font-weight: 700; }
+@media (max-width: 760px) { .tz-select { max-width: 110px; } }
+@media (min-width: 761px) and (max-width: 1000px) {
+    .hero { gap: 12px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "home away" "center center"; }
+    .hero > .side:first-child { grid-area: home; }
+    .hero > .side:last-child { grid-area: away; }
+    .hero > .center { grid-area: center; }
+}

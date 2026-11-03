@@ -106,8 +106,8 @@ def ingest_file(con, path: Path, code: str, season: int, observed_at=HISTORICAL_
         date = _parse_date(row.get("Date"))
         if not date:
             continue
-        home = get_or_create_team(con, str(row["HomeTeam"]).strip(), country, "football-data.co.uk")
-        away = get_or_create_team(con, str(row["AwayTeam"]).strip(), country, "football-data.co.uk")
+        home = get_or_create_team(con, str(row["HomeTeam"]).strip(), country, "football-data.co.uk", season)
+        away = get_or_create_team(con, str(row["AwayTeam"]).strip(), country, "football-data.co.uk", season)
         match = find_existing(con, code, season, home, away, date, "scheduled" if scheduled else "finished")
         if match is None:
             unmatched += 1

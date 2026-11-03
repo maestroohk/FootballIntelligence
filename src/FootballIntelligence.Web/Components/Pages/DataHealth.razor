@@ -17,6 +17,8 @@
 
 <ModelStatus @key="statusKey" />
 
+<EngineStatus @key="@($"engine-{statusKey}")" />
+
 <div class="card">
     <div class="card-head"><h2>Operations</h2><a href="jobs" class="small">All jobs →</a></div>
     <div class="ops-grid">

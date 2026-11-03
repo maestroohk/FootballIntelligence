@@ -1,0 +1,107 @@
+@inject OperationsQueries Ops
+@inject Database Db
+@inject UserTime Clock
+
+@if (Compact)
+{
+    <div class="card">
+        <div class="card-head"><h2>Prediction engine</h2><a href="data" class="small">Coverage →</a></div>
+        @if (coverage is null)
+        {
+            <div class="small dim">No prediction run has reported coverage on this computer yet. It is produced by the next update cycle.</div>
+        }
+        else
+        {
+            <div class="coverage-line">
+                <span class="value @(coverage.Predicted == coverage.FixturesInWindow ? "good" : "warn")">@coverage.Predicted / @coverage.FixturesInWindow</span>
+                <span class="small dim">fixtures in the next @coverage.HorizonDays days have a pre-match forecast</span>
+            </div>
+            <div class="meter" style="margin:6px 0 10px"><div style="width:@Fmt.Pct(coverage.FixturesInWindow == 0 ? 0 : (double)coverage.Predicted / coverage.FixturesInWindow, 1);background:var(--accent)"></div></div>
+        }
+        <div class="spread small" style="padding:3px 0"><span class="dim">Fixtures refreshed</span><span>@Fmt.Ago(fixturesAt)</span></div>
+        <div class="spread small" style="padding:3px 0"><span class="dim">Forecasts updated</span><span>@(coverage is null ? "—" : Fmt.Ago(coverage.GeneratedAt))</span></div>
+        <div class="spread small" style="padding:3px 0"><span class="dim">Next refresh</span><span>@NextLabel</span></div>
+        @if (failures.Count > 0) { <div class="small bad" style="margin-top:6px">@failures.Count update job@(failures.Count == 1 ? "" : "s") failed recently · <a href="data">details</a></div> }
+        @if (stale.Count > 0) { <div class="small warn" style="margin-top:4px">Results overdue in @string.Join(", ", stale.Select(s => Fmt.CompetitionName(s.Competition)))</div> }
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-head"><h2>Prediction coverage</h2><span class="sub">@(coverage is null ? "no coverage report yet" : $"{Fmt.ModelLabel(coverage.ModelVersion)} · checked {Fmt.Ago(coverage.GeneratedAt)}")</span></div>
+        <div class="grid g4">
+            <Kpi Label="Fixtures in window" Value="@(coverage?.FixturesInWindow.ToString() ?? "—")" Note="@($"next {coverage?.HorizonDays ?? 10} days, all covered leagues")" />
+            <Kpi Label="With a forecast" Value="@(coverage?.Predicted.ToString() ?? "—")" Note="stored before kick-off, never edited" Color="@(coverage is not null && coverage.Predicted == coverage.FixturesInWindow ? "var(--ok)" : null)" />
+            <Kpi Label="Without a forecast" Value="@(coverage?.Missing.Count.ToString() ?? "—")" Note="reasons listed below" Color="@(coverage?.Missing.Count > 0 ? "var(--warn)" : null)" />
+            <Kpi Label="Later fixtures" Value="@(coverage?.LaterFixtures.ToString("N0") ?? "—")" Note="@($"forecast once within {coverage?.HorizonDays ?? 10} days of kick-off")" />
+        </div>
+        <div class="grid g2" style="margin-top:12px">
+            <div>
+                <table class="data compact">
+                    <thead><tr><th>League</th><th class="num">Fixtures</th><th class="num">Forecast</th></tr></thead>
+                    <tbody>
+                        @foreach (var (league, l) in (coverage?.Leagues ?? []).OrderByDescending(l => l.Value.Fixtures))
+                        {
+                            <tr><td><LeagueChip Code="@league" /></td><td class="num">@l.Fixtures</td><td class="num @(l.Predicted == l.Fixtures ? "good" : "warn")">@l.Predicted</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="small">
+                <div class="spread" style="padding:3px 0"><span class="dim">Fixtures refreshed</span><span>@Fmt.Ago(fixturesAt)</span></div>
+                <div class="spread" style="padding:3px 0"><span class="dim">Results refreshed</span><span>@Fmt.Ago(resultsAt)</span></div>
+                <div class="spread" style="padding:3px 0"><span class="dim">Next scheduled update</span><span>@NextLabel</span></div>
+                <div class="spread" style="padding:3px 0"><span class="dim">Leagues with results overdue</span><span class="@(stale.Count > 0 ? "warn" : "")">@(stale.Count == 0 ? "none" : string.Join(", ", stale.Select(s => $"{s.Competition} ({s.Overdue})")))</span></div>
+                <p class="faint" style="margin-top:8px">Fixture lists come from OpenFootball (whole season for the main leagues) and football-data.co.uk (a few days ahead for every covered division). Champions League and Europa League are not covered: no configured source provides their fixtures, and the model has no common strength scale across countries.</p>
+            </div>
+        </div>
+        @if (coverage is { Missing.Count: > 0 })
+        {
+            <h3 class="small" style="margin-top:12px">Fixtures without a forecast</h3>
+            <table class="data compact">
+                <thead><tr><th>Match</th><th>Date</th><th>Reason</th></tr></thead>
+                <tbody>
+                    @foreach (var m in coverage.Missing)
+                    {
+                        <tr><td><a href="matches/@m.MatchId">@m.Home – @m.Away</a> <span class="faint">@m.Competition</span></td><td class="small">@m.Date @m.Kickoff</td><td class="small dim">@m.Reason</td></tr>
+                    }
+                </tbody>
+            </table>
+        }
+        @if (failures.Count > 0)
+        {
+            <h3 class="small" style="margin-top:12px">Failed update jobs</h3>
+            @foreach (var j in failures)
+            {
+                <div class="spread small" style="padding:4px 0;border-bottom:1px solid var(--border-soft)">
+                    <span><a href="jobs/@j.JobId">#@j.JobId @j.Kind</a> <span class="bad">@(j.Error?.Length > 120 ? j.Error[..120] + "…" : j.Error)</span></span>
+                    <button class="btn sm" @onclick="() => Ops.Retry(j.JobId)">Retry</button>
+                </div>
+            }
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public bool Compact { get; set; }
+
+    private PredictionCoverage? coverage;
+    private List<JobRow> failures = [];
+    private List<StaleLeague> stale = [];
+    private string? fixturesAt;
+    private string? resultsAt;
+    private DateTime? next;
+
+    private string NextLabel => next is null ? "not scheduled" : next < DateTime.UtcNow ? "due now" : TimeZoneInfo.ConvertTimeFromUtc(next.Value, Clock.Zone).ToString("ddd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+
+    protected override void OnParametersSet()
+    {
+        coverage = Ops.ForecastCoverage();
+        failures = Ops.RecentFailures();
+        stale = Ops.StaleLeagues();
+        var providers = Ops.Providers();
+        fixturesAt = providers.Where(p => p.Provider is "OpenFootball" or "football-data.co.uk fixtures").Select(p => p.LastSuccess).Max();
+        resultsAt = providers.FirstOrDefault(p => p.Provider == "football-data.co.uk")?.LastSuccess;
+        next = Ops.NextCycle(Db.Options.Light);
+    }
+}

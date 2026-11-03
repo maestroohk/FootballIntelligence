@@ -1,5 +1,20 @@
 namespace FootballIntelligence.Web.Data;
 
+public class StoredForecast
+{
+    public long PredictionId { get; set; }
+    public string ModelVersion { get; set; } = "";
+    public string Purpose { get; set; } = "";
+    public string CreatedAt { get; set; } = "";
+    public string DataCutoff { get; set; } = "";
+    public double PHome { get; set; }
+    public double PDraw { get; set; }
+    public double PAway { get; set; }
+    public double? LambdaHome { get; set; }
+    public double? LambdaAway { get; set; }
+    public string? Flag { get; set; }
+}
+
 public class MatchRow
 {
     public long MatchId { get; set; }
@@ -9,6 +24,7 @@ public class MatchRow
     public string MatchDate { get; set; } = "";
     public string? Kickoff { get; set; }
     public string Status { get; set; } = "";
+    public string? Source { get; set; }
     public long HomeTeamId { get; set; }
     public long AwayTeamId { get; set; }
     public string HomeName { get; set; } = "";

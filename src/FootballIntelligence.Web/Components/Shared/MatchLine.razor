@@ -1,10 +1,11 @@
 @inject ViewMode Mode
+@inject UserTime Clock
 @implements IDisposable
 <a class="fixture" href="matches/@Match.MatchId">
     <div class="fx-status">
         @if (Match.Status == "finished") { <span class="fx-ft">FT</span> }
         else if (AwaitingResult) { <span class="fx-wait" title="Kick-off has passed; waiting for the result source">Result due</span> }
-        else { <span class="fx-time">@(Match.Kickoff ?? "TBC")</span> }
+        else { <span class="fx-time" title="@($"Kick-off in {Clock.Label} time")">@Clock.Time(Match)</span> }
         <span class="fx-date">@ShortDate</span>
     </div>
     <div class="fx-teams">
@@ -21,13 +22,13 @@
             </div>
             <ProbBar Home="Match.PHome.Value" Draw="Match.PDraw!.Value" Away="Match.PAway!.Value" Slim="true" />
             <div class="fx-meta">
-                <span>@(Mode.Analyst ? "xG" : "Goals expected") @Fmt.Num(Match.LambdaHome, 1)–@Fmt.Num(Match.LambdaAway, 1)</span>
-                <span title="@Match.PredictionFlag">@(Match.PredictionFlag is not null ? "late · not evaluated" : Match.Purpose == "forward" ? "pre-match forecast" : "backtest")</span>
+                <span>@(LikelyScore is { } s ? $"Likely {s.Home}–{s.Away}" : "")@(Mode.Analyst ? $" · xG {Fmt.Num(Match.LambdaHome, 1)}–{Fmt.Num(Match.LambdaAway, 1)}" : "")</span>
+                <span class="@(Match.PredictionFlag is not null ? "warn" : "")" title="@ProvenanceTitle">@ProvenanceLabel</span>
             </div>
         }
         else
         {
-            <span class="fx-meta">No stored prediction</span>
+            <span class="fx-meta">@NoPredictionReason</span>
         }
     </div>
 </a>
@@ -36,13 +37,49 @@
     [Parameter, EditorRequired] public MatchRow Match { get; set; } = default!;
     [Parameter] public bool ShowDate { get; set; } = true;
 
-    protected override void OnInitialized() => Mode.Changed += OnMode;
+    protected override void OnInitialized()
+    {
+        Mode.Changed += OnMode;
+        Clock.Changed += OnMode;
+    }
 
     private void OnMode() => InvokeAsync(StateHasChanged);
 
-    public void Dispose() => Mode.Changed -= OnMode;
+    public void Dispose()
+    {
+        Mode.Changed -= OnMode;
+        Clock.Changed -= OnMode;
+    }
+
+    private (int Home, int Away)? LikelyScore
+    {
+        get
+        {
+            if (Match.Markets is null) return null;
+            try { var top = Markets.FromJson(Match.Markets)?.TopScores; return top is null || top.Count == 0 ? null : (top[0].Home, top[0].Away); }
+            catch (Exception) { return null; }
+        }
+    }
+
+    private string ProvenanceLabel => Match.PredictionFlag is not null ? "not a pre-match forecast"
+        : Match.Purpose == "forward" ? $"forecast {Fmt.Ago(Match.PredictionCreated)}"
+        : "re-forecast after the match";
+
+    private string ProvenanceTitle => Match.PredictionFlag is not null ? Match.PredictionFlag
+        : Match.Purpose == "forward" ? $"Stored before kick-off at {Fmt.Local(Match.PredictionCreated)} · {Match.ModelVersion}"
+        : $"Rebuilt later using only results before {Match.DataCutoff}; not stored in advance";
+
+    private string NoPredictionReason
+    {
+        get
+        {
+            if (Match.Status == "finished") return "No forecast was stored";
+            var days = (DateTime.Parse(Match.MatchDate, System.Globalization.CultureInfo.InvariantCulture) - DateTime.Today).TotalDays;
+            return days > 10 ? "Forecast published 10 days before kick-off" : "Forecast not available yet";
+        }
+    }
 
     private int Top => Match.PHome is null ? -1 : Match.PHome >= Match.PDraw && Match.PHome >= Match.PAway ? 0 : Match.PDraw >= Match.PAway ? 1 : 2;
-    private string ShortDate => ShowDate && DateTime.TryParse(Match.MatchDate, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d) ? d.ToString("dd MMM", System.Globalization.CultureInfo.InvariantCulture) : "";
-    private bool AwaitingResult => Match.Status == "scheduled" && DateTime.TryParse($"{Match.MatchDate} {Match.Kickoff ?? "23:59"}", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var k) && k.AddHours(2.5) < DateTime.Now;
+    private string ShortDate => ShowDate && DateTime.TryParse(Clock.Date(Match), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d) ? d.ToString("dd MMM", System.Globalization.CultureInfo.InvariantCulture) : "";
+    private bool AwaitingResult => Match.Status == "scheduled" && (UserTime.KickoffUtc(Match) ?? DateTime.Parse(Match.MatchDate, System.Globalization.CultureInfo.InvariantCulture).AddHours(23)).AddHours(2.5) < DateTime.UtcNow;
 }
