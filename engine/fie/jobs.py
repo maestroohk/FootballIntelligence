@@ -1,3 +1,4 @@
+import sqlite3
 import json
 import os
 import subprocess
@@ -44,7 +45,10 @@ class JobContext:
     def _heartbeat(self):
         hb = db.connect()
         while not self._stop.wait(5):
-            hb.execute("UPDATE jobs SET heartbeat_at=? WHERE job_id=?", (db.now(), self.job_id))
+            try:
+                hb.execute("UPDATE jobs SET heartbeat_at=? WHERE job_id=?", (db.now(), self.job_id))
+            except sqlite3.OperationalError:
+                continue
         hb.close()
 
     def stop(self):

@@ -317,3 +317,19 @@ def test_challenger_forecasts_have_their_own_provenance(con):
         con.execute("INSERT INTO predictions(match_id, model_version, purpose, created_at, data_cutoff, p_home, p_draw, p_away) VALUES(1,?,?,?,'2099-01-01',.5,.3,.2)", (version, purpose, db.now()))
     cats = dict(con.execute("SELECT purpose, category FROM prediction_provenance").fetchall())
     assert cats == {"forward": "pre_match", "challenger": "challenger"}
+
+
+def test_crest_licences_files_and_matching():
+    from fie import crests
+    meta = lambda lic, mime="image/svg+xml": {"thumb": "x", "mime": mime, "license": lic, "description": ""}
+    assert crests.acceptable("FC Schalke 04 Logo.svg", meta("pd"), ["Schalke 04"])[0]
+    assert crests.acceptable("KRC Genk Logo 2016.svg", meta("cc-by-sa-4.0"), ["Genk"])[0]
+    assert not crests.acceptable("Club logo.svg", meta("fair use"), [])[0]
+    assert not crests.acceptable("Club logo.jpg", meta("pd", "image/jpeg"), [])[0]
+    assert not crests.acceptable("2019 friendly RB Leipzig.png", meta("cc-by-sa-4.0", "image/png"), ["RB Leipzig"])[0]
+    assert not crests.acceptable("Stade Rennais (logo 1960).svg", meta("pd"), ["Rennes"])[0]
+    assert crests.acceptable("Bologna F.C. 1909 logo.svg", meta("pd"), ["Bologna"])[0]
+    teams = [{"team_id": 1, "aliases": ["Leverkusen", "Bayer 04 Leverkusen"]}, {"team_id": 2, "aliases": ["Mainz"]}]
+    clubs = [{"qid": "A", "names": {"VfL Leverkusen"}}, {"qid": "B", "names": {"Bayer 04 Leverkusen"}}, {"qid": "C", "names": {"1. FSV Mainz 05"}}]
+    assert crests.match_teams(teams, clubs) == {2: ("C", 1.0)}
+    assert crests.display_keys("AFC Bournemouth") == {"afc bournemouth", "bournemouth"}

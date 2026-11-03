@@ -92,4 +92,29 @@ public static class TeamIdentity
     }
 
     public static string Slug(string name) => Key(name).Replace(' ', '-');
+
+    private static readonly HashSet<string> ClubTypes = new(StringComparer.OrdinalIgnoreCase)
+        { "afc", "fc", "cf", "sc", "ac", "as", "ss", "ssc", "rc", "rcd", "cd", "ud", "sd", "vfl", "vfb", "tsg", "sv", "fsv", "bsc", "ogc", "kv", "krc", "us", "sk", "fk", "sl", "cp", "spvgg", "and", "de", "of" };
+
+    private static readonly HashSet<string> Suffixes = new(StringComparer.OrdinalIgnoreCase)
+        { "united", "utd", "city", "town", "county", "rovers", "wanderers", "athletic", "albion", "hotspur", "calcio", "club" };
+
+    private static readonly Dictionary<string, string> Codes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["manchester united"] = "MUN", ["man united"] = "MUN", ["manchester city"] = "MCI", ["man city"] = "MCI",
+        ["sheffield united"] = "SHU", ["sheffield utd"] = "SHU", ["sheffield wednesday"] = "SHW", ["sheffield weds"] = "SHW",
+        ["bristol city"] = "BRC", ["bristol rovers"] = "BRR", ["crystal palace"] = "CRY", ["aston villa"] = "AVL", ["west ham"] = "WHU",
+        ["west ham united"] = "WHU", ["bayern munich"] = "FCB", ["paris saint-germain"] = "PSG", ["paris sg"] = "PSG", ["inter"] = "INT",
+    };
+
+    public static string Code(string name)
+    {
+        if (Codes.TryGetValue(name.Trim(), out var known)) return known;
+        var words = name.Replace("'", "").Replace(".", " ").Split([' ', '-'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => !ClubTypes.Contains(w) && !w.All(char.IsDigit)).ToList();
+        if (words.Count == 0) return name.Length >= 3 ? name[..3].ToUpperInvariant() : name.ToUpperInvariant();
+        if (words.Count >= 3) return string.Concat(words.Take(3).Select(w => char.ToUpperInvariant(w[0])));
+        var main = words.Count == 2 && Suffixes.Contains(words[1]) ? words[0] : words.Count == 2 ? $"{words[0][0]}{words[1]}" : words[0];
+        return (main.Length >= 3 ? main[..3] : main).ToUpperInvariant();
+    }
 }

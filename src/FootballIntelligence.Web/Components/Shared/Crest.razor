@@ -1,40 +1,63 @@
 @inject IWebHostEnvironment Env
-@if (ImagePath is { } img)
+@if (Lookup(Env.WebRootPath, TeamId, Name) is { } crest)
 {
-    <img class="crest @(Large ? "lg" : "")" src="@img" alt="@Name crest" loading="lazy" />
+    <img class="crest @(Large ? "lg" : "")" src="crests/@crest.File" alt="@Name crest" title="@($"{Name} · crest from Wikimedia Commons ({crest.Licence})")" loading="lazy" />
 }
 else
 {
     var (primary, secondary) = Fmt.TeamColors(Name);
+    var abbr = TeamIdentity.Code(Name);
     <svg class="crest @(Large ? "lg" : "")" viewBox="0 0 40 46" role="img" aria-label="@Name">
         <title>@Name</title>
         <path d="M20 1 L38 7 V22 C38 34 30 41 20 45 C10 41 2 34 2 22 V7 Z" fill="@primary" stroke="@secondary" stroke-width="2" />
         <path d="M20 1 L38 7 V14 H2 V7 Z" fill="@secondary" opacity=".55" />
-        <text x="20" y="31" text-anchor="middle" font-size="@(Fmt.Initials(Name).Length > 2 ? 11 : 13)" font-weight="800" fill="@(Fmt.IsLight(primary) ? "#111" : "#fff")" font-family="Inter, sans-serif">@Fmt.Initials(Name)</text>
+        <text x="20" y="30" text-anchor="middle" font-size="@(abbr.Length > 2 ? 10.5 : 13)" font-weight="800" letter-spacing=".02em" fill="@(Fmt.IsLight(primary) ? "#111" : "#fff")" font-family="Inter, sans-serif">@abbr</text>
     </svg>
 }
 
 @code {
-    private static HashSet<string>? available;
+    private static readonly object Gate = new();
+    private static DateTime loadedAt;
+    private static Dictionary<string, CrestFile> byTeam = [];
+    private static Dictionary<string, CrestFile> byName = [];
+
+    public record CrestFile(string File, string Licence);
 
     [Parameter, EditorRequired] public string Name { get; set; } = "";
     [Parameter] public long? TeamId { get; set; }
     [Parameter] public bool Large { get; set; }
 
-    private string? ImagePath
+    public static CrestFile? Lookup(string webRoot, long? teamId, string name)
     {
-        get
+        var path = Path.Combine(webRoot, "crests", "manifest.json");
+        var stamp = File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue;
+        if (stamp != loadedAt)
         {
-            available ??= Directory.Exists(Path.Combine(Env.WebRootPath, "crests"))
-                ? Directory.GetFiles(Path.Combine(Env.WebRootPath, "crests")).Select(Path.GetFileName).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase)
-                : [];
-            var slug = TeamIdentity.Slug(Name);
-            foreach (var ext in new[] { "svg", "png", "webp" })
+            lock (Gate)
             {
-                if (available.Contains($"{slug}.{ext}")) return $"crests/{slug}.{ext}";
-                if (TeamId is not null && available.Contains($"{TeamId}.{ext}")) return $"crests/{TeamId}.{ext}";
+                if (stamp != loadedAt)
+                {
+                    byTeam = [];
+                    byName = [];
+                    if (stamp != DateTime.MinValue)
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+                        var files = new Dictionary<string, CrestFile>();
+                        foreach (var t in doc.RootElement.GetProperty("teams").EnumerateObject())
+                        {
+                            var file = t.Value.GetProperty("file").GetString()!;
+                            var c = new CrestFile(file, t.Value.TryGetProperty("licence", out var l) ? l.GetString() ?? "" : "");
+                            byTeam[t.Name] = c;
+                            files[file] = c;
+                        }
+                        foreach (var a in doc.RootElement.GetProperty("aliases").EnumerateObject())
+                            if (files.TryGetValue(a.Value.GetString()!, out var c)) byName[a.Name] = c;
+                    }
+                    loadedAt = stamp;
+                }
             }
-            return null;
         }
+        if (teamId is not null && byTeam.TryGetValue(teamId.Value.ToString(), out var hit)) return hit;
+        return byName.GetValueOrDefault(name.Trim().ToLowerInvariant());
     }
 }

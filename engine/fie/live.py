@@ -335,7 +335,9 @@ def _run_replay(ctx, sb_match_id, speed, interval_minutes, faults, seed):
                 con.execute("UPDATE live_sessions SET last_event_at=? WHERE live_id=?", (db.now(), live_id))
                 important = [e for e in accepted if e["kind"] in ("goal", "red_card", "substitution", "correction")]
                 if important:
-                    lm.snapshot(period, clock, important[0]["kind"], [_describe(e, names) for e in important])
+                    first = important[0]
+                    on_time = first["period"] == period and lm.last_snapshot_clock is not None and (period, first["clock"]) >= lm.last_snapshot_clock
+                    lm.snapshot(period, first["clock"] if on_time else clock, first["kind"], [_describe(e, names) for e in important])
                     next_interval = clock + interval_minutes
             if clock >= next_interval:
                 lm.snapshot(period, clock, "interval", [])

@@ -1,6 +1,7 @@
 @page "/live/{Id:long}"
 @inherits FeedComponent
 @inject OperationsQueries Ops
+@inject FootballQueries Football
 
 <PageTitle>@(session is null ? "Live" : $"{session.HomeName} v {session.AwayName}") · Live tracker</PageTitle>
 
@@ -24,22 +25,43 @@ else
 }
 
 <div class="card hero">
-    <div class="side"><Crest Name="@(session.HomeName ?? "")" Large="true" /><div class="name">@session.HomeName</div></div>
+    <div class="side"><Crest Name="@(session.HomeName ?? "")" TeamId="@match?.HomeTeamId" Large="true" /><div class="name">@session.HomeName</div><div class="small dim">Home</div></div>
     <div class="center">
+        @if (match is not null)
+        {
+            <div class="row" style="justify-content:center"><LeagueChip Code="@match.Competition" /><span class="small faint">@DateTime.Parse(match.MatchDate, System.Globalization.CultureInfo.InvariantCulture).ToString("d MMM yyyy", System.Globalization.CultureInfo.InvariantCulture)</span></div>
+        }
         <div class="row" style="justify-content:center">
             @if (session.Status == "running") { <span class="dot live"></span> }
             <span class="badge @Fmt.SessionCss(session.Mode)">@Fmt.SessionLabel(session.Mode)</span>
-            <span class="badge">@session.Status</span>
+            <span class="badge">@(session.Status == "running" ? "in progress" : session.Status)</span>
         </div>
         <div class="big-score">@session.HomeGoals – @session.AwayGoals</div>
-        <div class="dim">@MinuteLabel()</div>
+        <div><span class="clock-pill @(session.Status == "running" ? "on" : "")">@MinuteLabel()</span></div>
         <div class="small faint" style="margin-top:6px">
             Last provider event @Fmt.Ago(session.LastEventAt) · last model update @Fmt.Ago(session.LastUpdateAt)
             @if (Stale) { <span class="badge warn">feed stale</span> }
         </div>
     </div>
-    <div class="side"><Crest Name="@(session.AwayName ?? "")" Large="true" /><div class="name">@session.AwayName</div></div>
+    <div class="side"><Crest Name="@(session.AwayName ?? "")" TeamId="@match?.AwayTeamId" Large="true" /><div class="name">@session.AwayName</div><div class="small dim">Away</div></div>
 </div>
+
+@if (keyEvents.Count > 0 || snapshots.Count > 0)
+{
+    <div class="card event-strip" aria-label="Match events">
+        <div class="es-track">
+            <div class="es-progress" style="width:@Pos(snapshots.Select(X).DefaultIfEmpty(0).Max())"></div>
+            <span class="es-ht" style="left:@Pos(45 + HalfOffset)">HT</span>
+            @foreach (var e in keyEvents)
+            {
+                <span class="es-mark @(e.Side == "home" ? "up" : "down")" style="left:@Pos(EventX(e))" title="@($"{Fmt.Minute(e.Clock, e.Period)} {Describe(e)}")">
+                    <span class="es-icon">@Icon(e)</span><span class="es-label">@Fmt.Minute(e.Clock, e.Period) @Surname(e.PlayerName)</span>
+                </span>
+            }
+        </div>
+        <div class="spread small faint"><span>0'</span><span>@session.HomeName above · @session.AwayName below</span><span>90'+</span></div>
+    </div>
+}
 
 @if (latest is not null && fc is not null)
 {
@@ -197,6 +219,12 @@ else
     private List<(string, double)> ticks = [];
     private double maxClock = 95;
     private JsonElement? prematch;
+    private MatchRow? match;
+    private List<LiveEventRow> keyEvents = [];
+
+    private string Pos(double x) => (Math.Clamp(x / maxClock, 0, 1) * 100).ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+    private static string Surname(string? name) => string.IsNullOrWhiteSpace(name) ? "" : name.Trim().Split(' ')[^1];
 
     private bool Stale => session is { Status: "running" } && (Fmt.Since(session.LastUpdateAt) ?? TimeSpan.MaxValue) > TimeSpan.FromSeconds(30);
     private string PreModel => prematch?.TryGetProperty("model_version", out var v) == true ? Fmt.ModelLabel(v.GetString()) : "";
@@ -210,6 +238,8 @@ else
         prematch = session.Prematch is null ? null : JsonDocument.Parse(session.Prematch).RootElement.Clone();
         snapshots = Ops.Snapshots(Id);
         events = Ops.LiveEvents(Id).Where(e => e.Superseded == 0).ToList();
+        keyEvents = events.Where(e => e.Kind is "goal" or "red_card").ToList();
+        match = session.MatchId is long mid ? Football.Match(mid) : null;
         latest = snapshots.LastOrDefault();
         fc = latest?.State is null ? null : JsonDocument.Parse(latest.State).RootElement.Clone();
         matrix = fc?.TryGetProperty("matrix", out var m) == true ? m.EnumerateArray().Select(r => r.EnumerateArray().Select(c => c.GetDouble()).ToArray()).ToArray() : [];

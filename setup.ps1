@@ -56,5 +56,6 @@ Run-Job "ingest_market_odds"
 Run-Job "strategy_research" '{"rebuild": true}'
 Run-Job "predict_upcoming"
 Run-Job "paper_cycle"
+Run-Job "fetch_crests"
 Run-Job "build_report"
 Write-Host "`nFull pipeline finished. Start the app with: dotnet run --project src/FootballIntelligence.Web --urls http://localhost:5281"

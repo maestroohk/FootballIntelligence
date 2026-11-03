@@ -1,0 +1,46 @@
+@inject IWebHostEnvironment Env
+
+<div class="card" id="crests">
+    <div class="card-head"><h2>Club crests</h2><span class="sub">@(entries.Count == 0 ? "none downloaded on this computer" : $"{entries.Count} crests · {fallback} teams use the generated shield")</span></div>
+    <p class="small dim">Crests are used only when Wikidata links the club to a logo file on Wikimedia Commons whose licence is public domain, CC0, CC BY or CC BY-SA, checked per file by the <span class="mono">fetch_crests</span> job. Files are stored on this computer, never hotlinked and not committed to the repository. Most English and Spanish club crests are not freely licensed, so those clubs keep a shield in their colours. Crests may also be protected as trademarks; they are shown here only to identify the clubs.</p>
+    @if (entries.Count > 0)
+    {
+        <details>
+            <summary class="small">Sources and licences</summary>
+            <div class="table-wrap">
+                <table class="data compact">
+                    <thead><tr><th>Club</th><th>File</th><th>Licence</th><th>Author</th></tr></thead>
+                    <tbody>
+                        @foreach (var e in entries)
+                        {
+                            <tr>
+                                <td class="row" style="gap:6px;flex-wrap:nowrap"><img class="crest" src="crests/@e.File" alt="" />@e.Team</td>
+                                <td class="small"><a href="@e.Page" target="_blank" rel="noopener">@e.CommonsFile</a></td>
+                                <td class="small">@e.Licence</td>
+                                <td class="small dim">@(e.Author ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </details>
+    }
+</div>
+
+@code {
+    private record Entry(string Team, string File, string CommonsFile, string Page, string Licence, string? Author);
+    private List<Entry> entries = [];
+    private int fallback;
+
+    protected override void OnInitialized()
+    {
+        var path = Path.Combine(Env.WebRootPath, "crests", "manifest.json");
+        if (!File.Exists(path)) return;
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+        string? S(System.Text.Json.JsonElement e, string k) => e.TryGetProperty(k, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() : null;
+        entries = doc.RootElement.GetProperty("teams").EnumerateObject()
+            .Select(t => new Entry(S(t.Value, "team") ?? "", S(t.Value, "file") ?? "", S(t.Value, "commons_file") ?? "", S(t.Value, "commons_page") ?? "", S(t.Value, "licence") ?? "", S(t.Value, "author")))
+            .OrderBy(e => e.Team).ToList();
+        fallback = doc.RootElement.GetProperty("rejected").EnumerateObject().Count();
+    }
+}
