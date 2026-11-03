@@ -22,9 +22,14 @@ def handler(kind):
     return wrap
 
 
-def enqueue(con, kind, args=None, max_retries=2):
+def enqueue(con, kind, args=None, max_retries=2, dedupe=True):
+    payload = db.dumps(args or {})
+    existing = con.execute("SELECT job_id FROM jobs WHERE kind=? AND args=? AND status IN ('queued','running') AND cancel_requested=0 ORDER BY job_id LIMIT 1",
+                           (kind, payload)).fetchone()
+    if existing and dedupe:
+        return existing[0]
     con.execute("INSERT INTO jobs(kind, args, status, created_at, max_retries) VALUES(?,?,?,?,?)",
-                (kind, db.dumps(args or {}), "queued", db.now(), max_retries))
+                (kind, payload, "queued", db.now(), max_retries))
     return con.execute("SELECT last_insert_rowid()").fetchone()[0]
 
 

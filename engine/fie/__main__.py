@@ -70,7 +70,7 @@ def main():
         print(jobs.enqueue(con, args.kind, json.loads(args.args)))
     elif args.cmd == "run":
         con = db.init()
-        job_id = jobs.enqueue(con, args.kind, json.loads(args.args))
+        job_id = jobs.enqueue(con, args.kind, json.loads(args.args), dedupe=False)
         con.execute("UPDATE jobs SET status='running', started_at=? WHERE job_id=?", (db.now(), job_id))
         jobs.run_job(job_id)
         row = con.execute("SELECT status, result, error FROM jobs WHERE job_id=?", (job_id,)).fetchone()

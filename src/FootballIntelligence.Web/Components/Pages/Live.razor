@@ -34,7 +34,8 @@
     <div class="card">
         <div class="card-head"><h2>In-play model</h2></div>
         <div class="small dim">
-            Each team's scoring rate is the pre-match expected-goals rate multiplied by learned effects for match period, score state (leading/trailing, late game) and red cards, fitted on 1,551 StatsBomb 2015/16 matches.
+            @if (!inplayTrained) { <div class="callout warn" style="margin-bottom:8px">The in-play model has not been trained on this computer, so replays cannot produce forecasts yet. It is trained by the <span class="mono">train_inplay</span> job once match history is restored.</div> }
+            Each team's scoring rate is the pre-match expected-goals rate multiplied by learned effects for match period, score state (leading/trailing, late game) and red cards, fitted on StatsBomb 2015/16 matches.
             The final scoreline distribution is computed exactly by stepping a Markov chain over the remaining minutes. Goals, red cards and substitutions trigger an immediate update; otherwise forecasts refresh every simulated minute.
         </div>
         <div class="row" style="margin-top:10px"><a href="lab#inplay" class="small">Evaluation and coefficients in the Model lab →</a></div>
@@ -62,6 +63,10 @@
         <table class="data">
             <thead><tr><th>Date</th><th>Competition</th><th>Match</th><th class="num">Score</th><th class="num">Red cards</th><th></th></tr></thead>
             <tbody>
+                @if (candidates.Count == 0)
+                {
+                    <tr><td colspan="6" class="empty">@(string.IsNullOrWhiteSpace(search) ? "No match can be replayed yet. A replay needs a StatsBomb match linked to the football-data.co.uk history and a stored pre-match prediction; restore the history from Data health." : "No replayable match for this team.")</td></tr>
+                }
                 @foreach (var c in candidates.Take(25))
                 {
                     <tr>
@@ -104,12 +109,14 @@
     private string search = "";
     private double speed = 60;
     private bool faults = true;
+    private bool inplayTrained;
 
     protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange || previous.MaxSnapshotId != next.MaxSnapshotId;
 
     protected override void Load()
     {
         sessions = Ops.LiveSessions(30);
+        inplayTrained = Ops.InPlayTrained();
         liveProvider = Ops.Providers().FirstOrDefault(p => p.Provider.Contains("live"));
         if (candidates.Count == 0) LoadCandidates();
     }

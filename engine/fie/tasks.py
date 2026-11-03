@@ -14,7 +14,8 @@ def model_version(name):
 NOTIFY_KINDS = {
     "ingest_history": "Historical ingestion", "ingest_statsbomb": "StatsBomb ingestion", "research_full": "Model research run",
     "train_inplay": "In-play model training", "final_test": "Final test evaluation", "daily_cycle": "Daily update cycle",
-    "predict_upcoming": "Upcoming predictions",
+    "predict_upcoming": "Upcoming predictions", "evaluate_forward": "Prediction evaluation", "ingest_fixtures": "Fixture refresh",
+    "check_assets": "Asset check", "rollback": "Champion rollback",
 }
 
 PRIMARY = PRIMARY_COMPETITIONS
@@ -265,6 +266,8 @@ def register_versions(con, results, selection, best_dc, best_xg, best_elo):
 
 def _champion_version(con):
     summary = db.get_kv(con, "research_summary")
+    if not summary:
+        raise RuntimeError("no champion model on this machine: import a data bundle or run research_full first")
     return summary["selection"]["champion"], model_version(summary["selection"]["champion"])
 
 
@@ -341,7 +344,11 @@ def daily_cycle(ctx, trigger="manual"):
         of = None
     out = {"results": {k: v for k, v in res.items() if k != "failed"}, "fixtures": fx, "openfootball": of}
     out["evaluation"] = evaluate_forward(ctx)
-    out["prediction"] = predict_upcoming(ctx)
+    if db.get_kv(ctx.con, "research_summary"):
+        out["prediction"] = predict_upcoming(ctx)
+    else:
+        ctx.log("no champion model on this machine; forward predictions skipped", "warning")
+        out["prediction"] = "skipped: no champion model"
     from .live import poll_live_provider
     out["live"] = poll_live_provider(ctx.con)
     return out

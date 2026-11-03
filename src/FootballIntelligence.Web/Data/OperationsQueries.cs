@@ -16,11 +16,17 @@ public class OperationsQueries(Database db)
 
     public long Enqueue(string kind, object? args = null)
     {
+        var json = args is JsonElement e ? e.GetRawText() : JsonSerializer.Serialize(args ?? new { });
         using var con = db.Open();
         using var cmd = con.CreateCommand();
-        cmd.CommandText = "INSERT INTO jobs(kind, args, status, created_at, max_retries) VALUES($kind, $args, 'queued', $now, 2); SELECT last_insert_rowid();";
+        cmd.CommandText = """
+            INSERT INTO jobs(kind, args, status, created_at, max_retries)
+            SELECT $kind, $args, 'queued', $now, 2
+            WHERE NOT EXISTS (SELECT 1 FROM jobs WHERE kind=$kind AND args=$args AND status IN ('queued','running') AND cancel_requested=0);
+            SELECT COALESCE((SELECT job_id FROM jobs WHERE kind=$kind AND args=$args AND status IN ('queued','running') ORDER BY job_id LIMIT 1), last_insert_rowid());
+            """;
         cmd.Parameters.AddWithValue("$kind", kind);
-        cmd.Parameters.AddWithValue("$args", JsonSerializer.Serialize(args ?? new { }));
+        cmd.Parameters.AddWithValue("$args", json);
         cmd.Parameters.AddWithValue("$now", Now());
         return (long)cmd.ExecuteScalar()!;
     }
@@ -87,6 +93,8 @@ public class OperationsQueries(Database db)
           AND EXISTS (SELECT 1 FROM predictions p WHERE p.match_id=s.match_id AND p.purpose='backtest')
         ORDER BY s.match_date DESC LIMIT @limit
         """, new { search, limit }).ToList();
+
+    public bool InPlayTrained() => db.Single<long>("SELECT COUNT(*) FROM live_model WHERE status='champion'") > 0;
 
     public JsonElement? Assets() => db.Kv("assets_status") is { } v ? JsonDocument.Parse(v).RootElement.Clone() : null;
 
