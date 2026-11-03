@@ -179,6 +179,16 @@ powershell -ExecutionPolicy Bypass -File validate.ps1 -Start      # then starts 
 
 Browser checklist after `-Start`: Overview shows featured predictions; a match page shows the same home/draw/away figures in Fan and Analyst mode; a finished match shows the final-score comparison; Learning shows a champion, a drift status and promotion decisions; Model lab shows comparison cards; Performance and Prediction history list scored forecasts; the Live tracker can start a REPLAY; Jobs shows the update cycle succeeding.
 
+## Live data interface
+
+Live, replay and simulated sessions are separate modes and are always labelled LIVE, REPLAY or SIMULATED. Any provider integration should convert its messages into events of this shape and pass them to `live.ingest_feed` (which validates them, ignores duplicate ids, orders by period/clock/seq so late events land in place, and applies corrections):
+
+```json
+{"id": "provider-123", "kind": "goal", "side": "home", "period": 1, "clock": 23.5, "seq": 7, "player": "Name", "xg": 0.21}
+```
+
+`kind` is one of `goal`, `own_goal`, `penalty_goal`, `red_card`, `yellow_card`, `substitution`, `shot`, `status`, `correction` (a correction needs `payload.supersedes` with the id it replaces). For development without a provider, `python -m fie simulate-feed feed.json` loads `{"home": "...", "away": "...", "events": [...]}` into a SIMULATED session. The only real provider adapter is football-data.org (score-level, needs `FOOTBALL_DATA_API_KEY`).
+
 ## Tests
 
 ```bash
