@@ -232,7 +232,7 @@ input.input, select.input { background: var(--bg-elev); border: 1px solid var(--
 .team-chip { display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px 5px 6px; border: 1px solid var(--border); border-radius: 999px; color: var(--text); font-size: 13px; }
 .team-chip:hover { border-color: var(--accent); text-decoration: none; }
 
-.league-filter { display: flex; gap: 6px; overflow-x: auto; margin-top: 12px; padding-bottom: 4px; scrollbar-width: thin; }
+.league-filter { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .league-filter .lf { flex: none; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; color: var(--text-dim); font: inherit; font-size: 12px; cursor: pointer; }
 .league-filter .lf.active { border-color: var(--accent); background: var(--accent-dim); color: var(--text); }
 .mode-switch { display: inline-flex; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 999px; padding: 2px; }
@@ -303,6 +303,34 @@ input.input, select.input { background: var(--bg-elev); border: 1px solid var(--
 .decision { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 10px; align-items: start; padding: 8px 0; border-bottom: 1px solid var(--border-soft); font-size: 13px; }
 .decision .badge { justify-self: start; }
 .nav-section { margin: 14px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); }
+.player-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.player-card { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); color: var(--text); min-width: 0; }
+.player-card:hover { border-color: var(--accent); text-decoration: none; }
+.avatar { width: 46px; height: 46px; border-radius: 50%; flex: none; display: grid; place-items: center; font-weight: 800; font-size: 15px; box-shadow: 0 0 0 2px var(--border); }
+.avatar.lg { width: 72px; height: 72px; font-size: 24px; }
+.pc-name { font-weight: 700; font-size: 15px; }
+.pc-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; }
+.pc-stats div { display: flex; flex-direction: column; padding: 6px 0; background: var(--bg-elev); border-radius: 6px; }
+.pc-stats b { font-size: 16px; font-variant-numeric: tabular-nums; }
+.pc-stats span { font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .04em; }
+.pct-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 56px 40px; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border-soft); }
+.pct-bar { height: 8px; background: var(--border-soft); border-radius: 4px; overflow: hidden; }
+.pct-bar span { display: block; height: 100%; border-radius: 4px; }
+.model-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.model-card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); color: var(--text); min-width: 0; }
+.model-card:hover { border-color: var(--accent); text-decoration: none; }
+.model-card.champ { border-color: var(--accent); background: var(--accent-dim); }
+.mc-ll { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+details.card > summary { list-style: none; }
+details.card > summary::-webkit-details-marker { display: none; }
+details.card > summary h2::after { content: " ▸"; color: var(--text-faint); }
+details.card[open] > summary h2::after { content: " ▾"; }
+.lab-state { margin-bottom: 14px; }
+.day-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
+.day-strip .day { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; color: var(--text-dim); font: inherit; font-size: 11px; cursor: pointer; }
+.day-strip .day b { font-size: 13px; color: var(--text); }
+.day-strip .day.active { border-color: var(--accent); background: var(--accent-dim); }
+.matches-list { max-width: 980px; }
 @media (max-width: 1400px) {
     .g-main-side { grid-template-columns: minmax(0, 1fr) 320px; }
 }

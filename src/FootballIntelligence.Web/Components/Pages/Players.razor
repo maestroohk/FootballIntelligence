@@ -40,6 +40,32 @@
     </div>
 </div>
 
+@if (players.Count > 0)
+{
+    <div class="player-cards">
+        @foreach (var p in players.Take(8))
+        {
+            var (c1, _) = Fmt.TeamColors(p.Team ?? "");
+            <a class="player-card" href="players/@p.PlayerId">
+                <div class="row" style="gap:12px;min-width:0">
+                    <span class="avatar" style="background:@c1;color:@(Fmt.IsLight(c1) ? "#111" : "#fff")">@Fmt.PersonInitials(p.Name)</span>
+                    <div style="min-width:0">
+                        <div class="pc-name ellipsis">@p.Name</div>
+                        <div class="row small dim" style="gap:6px;min-width:0"><Crest Name="@(p.Team ?? "")" /><span class="ellipsis">@p.Team</span></div>
+                    </div>
+                </div>
+                <div class="row small" style="gap:6px"><span class="badge">@(p.Position ?? "position unknown")</span><span class="badge warn">2015/16 · historical</span></div>
+                <div class="pc-stats">
+                    <div><b>@p.Goals</b><span>goals</span></div>
+                    <div><b>@p.Assists</b><span>assists</span></div>
+                    <div><b>@p.Per90(p.Xg + p.Xa).ToString("F2")</b><span>xG+xA /90</span></div>
+                    <div><b>@((p.Minutes / 90.0).ToString("F0"))</b><span>full games</span></div>
+                </div>
+            </a>
+        }
+    </div>
+}
+
 <div class="grid g-main-side">
     <div class="card">
         <div class="table-wrap">

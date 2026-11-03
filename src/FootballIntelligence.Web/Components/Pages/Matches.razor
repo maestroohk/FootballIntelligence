@@ -34,6 +34,19 @@
             <button class="tab @(view == "date" ? "active" : "")" @onclick='() => SetView("date")'>By date</button>
         </div>
     </div>
+    @if (view == "date")
+    {
+        <div class="day-strip">
+            @for (var i = -3; i <= 3; i++)
+            {
+                var d = day.AddDays(i);
+                <button class="day @(d == day ? "active" : "")" @onclick="() => { day = d; Load(); }">
+                    <span>@(d == DateTime.Today ? "Today" : d.ToString("ddd", System.Globalization.CultureInfo.InvariantCulture))</span>
+                    <b>@d.ToString("dd MMM", System.Globalization.CultureInfo.InvariantCulture)</b>
+                </button>
+            }
+        </div>
+    }
     <div class="league-filter">
         <button class="lf @(competition == "" ? "active" : "")" @onclick='() => SetCompetition("")'>All leagues</button>
         @foreach (var c in competitions)
@@ -52,7 +65,7 @@
     }
 </div>
 
-<div class="card">
+<div class="card matches-list">
     <div class="card-head">
         <h2>@(view == "upcoming" ? "Upcoming fixtures" : view == "date" ? day.ToString("dddd dd MMMM yyyy") : "Results")</h2>
         <span class="sub">@rows.Count matches shown</span>

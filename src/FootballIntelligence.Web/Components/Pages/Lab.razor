@@ -33,6 +33,8 @@
     </div>
 }
 
+<div class="callout @state.Css lab-state"><b>@state.Title</b> @state.Text</div>
+
 <div class="tabs">
     @foreach (var t in new[] { ("validation", "Validation 2012/13–2022/23"), ("final_test", "Final test 2023/24–2026/27"), ("expansion", "New leagues (unseen)"), ("inplay", "In-play model"), ("experiments", "Experiment log") })
     {
@@ -46,17 +48,33 @@
     {
         <div class="callout">Seven divisions added after every model choice was frozen (Eredivisie, Primeira Liga, Pro League, Scottish Premiership and Championship, Süper Lig, Super League Greece). Their own ratings are walk-forward; the shared LightGBM and the ensemble weights were trained on the original divisions only, so this is an out-of-sample test of how the system generalises to leagues it never saw.</div>
     }
-    @if (tab == "final_test" && runs.Count == 0)
+    @if (tab == "final_test" && runs.Count == 0 && championName is not null)
     {
         <div class="callout warn">The final test period has not been evaluated. It is run once, after all model choices are frozen, via the <span class="mono">final_test</span> job.</div>
     }
+    else if (runs.Count == 0)
+    {
+        <div class="empty">No evaluation results for this period on this computer, so no tables or charts are shown.</div>
+    }
     else
     {
-        <div class="card">
-            <div class="card-head">
-                <h2>Model comparison</h2>
+        <div class="model-cards">
+            @foreach (var r in runs.OrderBy(r => M(JsonDocument.Parse(r.Metrics).RootElement, "log_loss") ?? 9))
+            {
+                var ll = M(JsonDocument.Parse(r.Metrics).RootElement, "log_loss");
+                var champLl = runs.FirstOrDefault(x => x.ModelVersion == championName) is { } cr ? M(JsonDocument.Parse(cr.Metrics).RootElement, "log_loss") : null;
+                <a class="model-card @(r.ModelVersion == championName ? "champ" : "")" href="lab?model=@r.ModelVersion" @onclick="() => Select(r.ModelVersion)" @onclick:preventDefault>
+                    <div class="spread"><b class="ellipsis">@Fmt.ModelLabel(r.ModelVersion)</b>@if (r.ModelVersion == championName) { <span class="badge ok">champion</span> } else if (r.ModelVersion == "bookmaker_close") { <span class="badge info">benchmark</span> }</div>
+                    <div class="mc-ll">@Fmt.Num(ll, 4)<span class="small faint"> log loss</span></div>
+                    <div class="small @(ll is null || champLl is null || r.ModelVersion == championName ? "faint" : ll < champLl ? "ok" : "dim")">@(ll is null || champLl is null || r.ModelVersion == championName ? $"n = {r.NMatches:N0}" : $"{(ll - champLl):+0.0000;-0.0000} vs champion · n = {r.NMatches:N0}")</div>
+                </a>
+            }
+        </div>
+        <details class="card">
+            <summary class="card-head" style="cursor:pointer">
+                <h2>All metrics</h2>
                 <span class="sub">@(tab == "expansion" ? "7 added divisions, 2012/13 onwards" : "6 primary leagues (EPL, Championship, La Liga, Bundesliga, Serie A, Ligue 1)") · identical match set · lower is better except accuracy</span>
-            </div>
+            </summary>
             <div class="table-wrap">
                 <table class="data compact">
                     <thead><tr><th>Model</th><th>Status</th><th>Train window</th><th>Test period</th><th class="num">n</th><th class="num">Log loss</th><th class="num">Brier</th><th class="num">RPS</th><th class="num">ECE</th><th class="num">Accuracy</th><th class="num">Goal MAE</th><th class="num">Total MAE</th><th class="num">Score NLL</th><th class="num">O2.5 LL</th><th class="num">O2.5 ECE</th><th class="num">BTTS LL</th></tr></thead>
@@ -88,7 +106,7 @@
                 </table>
             </div>
             <div class="small faint" style="margin-top:8px">ECE = class-wise expected calibration error (10 bins). Goal metrics need a goal model; logistic and bookmaker rows give 1X2 only. Bookmaker closing odds are an external benchmark, not proof of model quality.</div>
-        </div>
+        </details>
 
         <div class="grid g2">
             <div class="card">
@@ -272,10 +290,29 @@ else
 
     private static double? M(JsonElement m, string key) => m.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : null;
 
+    private (string Title, string Text, string Css) state;
+
+    private (string, string, string) State()
+    {
+        var research = Ops.Jobs(60).FirstOrDefault(j => j.Kind == "research_full");
+        var assets = Ops.Assets();
+        var history = assets is { } a && a.GetProperty("database").TryGetProperty("matches_history", out var h) && h.ValueKind == JsonValueKind.Number ? h.GetInt64() : 0;
+        if (research is { Status: "running" } r)
+            return ("Research job running.", $"Stage: {r.Stage ?? "starting"}{(r.Progress is null ? "" : $" · {Fmt.Pct(r.Progress)}")}. Results appear here when it finishes.", "info");
+        if (research is { Status: "failed" } f && championName is null)
+            return ("Research job failed.", $"#{f.JobId}: {f.Error}", "bad");
+        if (history == 0 && championName is null)
+            return ("No data.", "The historical results the models train on are not on this computer. Restore them from Data health; until then there is nothing to evaluate.", "warn");
+        if (championName is null)
+            return ("Model not trained.", "Historical data is present but research has not run here. Use Run research to train and evaluate the models.", "warn");
+        return ("Evaluation completed.", $"Champion {Fmt.ModelLabel(championName)}; figures below come from stored out-of-sample predictions.", "ok");
+    }
+
     protected override void Load()
     {
         running = Ops.ActiveJobs().Where(j => j.Kind is "research_full" or "train_inplay" or "final_test" or "player_study" or "predict_upcoming").ToList();
         championName = Research.Champion()?.Split('@')[0];
+        state = State();
         if (tab is "validation" or "final_test" or "expansion")
         {
             runs = Research.Backtests(tab);

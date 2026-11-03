@@ -73,6 +73,12 @@ public static class Fmt
         "F1" or "F2" => "#2f6bd8", "N1" => "#f07c1e", "P1" => "#1f9e57", "B1" => "#c9a227", "SC0" or "SC1" => "#2758a6", "T1" => "#cf2236", "G1" => "#2f73c9", _ => "#5b6b80"
     };
 
+    public static string PersonInitials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant() : Initials(name);
+    }
+
     public static (string Primary, string Secondary) TeamColors(string name)
     {
         if (TeamIdentity.KnownColors(name) is { } known) return known;

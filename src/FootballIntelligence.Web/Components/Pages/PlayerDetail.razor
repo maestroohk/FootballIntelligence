@@ -9,15 +9,15 @@
     return;
 }
 
-<div class="page-head">
-    <div class="row">
-        <Crest Name="@player.Name" Large="true" />
-        <div>
-            <h1>@player.Name</h1>
-            <p>@player.Team · @player.Position · StatsBomb Open Data 2015/16</p>
-        </div>
+@{ var (c1, _) = Fmt.TeamColors(player.Team ?? ""); }
+<div class="card team-hero" style="--team:@c1">
+    <span class="avatar lg" style="background:@c1;color:@(Fmt.IsLight(c1) ? "#111" : "#fff")">@Fmt.PersonInitials(player.Name)</span>
+    <div class="stack" style="gap:6px;min-width:0">
+        <h1>@player.Name</h1>
+        <div class="row small" style="gap:8px"><Crest Name="@(player.Team ?? "")" /><span>@player.Team</span><span class="faint">·</span><span>@player.Position</span></div>
+        <div class="row small"><span class="badge warn">2015/16 season · historical, not current form</span><span class="faint">StatsBomb Open Data, league matches only</span></div>
     </div>
-    <a class="btn" href="players">← All players</a>
+    <a class="btn" style="margin-left:auto" href="players">← All players</a>
 </div>
 
 <div class="grid g4">
@@ -31,6 +31,24 @@
     else
     {
         <Kpi Label="Defensive actions / 90" Value="@player.Per90(player.Tackles + player.Interceptions).ToString("F1")" Note="@($"{player.Per90(player.Pressures):F1} pressures · {player.Per90(player.Recoveries):F1} recoveries")" />
+    }
+</div>
+
+<div class="grid g2">
+    @foreach (var (title, rows) in Sections())
+    {
+        <div class="card">
+            <div class="card-head"><h2>@title</h2><span class="sub">per 90 · percentile among @peers.Count @(peerGroup.ToLowerInvariant())s with 450+ minutes</span></div>
+            @foreach (var (label, value, pct, fmt) in rows)
+            {
+                <div class="pct-row">
+                    <span class="small">@label</span>
+                    <span class="pct-bar"><span style="width:@pct.ToString("F0", System.Globalization.CultureInfo.InvariantCulture)%;background:@(pct >= 80 ? "var(--ok)" : pct >= 40 ? "var(--info)" : "var(--text-faint)")"></span></span>
+                    <b class="num">@value.ToString(fmt, System.Globalization.CultureInfo.InvariantCulture)</b>
+                    <span class="small faint num">@Ordinal((int)Math.Round(pct))</span>
+                </div>
+            }
+        </div>
     }
 </div>
 
@@ -81,11 +99,36 @@
     private List<LineChart.Line> workSeries = [];
     private List<(string, double)> formTicks = [];
     private double formMax = 1;
+    private List<PlayerSummary> peers = [];
+    private string peerGroup = "player";
+
+    private static readonly string[] Groups = ["Goalkeeper", "Back", "Midfield", "Wing", "Forward"];
+
+    private IEnumerable<(string, List<(string, double, double, string)>)> Sections()
+    {
+        if (player is null) yield break;
+        (string, double, double, string) M(string label, Func<PlayerSummary, double> f, string fmt = "F2") => (label, f(player), Percentile(f), fmt);
+        yield return ("Attacking contribution", [M("Goals", p => p.Per90(p.Goals)), M("Expected goals (xG)", p => p.Per90(p.Xg)), M("Shots", p => p.Per90(p.Shots), "F1")]);
+        yield return ("Passing and creativity", [M("Assists", p => p.Per90(p.Assists)), M("Expected assists (xA)", p => p.Per90(p.Xa)), M("Key passes", p => p.Per90(p.KeyPasses)), M("Progressive passes and carries", p => p.Per90(p.ProgressivePasses + p.ProgressiveCarries), "F1")]);
+        yield return ("Defensive work", [M("Tackles and interceptions", p => p.Per90(p.Tackles + p.Interceptions), "F1"), M("Pressures", p => p.Per90(p.Pressures), "F1"), M("Ball recoveries", p => p.Per90(p.Recoveries), "F1")]);
+        yield return ("Playing time", [M("Minutes played", p => p.Minutes, "N0"), M("Starts", p => p.Starts, "F0"), M("Minutes per appearance", p => p.Minutes / Math.Max(1.0, p.Apps), "F0")]);
+    }
+
+    private double Percentile(Func<PlayerSummary, double> f)
+    {
+        if (peers.Count == 0 || player is null) return 0;
+        var v = f(player);
+        return 100.0 * peers.Count(p => f(p) <= v) / peers.Count;
+    }
+
+    private static string Ordinal(int n) => n + (n % 100 is 11 or 12 or 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
 
     protected override void OnParametersSet()
     {
         player = Football.Player(Id);
         matches = Football.PlayerMatches(Id);
+        peerGroup = Groups.FirstOrDefault(g => player?.Position?.Contains(g) == true) ?? "player";
+        peers = Football.Players(null, null, peerGroup == "player" ? null : peerGroup, 5000);
         var per = matches.Select((m, i) => new LineChart.Point(i, m.Xg + m.Xa)).ToList();
         var rolling = matches.Select((m, i) => new LineChart.Point(i, matches.Skip(Math.Max(0, i - 4)).Take(Math.Min(5, i + 1)).Average(x => x.Xg + x.Xa))).ToList();
         formSeries = [new("xG + xA", "var(--home)", per, Step: true, Width: 1.5), new("5-match average", "var(--accent)", rolling, Dashed: true)];
