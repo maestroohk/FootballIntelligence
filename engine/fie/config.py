@@ -8,6 +8,7 @@ DB_PATH = Path(os.environ.get("FIE_DB", DATA / "football.db"))
 
 THREADS = int(os.environ.get("FIE_THREADS", "4"))
 MAX_CONCURRENT_JOBS = int(os.environ.get("FIE_MAX_JOBS", "2"))
+RESEARCH_PROCESSES = int(os.environ.get("FIE_RESEARCH_PROCESSES", str(max(1, min(3, (os.cpu_count() or 4) // 4)))))
 
 FDCO_BASE = "https://www.football-data.co.uk/mmz4281"
 FDCO_FIXTURES = "https://www.football-data.co.uk/fixtures.csv"

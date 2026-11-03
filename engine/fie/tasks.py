@@ -1,7 +1,7 @@
 import pandas as pd
 
 from . import backtest, db, ingest_fdco, ingest_statsbomb, metrics, research
-from .config import PRIMARY_COMPETITIONS
+from .config import PRIMARY_COMPETITIONS, RESEARCH_PROCESSES
 from .jobs import Cancelled, handler
 
 MODEL_VERSIONS = {"ensemble": "v3"}
@@ -115,7 +115,7 @@ def research_full(ctx, refresh=False, configs=None):
     if missing:
         ctx.stage(f"walk-forward strength models in parallel: {', '.join(missing)}")
         from concurrent.futures import ProcessPoolExecutor, as_completed
-        with ProcessPoolExecutor(max_workers=3) as pool:
+        with ProcessPoolExecutor(max_workers=RESEARCH_PROCESSES) as pool:
             futures = {pool.submit(_strength_worker, n): n for n in missing}
             for k, fut in enumerate(as_completed(futures)):
                 fut.result()
