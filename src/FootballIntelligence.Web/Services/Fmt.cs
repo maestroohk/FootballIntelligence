@@ -59,6 +59,9 @@ public static class Fmt
         "T1" => "Süper Lig", "G1" => "Super League Greece", _ => code
     };
 
+    public static string SessionLabel(string mode) => mode switch { "replay" => "REPLAY", "simulated" => "SIMULATED", "live" => "LIVE", _ => mode.ToUpperInvariant() };
+    public static string SessionCss(string mode) => mode == "live" ? "bad" : "sim";
+
     public static bool IsLeague(string code) => CompetitionName(code) != code;
 
     public static string Country(string code) => code switch

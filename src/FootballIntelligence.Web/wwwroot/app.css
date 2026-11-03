@@ -357,6 +357,8 @@ details.card[open] > summary h2::after { content: " ▾"; }
 .ms-cap { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .ops-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
 .ops-item .btn { align-self: flex-start; margin-top: 4px; }
+.cmp-players { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.cmp-player { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--border); border-left-width: 3px; border-radius: 8px; background: var(--bg-elev); }
 @media (max-width: 1400px) {
     .g-main-side { grid-template-columns: minmax(0, 1fr) 320px; }
 }

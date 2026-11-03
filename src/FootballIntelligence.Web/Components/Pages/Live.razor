@@ -90,7 +90,7 @@
             {
                 <tr>
                     <td><a href="live/@s.LiveId">#@s.LiveId</a></td>
-                    <td><span class="badge @(s.Mode == "replay" ? "sim" : "bad")">@(s.Mode == "replay" ? "REPLAY" : "LIVE")</span></td>
+                    <td><span class="badge @Fmt.SessionCss(s.Mode)">@Fmt.SessionLabel(s.Mode)</span></td>
                     <td><a href="live/@s.LiveId">@s.HomeName – @s.AwayName</a></td>
                     <td class="num">@s.HomeGoals–@s.AwayGoals</td>
                     <td class="num">@Fmt.Minute(s.Minute ?? 0)</td>

@@ -14,6 +14,10 @@
 {
     <div class="mode-banner replay"><span class="badge sim">REPLAY</span><span>Historical simulation of a completed @(session.HomeName)–@(session.AwayName) match (StatsBomb Open Data), streamed at @(session.Speed)× speed. Not live. Each forecast uses only events delivered up to that moment and the pre-match prediction stored before kick-off.</span></div>
 }
+else if (session.Mode == "simulated")
+{
+    <div class="mode-banner replay"><span class="badge sim">SIMULATED</span><span>Development test feed loaded with <span class="mono">fie simulate-feed</span>. Not a real match and not live.</span></div>
+}
 else
 {
     <div class="mode-banner live"><span class="dot live"></span><span>LIVE feed from @session.Provider · last provider update @Fmt.Ago(session.LastEventAt)@(Stale ? " · feed stale, forecast may be out of date" : "")</span></div>
@@ -24,7 +28,7 @@ else
     <div class="center">
         <div class="row" style="justify-content:center">
             @if (session.Status == "running") { <span class="dot live"></span> }
-            <span class="badge @(session.Mode == "replay" ? "sim" : "bad")">@(session.Mode == "replay" ? "REPLAY" : "LIVE")</span>
+            <span class="badge @Fmt.SessionCss(session.Mode)">@Fmt.SessionLabel(session.Mode)</span>
             <span class="badge">@session.Status</span>
         </div>
         <div class="big-score">@session.HomeGoals – @session.AwayGoals</div>
@@ -158,7 +162,23 @@ else
 }
 else
 {
-    <div class="empty">Waiting for the first model update…</div>
+    <div class="callout">@(session.Mode == "replay" ? "Waiting for the first model update…" : "No in-play forecast for this session: it needs a stored pre-match prediction for the match and a trained in-play model. Events received are listed below.")</div>
+    @if (events.Count > 0)
+    {
+        <div class="card">
+            <div class="card-head"><h2>Timeline</h2><span class="sub">@events.Count events received</span></div>
+            <div class="timeline">
+                @foreach (var e in events.AsEnumerable().Reverse())
+                {
+                    <div class="tl-item">
+                        <span class="tl-min">@Fmt.Minute(e.Clock, e.Period)</span>
+                        <span>@Icon(e)</span>
+                        <span class="@(e.Side == "home" ? "" : "dim")">@Describe(e)</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
 }
 
 @code {
@@ -251,7 +271,7 @@ else
 
     private string MinuteLabel()
     {
-        if (latest is null) return "not started";
+        if (latest is null) return session?.Minute is { } m ? Fmt.Minute(m) : "not started";
         return latest.Trigger switch
         {
             "full_time" => "Full-time",
@@ -288,9 +308,9 @@ else
         {
             "goal" => $"Goal — {team}{(e.PlayerName is null ? "" : $" ({e.PlayerName})")}",
             "shot" => $"Shot {team}: {e.PlayerName} · xG {e.Xg:F2} · {(payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("outcome", out var o) ? o.GetString() : "")}",
-            "substitution" => $"Sub {team}: {(payload.TryGetProperty("on", out var on) ? on.GetString() : "?")} for {(payload.TryGetProperty("off", out var off) ? off.GetString() : "?")}",
-            "red_card" => $"Red card — {team} ({e.PlayerName})",
-            "yellow_card" => $"Yellow card — {team} ({e.PlayerName})",
+            "substitution" => payload.ValueKind != JsonValueKind.Object ? $"Substitution — {team}" : $"Sub {team}: {(payload.TryGetProperty("on", out var on) ? on.GetString() : "?")} for {(payload.TryGetProperty("off", out var off) ? off.GetString() : "?")}",
+            "red_card" => $"Red card — {team}{(e.PlayerName is null ? "" : $" ({e.PlayerName})")}",
+            "yellow_card" => $"Yellow card — {team}{(e.PlayerName is null ? "" : $" ({e.PlayerName})")}",
             "formation" => $"{team} formation change {(payload.TryGetProperty("formation", out var f) ? f.GetString() : "")}",
             _ => e.Kind,
         };

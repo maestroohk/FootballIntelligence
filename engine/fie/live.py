@@ -25,6 +25,78 @@ def load_live_model(con, tier=1):
     return model, params
 
 
+EVENT_KINDS = {"goal", "own_goal", "penalty_goal", "red_card", "yellow_card", "substitution", "shot", "status", "correction"}
+SIDELESS_KINDS = {"status", "correction"}
+
+
+def normalise_event(raw):
+    if not isinstance(raw, dict):
+        raise ValueError("event must be an object")
+    eid = str(raw.get("id") or "").strip()
+    if not eid:
+        raise ValueError("event has no id")
+    kind = str(raw.get("kind") or raw.get("type") or "").strip().lower().replace(" ", "_")
+    if kind not in EVENT_KINDS:
+        raise ValueError(f"{eid}: unsupported kind {kind!r}")
+    try:
+        period = int(raw.get("period", 1))
+        clock = float(raw.get("clock", raw.get("minute", 0)))
+    except (TypeError, ValueError):
+        raise ValueError(f"{eid}: period and clock must be numbers")
+    if not 1 <= period <= 5 or not 0 <= clock <= 130:
+        raise ValueError(f"{eid}: period {period} or clock {clock} out of range")
+    side = raw.get("side")
+    if kind not in SIDELESS_KINDS and side not in ("home", "away"):
+        raise ValueError(f"{eid}: side must be home or away")
+    xg = raw.get("xg")
+    if xg is not None and not 0 <= float(xg) <= 1:
+        raise ValueError(f"{eid}: xg must be between 0 and 1")
+    payload = dict(raw.get("payload") or {})
+    if kind == "correction" and not payload.get("supersedes"):
+        raise ValueError(f"{eid}: a correction needs payload.supersedes")
+    if kind == "own_goal":
+        kind, side, payload["own_goal"] = "goal", side, True
+    if kind == "penalty_goal":
+        kind, payload["penalty"] = "goal", True
+    return {"id": eid, "seq": raw.get("seq"), "period": period, "clock": clock, "kind": kind, "side": side,
+            "player": raw.get("player"), "xg": None if xg is None else float(xg), "payload": payload}
+
+
+def store_events(con, live_id, events):
+    accepted = []
+    for e in events:
+        cur = con.execute("INSERT OR IGNORE INTO live_events(live_id, provider_event_id, provider_seq, received_at, period, clock, kind, side, player_name, xg, payload, superseded) VALUES(?,?,?,?,?,?,?,?,?,?,?,0)",
+                          (live_id, e["id"], e.get("seq"), db.now(), e["period"], e["clock"], e["kind"], e.get("side"), e.get("player"), e.get("xg"), db.dumps(e.get("payload") or {})))
+        if cur.rowcount:
+            accepted.append(e)
+            if e["kind"] == "correction":
+                con.execute("UPDATE live_events SET superseded=1 WHERE live_id=? AND provider_event_id=?", (live_id, e["payload"]["supersedes"]))
+    return accepted
+
+
+def ingest_feed(con, live_id, raw_events):
+    events, rejected = [], []
+    for raw in raw_events:
+        try:
+            events.append(normalise_event(raw))
+        except (ValueError, TypeError) as exc:
+            rejected.append(str(exc))
+    accepted = store_events(con, live_id, events)
+    goals = con.execute("SELECT side, COUNT(*) FROM live_events WHERE live_id=? AND kind='goal' AND superseded=0 GROUP BY side", (live_id,)).fetchall()
+    score = {r[0]: r[1] for r in goals}
+    last = con.execute("SELECT MAX(clock) FROM live_events WHERE live_id=? AND superseded=0", (live_id,)).fetchone()[0]
+    con.execute("UPDATE live_sessions SET home_goals=?, away_goals=?, minute=?, last_event_at=?, last_update_at=? WHERE live_id=?",
+                (score.get("home", 0), score.get("away", 0), last, db.now(), db.now(), live_id))
+    return {"accepted": len(accepted), "duplicates": len(events) - len(accepted), "rejected": rejected,
+            "score": [score.get("home", 0), score.get("away", 0)]}
+
+
+def simulated_session(con, home_name, away_name):
+    con.execute("INSERT INTO live_sessions(mode, provider, match_id, home_name, away_name, status, created_at, minute, home_goals, away_goals, prematch) VALUES('simulated','development',NULL,?,?,'running',?,0,0,0,'{}')",
+                (home_name, away_name, db.now()))
+    return con.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+
 class LiveMatch:
     def __init__(self, con, live_id, model, meta, lambda_home, lambda_away, interval_minutes=1.0):
         self.con = con
@@ -42,15 +114,7 @@ class LiveMatch:
         self.finished = False
 
     def ingest(self, events):
-        accepted = []
-        for e in events:
-            cur = self.con.execute("INSERT OR IGNORE INTO live_events(live_id, provider_event_id, provider_seq, received_at, period, clock, kind, side, player_name, xg, payload, superseded) VALUES(?,?,?,?,?,?,?,?,?,?,?,0)",
-                                   (self.live_id, e["id"], e.get("seq"), db.now(), e["period"], e["clock"], e["kind"], e.get("side"), e.get("player"), e.get("xg"), db.dumps(e.get("payload") or {})))
-            if cur.rowcount:
-                accepted.append(e)
-                if e["kind"] == "correction":
-                    self.con.execute("UPDATE live_events SET superseded=1 WHERE live_id=? AND provider_event_id=?", (self.live_id, e["payload"]["supersedes"]))
-        return accepted
+        return store_events(self.con, self.live_id, events)
 
     def state(self, period, clock):
         rows = self.con.execute("SELECT * FROM live_events WHERE live_id=? AND superseded=0 AND kind<>'correction' ORDER BY period, clock, provider_seq", (self.live_id,)).fetchall()

@@ -175,7 +175,7 @@
         var age = Fmt.Since(l.LastUpdateAt);
         var stale = l.Status == "running" && (age ?? TimeSpan.MaxValue) > TimeSpan.FromSeconds(30);
         <div class="spread small" style="padding:4px 0">
-            <span><a href="live/@l.LiveId">#@l.LiveId @l.HomeName – @l.AwayName</a> <span class="badge @(l.Mode == "replay" ? "sim" : "bad")">@l.Mode</span></span>
+            <span><a href="live/@l.LiveId">#@l.LiveId @l.HomeName – @l.AwayName</a> <span class="badge @Fmt.SessionCss(l.Mode)">@Fmt.SessionLabel(l.Mode)</span></span>
             <span class="@(stale ? "warn" : "dim")">@l.Status · last update @Fmt.Ago(l.LastUpdateAt) @(stale ? "· STALE" : "")</span>
         </div>
     }

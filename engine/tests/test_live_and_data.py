@@ -250,3 +250,22 @@ def test_weakness_report_scores_each_match_once_preferring_the_pre_match_forecas
     con.execute("INSERT INTO predictions(match_id, model_version, purpose, created_at, data_cutoff, p_home, p_draw, p_away) VALUES(1,'m','backtest',?,'2026-10-30',.4,.3,.3)", (db.now(),))
     report = forward.weakness_report(con)
     assert report["n"] == 1 and report["sources"] == {"forward": 1}
+
+
+def test_feed_normalisation_handles_duplicates_order_corrections_and_bad_events(con):
+    from fie import live
+    session = live.simulated_session(con, "A", "B")
+    first = live.ingest_feed(con, session, [
+        {"id": "e2", "kind": "goal", "side": "away", "period": 2, "clock": 70, "seq": 2},
+        {"id": "e1", "kind": "goal", "side": "home", "period": 1, "clock": 12, "seq": 1},
+        {"id": "e1", "kind": "goal", "side": "home", "period": 1, "clock": 12, "seq": 1},
+        {"id": "e3", "kind": "own_goal", "side": "home", "period": 2, "clock": 80},
+        {"id": "bad1", "kind": "teleport", "side": "home"},
+        {"id": "bad2", "kind": "goal", "side": "middle", "clock": 10},
+    ])
+    assert first["accepted"] == 3 and first["duplicates"] == 1 and len(first["rejected"]) == 2
+    assert first["score"] == [2, 1]
+    second = live.ingest_feed(con, session, [{"id": "c1", "kind": "correction", "period": 2, "clock": 81, "payload": {"supersedes": "e3"}}])
+    assert second["score"] == [1, 1]
+    row = con.execute("SELECT mode, home_goals, away_goals, minute FROM live_sessions WHERE live_id=?", (session,)).fetchone()
+    assert tuple(row) == ("simulated", 1, 1, 81.0)

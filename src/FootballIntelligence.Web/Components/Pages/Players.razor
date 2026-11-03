@@ -94,13 +94,24 @@
     </div>
     <div class="card">
         <div class="card-head"><h2>Compare</h2><span class="sub">tick up to 3 players</span></div>
-        @if (compared.Count == 0) { <div class="empty">Select players to compare per-90 output.</div> }
+        @if (compared.Count == 0) { <div class="empty">Tick up to three players in the table to compare what they produced per 90 minutes in 2015/16.</div> }
         else
         {
+            <div class="cmp-players">
+                @foreach (var (p, i) in compared.Select((p, i) => (p, i)))
+                {
+                    <div class="cmp-player" style="border-color:@Colors[i]">
+                        <span class="avatar" style="width:32px;height:32px;font-size:12px;background:@Colors[i];color:#0a0f15">@Fmt.PersonInitials(p.Name)</span>
+                        <div style="min-width:0"><a class="ellipsis" style="display:block" href="players/@p.PlayerId">@p.Name</a><span class="small faint ellipsis" style="display:block">@p.Team · @p.Position · @p.Minutes.ToString("N0") min</span></div>
+                        <button class="btn sm" title="Remove" @onclick="() => Toggle(p)">×</button>
+                    </div>
+                }
+            </div>
             @foreach (var (label, f, max) in Metrics())
             {
                 <div style="margin-bottom:10px">
-                    <div class="small dim">@label</div>
+                    <div class="small">@label</div>
+                    <div class="small faint" style="margin-bottom:3px">@Explain(label)</div>
                     @foreach (var (p, i) in compared.Select((p, i) => (p, i)))
                     {
                         var v = f(p);
@@ -154,6 +165,18 @@
         if (!compare.Remove(p.PlayerId) && compare.Count < 3) compare.Add(p.PlayerId);
         compared = compare.Select(id => players.FirstOrDefault(x => x.PlayerId == id) ?? compared.FirstOrDefault(x => x.PlayerId == id)).Where(x => x is not null).Cast<PlayerSummary>().ToList();
     }
+
+    private static string Explain(string label) => label switch
+    {
+        "xG per 90" => "Expected goals: how many goals a typical player would score from the chances taken.",
+        "xA per 90" => "Expected assists: the expected goals of shots that came from this player's passes.",
+        "Key passes per 90" => "Passes that led directly to a shot.",
+        "Progressive passes + carries per 90" => "Moves that take the ball substantially closer to the opponent's goal.",
+        "Pressures per 90" => "Times the player closed down an opponent who had the ball.",
+        "Tackles + interceptions per 90" => "Times the player won the ball back by tackling or cutting out a pass.",
+        "Ball recoveries per 90" => "Loose balls the player collected for the team.",
+        _ => ""
+    };
 
     private IEnumerable<(string, Func<PlayerSummary, double>, double)> Metrics()
     {

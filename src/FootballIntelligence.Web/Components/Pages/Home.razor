@@ -125,7 +125,7 @@
             {
                 <div class="spread" style="padding:6px 0">
                     <a href="live/@l.LiveId">@l.HomeName @l.HomeGoals – @l.AwayGoals @l.AwayName</a>
-                    <span class="row"><span class="badge @(l.Mode == "replay" ? "sim" : "bad")">@(l.Mode == "replay" ? "REPLAY" : "LIVE")</span><span class="small dim">@Fmt.Minute(l.Minute ?? 0)</span></span>
+                    <span class="row"><span class="badge @Fmt.SessionCss(l.Mode)">@Fmt.SessionLabel(l.Mode)</span><span class="small dim">@Fmt.Minute(l.Minute ?? 0)</span></span>
                 </div>
             }
         </div>

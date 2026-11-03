@@ -23,6 +23,9 @@ def main():
     enq.add_argument("kind")
     enq.add_argument("--args", default="{}")
     sub.add_parser("assets")
+    sim = sub.add_parser("simulate-feed")
+    sim.add_argument("file")
+    sim.add_argument("--session", type=int)
     doc = sub.add_parser("doctor")
     doc.add_argument("--research", action="store_true")
     doc.add_argument("--no-migrate", action="store_true")
@@ -45,6 +48,12 @@ def main():
     elif args.cmd == "worker":
         db.init()
         jobs.worker_loop(scheduler=scheduler.tick)
+    elif args.cmd == "simulate-feed":
+        from . import live
+        feed = json.loads(open(args.file, encoding="utf-8").read())
+        con = db.init()
+        session = args.session or live.simulated_session(con, feed.get("home", "Home"), feed.get("away", "Away"))
+        print(json.dumps({"session": session, **live.ingest_feed(con, session, feed.get("events", []))}, indent=1))
     elif args.cmd == "doctor":
         from . import doctor
         sys.exit(doctor.run(research=args.research, migrate=not args.no_migrate))
