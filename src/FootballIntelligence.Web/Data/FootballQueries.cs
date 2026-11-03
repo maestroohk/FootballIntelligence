@@ -2,9 +2,9 @@ namespace FootballIntelligence.Web.Data;
 
 public class FootballQueries(Database db)
 {
-    private const string MatchSelect = """
+    private static readonly string MatchSelect = $"""
         SELECT m.match_id, m.competition, c.name competition_name, m.season, m.match_date, m.kickoff, m.status,
-               m.home_team_id, m.away_team_id, th.name home_name, ta.name away_name,
+               m.home_team_id, m.away_team_id, {Database.DisplayName("th.team_id", "th.name")} home_name, {Database.DisplayName("ta.team_id", "ta.name")} away_name,
                m.fthg, m.ftag, m.hthg, m.htag, m.hs, m.aws, m.hst, m.ast, m.hc, m.ac, m.hf, m.af, m.hy, m.ay, m.hr, m.ar, m.referee,
                p.p_home, p.p_draw, p.p_away, p.lambda_home, p.lambda_away, p.model_version, p.purpose,
                p.created_at prediction_created, p.data_cutoff, p.markets,
@@ -37,7 +37,8 @@ public class FootballQueries(Database db)
         MatchSelect + """
          WHERE (@competition IS NULL OR m.competition=@competition)
            AND (@season IS NULL OR m.season=@season)
-           AND (@team IS NULL OR th.name LIKE '%'||@team||'%' OR ta.name LIKE '%'||@team||'%')
+           AND (@team IS NULL OR th.name LIKE '%'||@team||'%' OR ta.name LIKE '%'||@team||'%'
+                OR EXISTS (SELECT 1 FROM team_aliases a WHERE a.team_id IN (m.home_team_id, m.away_team_id) AND a.alias LIKE '%'||@team||'%'))
          ORDER BY m.match_date DESC, m.match_id DESC LIMIT @limit
         """, new { competition, season, team, limit }).ToList();
 
@@ -50,9 +51,9 @@ public class FootballQueries(Database db)
 
     public List<OddsRow> Odds(long id) => db.Query<OddsRow>("SELECT bookmaker, timing, home, draw, away, over25, under25 FROM odds WHERE match_id=@id ORDER BY bookmaker, timing", new { id }).ToList();
 
-    public List<FormRow> Form(long teamId, string beforeDate, int limit) => db.Query<FormRow>("""
+    public List<FormRow> Form(long teamId, string beforeDate, int limit) => db.Query<FormRow>($"""
         SELECT m.match_id, m.match_date, m.competition,
-               CASE WHEN m.home_team_id=@teamId THEN ta.name ELSE th.name END opponent,
+               CASE WHEN m.home_team_id=@teamId THEN {Database.DisplayName("ta.team_id", "ta.name")} ELSE {Database.DisplayName("th.team_id", "th.name")} END opponent,
                CASE WHEN m.home_team_id=@teamId THEN 'H' ELSE 'A' END venue,
                CASE WHEN m.home_team_id=@teamId THEN m.fthg ELSE m.ftag END goals_for,
                CASE WHEN m.home_team_id=@teamId THEN m.ftag ELSE m.fthg END goals_against,

@@ -20,24 +20,36 @@
             <option value="">All seasons</option>
             @for (var s = 2026; s >= 2005; s--) { <option value="@s">@s/@((s + 1) % 100)</option> }
         </select>
-        <input class="input" placeholder="Team" @bind="team" @bind:event="oninput" @bind:after="Load" />
+        <input class="input" placeholder="Search team (e.g. Manchester)" @bind="team" @bind:event="oninput" @bind:after="Load" />
+        @if (view == "date")
+        {
+            <button class="btn sm" @onclick="() => Shift(-1)">‹</button>
+            <input class="input" type="date" @bind="day" @bind:after="Load" />
+            <button class="btn sm" @onclick="() => Shift(1)">›</button>
+            <button class="btn sm" @onclick="() => { day = DateTime.Today; Load(); }">Today</button>
+        }
         <div class="tabs" style="border:none">
             <button class="tab @(view == "upcoming" ? "active" : "")" @onclick='() => SetView("upcoming")'>Upcoming</button>
             <button class="tab @(view == "results" ? "active" : "")" @onclick='() => SetView("results")'>Results</button>
+            <button class="tab @(view == "date" ? "active" : "")" @onclick='() => SetView("date")'>By date</button>
         </div>
     </div>
 </div>
 
 <div class="card">
     <div class="card-head">
-        <h2>@(view == "upcoming" ? "Upcoming fixtures" : "Results")</h2>
+        <h2>@(view == "upcoming" ? "Upcoming fixtures" : view == "date" ? day.ToString("dddd dd MMMM yyyy") : "Results")</h2>
         <span class="sub">@rows.Count matches shown</span>
     </div>
-    @if (rows.Count == 0) { <div class="empty">No matches for these filters.</div> }
+    @if (rows.Count == 0) { <div class="empty">No matches for these filters@(view == "date" ? " on this date" : ""). Try another league, date or team name.</div> }
     @foreach (var day in rows.GroupBy(m => m.MatchDate))
     {
-        <h3 style="margin:12px 0 2px">@DateTime.Parse(day.Key, System.Globalization.CultureInfo.InvariantCulture).ToString("dddd dd MMM yyyy", System.Globalization.CultureInfo.InvariantCulture)</h3>
-        @foreach (var m in day) { <MatchLine Match="m" /> }
+        <div class="day-head">@DateTime.Parse(day.Key, System.Globalization.CultureInfo.InvariantCulture).ToString("dddd dd MMM yyyy", System.Globalization.CultureInfo.InvariantCulture)</div>
+        @foreach (var league in day.GroupBy(m => m.Competition))
+        {
+            <div class="league-head"><LeagueChip Code="@league.Key" /><span class="small faint">@league.Count()</span></div>
+            @foreach (var m in league) { <MatchLine Match="m" ShowDate="false" /> }
+        }
     }
 </div>
 
@@ -47,6 +59,13 @@
     private string season = "";
     private string team = "";
     private string view = "upcoming";
+    private DateTime day = DateTime.Today;
+
+    private void Shift(int days)
+    {
+        day = day.AddDays(days);
+        Load();
+    }
     private List<MatchRow> rows = [];
 
     protected override void OnInitialized()
@@ -65,7 +84,12 @@
     private void Load()
     {
         string? comp = string.IsNullOrEmpty(competition) ? null : competition;
-        if (view == "upcoming")
+        if (view == "date")
+        {
+            rows = Football.OnDate(day.ToString("yyyy-MM-dd")).Where(m => (string.IsNullOrEmpty(competition) || m.Competition == competition)
+                && (string.IsNullOrEmpty(team) || m.HomeName.Contains(team, StringComparison.OrdinalIgnoreCase) || m.AwayName.Contains(team, StringComparison.OrdinalIgnoreCase))).ToList();
+        }
+        else if (view == "upcoming")
         {
             rows = Football.Upcoming(150, comp).Where(m => string.IsNullOrEmpty(team) || m.HomeName.Contains(team, StringComparison.OrdinalIgnoreCase) || m.AwayName.Contains(team, StringComparison.OrdinalIgnoreCase)).ToList();
         }

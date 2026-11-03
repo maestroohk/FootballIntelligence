@@ -1,0 +1,7 @@
+<span class="league-chip" title="@Fmt.CompetitionName(Code)"><span class="league-dot" style="background:@Fmt.LeagueColor(Code)"></span>@if (ShowCountry && Fmt.Country(Code) != "") {<span class="country">@Fmt.Country(Code)</span>}@(Short ? Code : Fmt.CompetitionName(Code))</span>
+
+@code {
+    [Parameter, EditorRequired] public string Code { get; set; } = "";
+    [Parameter] public bool Short { get; set; }
+    [Parameter] public bool ShowCountry { get; set; } = true;
+}

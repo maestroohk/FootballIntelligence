@@ -12,9 +12,11 @@
 
 @if (session.Mode == "replay")
 {
-    <div class="callout" style="border-left-color:#d59bff">
-        <b>SIMULATION MODE.</b> This is a replay of a completed @(session.HomeName)–@(session.AwayName) match from StatsBomb Open Data, streamed at @(session.Speed)× speed. It is not live. The forecast at each moment uses only events delivered up to that moment and the pre-match prediction stored before kick-off.
-    </div>
+    <div class="mode-banner replay"><span class="badge sim">REPLAY</span><span>Historical simulation of a completed @(session.HomeName)–@(session.AwayName) match (StatsBomb Open Data), streamed at @(session.Speed)× speed. Not live. Each forecast uses only events delivered up to that moment and the pre-match prediction stored before kick-off.</span></div>
+}
+else
+{
+    <div class="mode-banner live"><span class="dot live"></span><span>LIVE feed from @session.Provider · last provider update @Fmt.Ago(session.LastEventAt)@(Stale ? " · feed stale, forecast may be out of date" : "")</span></div>
 }
 
 <div class="card hero">

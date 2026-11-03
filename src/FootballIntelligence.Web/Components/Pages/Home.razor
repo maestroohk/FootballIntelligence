@@ -37,8 +37,12 @@
         }
         @foreach (var day in upcoming.Take(24).GroupBy(m => m.MatchDate))
         {
-            <h3 style="margin:12px 0 2px">@DayLabel(day.Key)</h3>
-            @foreach (var m in day) { <MatchLine Match="m" /> }
+            <div class="day-head">@DayLabel(day.Key)</div>
+            @foreach (var league in day.GroupBy(m => m.Competition))
+            {
+                <div class="league-head"><LeagueChip Code="@league.Key" /><span class="small faint">@league.Count() match@(league.Count() == 1 ? "" : "es")</span></div>
+                @foreach (var m in league) { <MatchLine Match="m" ShowDate="false" /> }
+            }
         }
         <div class="row" style="margin-top:8px"><a href="matches" class="small">All upcoming fixtures →</a></div>
     </div>

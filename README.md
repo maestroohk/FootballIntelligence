@@ -94,6 +94,35 @@ dotnet run --project src/FootballIntelligence.Web --urls http://localhost:5281 -
 
 Open http://localhost:5281. The web app starts the Python worker automatically (`python -m fie worker`) and restarts it if it dies; a worker that is already running is adopted instead of duplicated. The worker runs an update cycle every 6 hours (results, fixtures, forward predictions, forward evaluation, drift check, live-provider poll) and a full research refresh weekly.
 
+## Capabilities
+
+- Pre-match forecasts for 18 divisions in 11 countries: 1X2, expected goals, full scoreline matrix, totals 0.5–4.5, BTTS, clean sheets, goals per half — all from one joint score distribution.
+- Walk-forward evaluation (validation 2012/13–2022/23, untouched final test 2023/24 onwards), paired bootstrap comparisons, calibration and reliability analysis, bookmaker benchmark.
+- In-play goal-hazard model with historical event replay (clearly labelled REPLAY) and a score-based live adapter for football-data.org.
+- Player and team-tactics profiles from StatsBomb Open Data (2015/16).
+
+## Current limitations
+
+- No live event feed is connected; live tracking needs `FOOTBALL_DATA_API_KEY` and is untested against the real API.
+- Player, lineup and event data cover StatsBomb 2015/16 only; no injury, weather or travel data.
+- The model does not beat bookmaker closing odds. See `docs/REPORT.md` for measured results and open issues.
+
+## Data
+
+No data is committed. Every dataset is downloaded from its public source by the ingestion jobs above:
+
+| Source | Used for | Terms |
+|---|---|---|
+| football-data.co.uk | results, match statistics, odds | free to use; attribution given |
+| StatsBomb Open Data | events, xG, lineups (2015/16) | research use with attribution to StatsBomb |
+| OpenFootball football.json | future fixtures | public domain |
+
+Downloads are cached in `data/raw/` and the database is `data/football.db`; both are git-ignored and can be rebuilt with the commands above.
+
+## Team crests
+
+Teams are shown with a generated shield in consistent team colours. To show official crests, add image files you are licensed to use as `src/FootballIntelligence.Web/wwwroot/crests/{team_id}.svg` (or `.png` / `.webp`); the app picks them up automatically and falls back to the shield otherwise. No logos are hotlinked or bundled. Team names shown in the app come from the canonical team record plus provider aliases (for example football-data.co.uk's `Man United` is displayed as `Manchester United`), so aliases never create duplicate teams.
+
 ## Configuration
 
 | Variable | Default | Purpose |

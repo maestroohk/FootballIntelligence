@@ -76,8 +76,8 @@ public class ResearchQueries(Database db)
           AND m.competition IN ('E0','E1','SP1','D1','I1','F1')
         """, new { model, purpose }).ToList();
 
-    public List<MatchRow> PredictionHistory(string? model, string purpose, int limit) => db.Query<MatchRow>("""
-        SELECT m.match_id, m.competition, m.season, m.match_date, m.status, th.name home_name, ta.name away_name, m.fthg, m.ftag,
+    public List<MatchRow> PredictionHistory(string? model, string purpose, int limit) => db.Query<MatchRow>($"""
+        SELECT m.match_id, m.competition, m.season, m.match_date, m.status, {Database.DisplayName("th.team_id", "th.name")} home_name, {Database.DisplayName("ta.team_id", "ta.name")} away_name, m.fthg, m.ftag,
                p.p_home, p.p_draw, p.p_away, p.lambda_home, p.lambda_away, p.model_version, p.purpose, p.created_at prediction_created, p.data_cutoff
         FROM predictions p JOIN matches m ON m.match_id=p.match_id
         JOIN teams th ON th.team_id=m.home_team_id JOIN teams ta ON ta.team_id=m.away_team_id

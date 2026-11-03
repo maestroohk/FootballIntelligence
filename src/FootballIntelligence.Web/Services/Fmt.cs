@@ -67,6 +67,26 @@ public static class Fmt
         "T1" => "Süper Lig", "G1" => "Super League Greece", _ => code
     };
 
+    public static string Country(string code) => code switch
+    {
+        "E0" or "E1" or "E2" => "ENG", "SP1" or "SP2" => "ESP", "D1" or "D2" => "GER", "I1" or "I2" => "ITA", "F1" or "F2" => "FRA",
+        "N1" => "NED", "P1" => "POR", "B1" => "BEL", "SC0" or "SC1" => "SCO", "T1" => "TUR", "G1" => "GRE", _ => ""
+    };
+
+    public static string LeagueColor(string code) => code switch
+    {
+        "E0" => "#7b3fe4", "E1" or "E2" => "#4a5bd6", "SP1" or "SP2" => "#e2483d", "D1" or "D2" => "#d6262f", "I1" or "I2" => "#1d6fe0",
+        "F1" or "F2" => "#2f6bd8", "N1" => "#f07c1e", "P1" => "#1f9e57", "B1" => "#c9a227", "SC0" or "SC1" => "#2758a6", "T1" => "#cf2236", "G1" => "#2f73c9", _ => "#5b6b80"
+    };
+
+    public static (string Primary, string Secondary) TeamColors(string name)
+    {
+        var h = 0;
+        foreach (var c in name) h = (h * 31 + c) & 0x7fffffff;
+        var hue = h % 360;
+        return ($"hsl({hue},55%,42%)", $"hsl({(hue + 140) % 360},45%,88%)");
+    }
+
     public static string ModelLabel(string? version) => version is null ? "—" : version.Split('@')[0] switch
     {
         "dixon_coles" => "Dixon-Coles", "poisson" => "Poisson (Maher)", "frequency" => "Frequency baseline", "elo" => "Elo (K=20)",

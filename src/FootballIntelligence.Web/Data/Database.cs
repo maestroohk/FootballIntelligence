@@ -61,5 +61,9 @@ public class Database
         return con.Execute(sql, args);
     }
 
+    public static string DisplayName(string idColumn, string nameColumn) =>
+        $"COALESCE((SELECT CASE WHEN a.alias LIKE '% FC' THEN substr(a.alias, 1, length(a.alias) - 3) WHEN a.alias LIKE 'FC %' THEN substr(a.alias, 4) WHEN a.alias LIKE 'AFC %' THEN substr(a.alias, 5) ELSE a.alias END " +
+        $"FROM team_aliases a WHERE a.team_id = {idColumn} AND a.source IN ('statsbomb', 'openfootball') ORDER BY a.source = 'statsbomb' DESC LIMIT 1), {nameColumn})";
+
     public string? Kv(string key) => Single<string>("SELECT value FROM kv WHERE key=@key", new { key });
 }
