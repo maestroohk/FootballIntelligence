@@ -22,7 +22,7 @@ function Run-Job($kind, $jobArgs = "{}") {
 }
 
 Step "Python environment"
-if (-not (Test-Path $python)) { if (Get-Command py -ErrorAction SilentlyContinue) { py -3.12 -m venv (Join-Path $root ".venv") } else { python -m venv (Join-Path $root ".venv") } }
+if (-not (Test-Path $python)) { if (Get-Command py -ErrorAction SilentlyContinue) { $v = if ((py -0) -match "3.12") { "-3.12" } else { "-3" }; py $v -m venv (Join-Path $root ".venv") } else { python -m venv (Join-Path $root ".venv") } }
 & $python -m pip install --quiet --upgrade pip
 & $python -m pip install --quiet -r (Join-Path $root "engine\requirements.txt")
 

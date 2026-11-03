@@ -2,11 +2,14 @@ import argparse
 import json
 import sys
 
+import truststore
+
 from . import db, jobs
 from .config import limit_threads
 
 
 def main():
+    truststore.inject_into_ssl()
     limit_threads()
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")

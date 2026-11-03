@@ -35,7 +35,10 @@ def ingest_history(ctx, seasons=None, codes=None):
 def ingest_fixtures(ctx):
     from . import ingest_openfootball
     ctx.stage("downloading upcoming fixtures")
-    out = {"football-data.co.uk": ingest_fdco.ingest_fixtures(ctx.con)}
+    try:
+        out = {"football-data.co.uk": ingest_fdco.ingest_fixtures(ctx.con)}
+    except Exception as e:
+        out = {"football-data.co.uk": {"error": str(e)[:200]}}
     ctx.stage("downloading OpenFootball season fixtures")
     out["openfootball"] = ingest_openfootball.ingest(ctx.con)
     return out
