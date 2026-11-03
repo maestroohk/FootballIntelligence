@@ -122,3 +122,19 @@ def test_inplay_red_card_effect_direction():
     a = m.forecast(s, 1.3 / 94, 1.3 / 94)
     b = m.forecast({**s, "reds_away": 1}, 1.3 / 94, 1.3 / 94)
     assert b["p_home"] > a["p_home"]
+
+
+def test_score_shape_families_preserve_means_and_nest_dixon_coles():
+    from fie import shapes
+    lh, la = np.array([1.6, 0.7, 2.4]), np.array([1.1, 1.9, 0.5])
+    g = np.arange(shapes.G)
+    base = shapes.dixon_coles(lh, la, -0.05)
+    for i in range(3):
+        assert np.allclose(base[i], dixon_coles_matrix(lh[i], la[i], -0.05))
+    assert np.allclose(shapes.bivariate(lh, la, -0.05, 0.0), base, atol=1e-8)
+    assert np.allclose(shapes.com_poisson(lh, la, -0.05, 1.0, 1.0), base, atol=1e-4)
+    for m in (shapes.bivariate(lh, la, 0.0, 0.3), shapes.com_poisson(lh, la, 0.0, 1.3, 1.2)):
+        assert np.allclose(m.sum(axis=(1, 2)), 1.0)
+        assert np.allclose(m.sum(axis=2) @ g, lh, atol=1e-3) and np.allclose(m.sum(axis=1) @ g, la, atol=1e-3)
+    p = shapes.outcome(shapes.diagonal_gap(lh, la, 0.0, 0.2, 0.0))
+    assert np.allclose(p.sum(axis=1), 1.0) and (p[:, 1] > shapes.outcome(shapes.dixon_coles(lh, la, 0.0))[:, 1]).all()

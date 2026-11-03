@@ -571,4 +571,4 @@ def expand_coverage(ctx):
     return {"n": len(common), "log_loss": {k: round(v["log_loss"], 4) for k, v in results.items()}, "core_gbm_max_change": drift, "published": n_back, "benchmark": n_bench}
 
 
-from . import paper, strategy
+from . import marketmodel, paper, shapes, strategy
