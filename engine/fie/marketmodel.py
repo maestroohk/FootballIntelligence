@@ -82,6 +82,7 @@ def study(con):
         out["periods"][period] = res
     v = out["periods"]["validation_2013_2022"]["primary"]
     out["passed_validation"] = {k: v[k]["ci_low"] > 0 for k in ("champion_info_vs_recalibrated", "football_info_vs_recalibrated")}
+    out["data_version"] = research.data_version(con)
     db.set_kv(con, "market_model_study", out)
     return out
 
@@ -113,6 +114,7 @@ def stakes_study(con):
                           "gap_to_market_before": float((lb - lm).mean()), "gap_to_market_after": float((lc - lm).mean())}
         out["periods"][period] = res
     out["passed_validation"] = out["periods"]["validation_2013_2022"]["all"]["stakes_vs_recalibrated"]["ci_low"] > 0
+    out["data_version"] = research.data_version(con)
     db.set_kv(con, "stakes_study", out)
     return out
 
@@ -129,3 +131,58 @@ def market_model_study(ctx):
     ctx.stage("fitting market-informed challengers walk-forward")
     res = study(ctx.con)
     return {p: {s: r["log_loss"] for s, r in v.items()} for p, v in res["periods"].items()}
+
+
+def _gbm(train_x, labels, weights, test_x):
+    import lightgbm as lgb
+    from .config import THREADS
+    params = {"objective": "multiclass", "num_class": 3, "learning_rate": 0.05, "num_leaves": 15, "min_data_in_leaf": 300,
+              "feature_fraction": 0.8, "verbose": -1, "num_threads": THREADS, "seed": 11}
+    booster = lgb.train(params, lgb.Dataset(train_x, labels, weight=weights), num_boost_round=300)
+    return booster.predict(test_x)
+
+
+def distillation_study(con, first_season=2014, lookback=4):
+    from .features import FEATURE_COLUMNS
+    d = dataset(con)
+    feats = research.load_cached("features")
+    d = d.merge(feats[["match_id"] + [c for c in FEATURE_COLUMNS + ["dc_log_lh", "dc_log_la"] if c not in d.columns]], on="match_id", how="left")
+    cols = list(dict.fromkeys(FEATURE_COLUMNS + ["dc_log_lh", "dc_log_la", "ch_hd", "ch_dd"]))
+    y = metrics.outcome_index(d["hg"], d["ag"])
+    soft = d[["m_home", "m_draw", "m_away"]].to_numpy()
+    hard_p = np.full((len(d), 3), np.nan)
+    soft_p = np.full((len(d), 3), np.nan)
+    for season in sorted(d.loc[d["season"] >= first_season, "season"].unique()):
+        tr = ((d["season"] < season) & (d["season"] >= season - lookback)).to_numpy()
+        te = (d["season"] == season).to_numpy()
+        x_tr, x_te = d.loc[tr, cols].to_numpy(float), d.loc[te, cols].to_numpy(float)
+        hard_p[te] = _gbm(x_tr, y[tr], None, x_te)
+        n = tr.sum()
+        soft_p[te] = _gbm(np.vstack([x_tr] * 3), np.repeat([0, 1, 2], n), soft[tr].T.reshape(-1), x_te)
+    keep = ~np.isnan(soft_p).any(axis=1)
+    research.save_cached("oos_distilled", pd.DataFrame({"match_id": d.loc[keep, "match_id"].to_numpy(), "p_home": soft_p[keep, 0],
+                                                        "p_draw": soft_p[keep, 1], "p_away": soft_p[keep, 2]}))
+    block = (d["competition"] + d["season"].astype(str)).to_numpy()
+    champ = d[["p_home", "p_draw", "p_away"]].to_numpy()
+    out = {"features": cols, "periods": {}}
+    for period, seasons in (("validation_2014_2022", [s for s in VALIDATION_SEASONS if s >= first_season]), ("confirmation_2023_on", [2023, 2024, 2025, 2026])):
+        res = {}
+        for scope, comps in (("primary", PRIMARY_COMPETITIONS), ("all", None)):
+            k = d["season"].isin(seasons).to_numpy() & (np.ones(len(d), bool) if comps is None else d["competition"].isin(comps).to_numpy())
+            l_c, l_h, l_s = (metrics.log_loss_rows(p[k], y[k]) for p in (champ, hard_p, soft_p))
+            l_m = metrics.log_loss_rows(soft[k], y[k])
+            res[scope] = {"n": int(k.sum()), "log_loss": {"champion": float(l_c.mean()), "gbm_outcome_labels": float(l_h.mean()),
+                                                         "gbm_market_labels": float(l_s.mean()), "market": float(l_m.mean())},
+                          "market_labels_vs_champion": _cmp(l_c, l_s, block[k]), "market_labels_vs_outcome_labels": _cmp(l_h, l_s, block[k])}
+        out["periods"][period] = res
+    out["passed_validation"] = out["periods"]["validation_2014_2022"]["primary"]["market_labels_vs_champion"]["ci_low"] > 0
+    out["data_version"] = research.data_version(con, ("oos_ensemble", "features"))
+    db.set_kv(con, "distillation_study", out)
+    return out
+
+
+@handler("distillation_study")
+def distillation_study_job(ctx):
+    ctx.stage("training football-only models on outcome labels and on market labels")
+    res = distillation_study(ctx.con)
+    return {p: {s: r["log_loss"] | {"vs_champion": r["market_labels_vs_champion"]} for s, r in v.items()} for p, v in res["periods"].items()}

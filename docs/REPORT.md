@@ -118,6 +118,8 @@ Each study fitted its parameters walk-forward from earlier seasons only, was jud
 - **End-of-season stakes.** Table-based indicators (nothing to play for or relegated, relegation fight, title or top-four chase) gain +0.00038 [−0.00004, +0.00079] overall and +0.0021 [−0.0001, +0.0041] in the last fifth of the season, but nothing from 2023 onwards: inconclusive, not adopted.
 - **Market efficiency.** Longshots lose far more than the margin (odds 8+: −23% at Pinnacle); favourites under 1.50 are fair at Pinnacle (+0.1% [−1.7%, +1.8%] from 2020). At the best available price the same favourites return +2.0% [+0.3%, +3.5%], which equals the premium of the highest quote over Pinnacle and is not an executable strategy. Closing prices are more accurate than pre-closing ones (0.9937 vs 0.9969), consistent with late team news.
 
+- **Market as teacher.** A football-only LightGBM trained on past de-vigged Pinnacle probabilities instead of outcomes (no current price at prediction time) beats the champion: +0.00100 [+0.00017, +0.00183] on validation (six leagues), +0.00161 [+0.00105, +0.00212] on all divisions, and +0.00159 [+0.00083, +0.00237] on all divisions from 2023 onwards. The same model trained on outcomes is 0.017 worse, so the gain comes from the less noisy labels. It closes about 12% of the gap to the market and is kept as a separate market-trained challenger (match result only, not promoted). The same pre-registered betting rules using its probabilities lose in every period (Pinnacle holdout −5.3% [−10.4%, −0.2%]).
+
 No new model or rule demonstrates a statistically defensible, executable out-of-sample advantage. The champion is unchanged.
 
 ## 7. Incomplete or partial features

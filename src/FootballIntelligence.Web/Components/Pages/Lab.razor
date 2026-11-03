@@ -346,6 +346,11 @@ else
             challengers.Add(Row("Market-informed", "market + champion", "Pinnacle pre-closing, recalibrated", "validation 2013–2022 · 6 leagues", v.GetProperty("champion_info_vs_recalibrated"), passed.GetProperty("champion_info_vs_recalibrated").GetBoolean()));
             challengers.Add(Row("Market-informed", "market + football features", "Pinnacle pre-closing, recalibrated", "validation 2013–2022 · 6 leagues", v.GetProperty("football_info_vs_recalibrated"), passed.GetProperty("football_info_vs_recalibrated").GetBoolean()));
         }
+        if (Research.KvJson("distillation_study") is { } ds)
+        {
+            var v = ds.GetProperty("periods").GetProperty("validation_2014_2022").GetProperty("primary");
+            challengers.Add(Row("Market as teacher", "football-only GBM, market labels", "champion", "validation 2014–2022 · 6 leagues", v.GetProperty("market_labels_vs_champion"), ds.GetProperty("passed_validation").GetBoolean()));
+        }
         if (Research.KvJson("stakes_study") is { } st)
         {
             var v = st.GetProperty("periods").GetProperty("validation_2013_2022");

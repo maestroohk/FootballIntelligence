@@ -29,6 +29,17 @@ def save_cached(name, frame):
     frame.to_pickle(cache_path(name))
 
 
+def data_version(con, caches=("oos_ensemble",)):
+    import datetime
+    m = con.execute("SELECT COUNT(*), MAX(match_date) FROM matches WHERE status = 'finished'").fetchone()
+    out = {"finished_matches": int(m[0]), "last_result": m[1], "champion": con.execute("SELECT version FROM model_versions WHERE status = 'champion'").fetchone()[0]}
+    for name in caches:
+        p = cache_path(name)
+        if p.exists():
+            out[name] = datetime.datetime.fromtimestamp(p.stat().st_mtime, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return out
+
+
 def prepared_frame(con, include_scheduled=True, refit_proxy=False):
     frame = load_matches(con, include_scheduled=include_scheduled)
     coef = None if refit_proxy else db.get_kv(con, "xg_proxy")

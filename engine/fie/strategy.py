@@ -133,6 +133,7 @@ def run(con):
             results["baselines"][f"{market}/{book}/market favourite"] = summarise(fav, n_boot=200)
     m = cand[(cand["market"] == "1x2") & (cand["bookmaker"] == "pinnacle")]
     results["probability_quality"] = probability_quality(con, m)
+    results["data_version"] = research.data_version(con, ("oos_ensemble", "strategy_candidates"))
     db.set_kv(con, "strategy_research", results)
     return results
 
@@ -151,6 +152,28 @@ def probability_quality(con, pinnacle_1x2):
         pk = mk.to_numpy()
         out[period] = {"n": int(len(mk)), "model_log_loss": float(metrics.log_loss_rows(pm, y).mean()), "pinnacle_open_log_loss": float(metrics.log_loss_rows(pk, y).mean()),
                        "model_brier": float(metrics.brier_rows(pm, y).mean()), "pinnacle_open_brier": float(metrics.brier_rows(pk, y).mean())}
+    return out
+
+
+def distilled_value(con):
+    cand = research.load_cached("strategy_candidates")
+    dist = research.load_cached("oos_distilled").set_index("match_id")
+    c = cand[(cand["market"] == "1x2") & cand["match_id"].isin(dist.index)].copy()
+    col = c["selection"].map({"home": "p_home", "draw": "p_draw", "away": "p_away"})
+    c["ev"] = [dist.at[m, k] for m, k in zip(c["match_id"], col)] * c["odds"] - 1
+    out = {"model": "football features trained on past de-vigged Pinnacle probabilities (no current price used)", "development": "2014/15-2019/20", "rules": []}
+    for book in BOOKS:
+        sub = c[c["bookmaker"] == book]
+        dev = sub[sub["period"] == "development"]
+        grid = [((e, lo, hi), summarise(pick(dev, "1x2", book, e, lo, hi), n_boot=200)) for e in MIN_EV for lo, hi in ODDS_BANDS]
+        grid = [g for g in grid if g[1]["n"] >= MIN_BETS]
+        if not grid:
+            continue
+        (e, lo, hi), dev_s = max(grid, key=lambda g: g[1]["roi"])
+        out["rules"].append({"bookmaker": book, "min_ev": e, "odds_min": lo, "odds_max": hi, "development": dev_s,
+                             "holdout": summarise(pick(sub[sub["period"] == "holdout"], "1x2", book, e, lo, hi)),
+                             "final": summarise(pick(sub[sub["period"] == "final"], "1x2", book, e, lo, hi))})
+    db.set_kv(con, "distilled_value", out)
     return out
 
 
@@ -199,6 +222,7 @@ def market_efficiency(con):
         out["band_rules"].append({"bookmaker": book, "odds_min": lo, "odds_max": hi, "development": dev_s,
                                   "holdout": summarise(pick_("holdout")), "final": summarise(pick_("final"))})
     out["opening_vs_closing"] = opening_vs_closing(con)
+    out["data_version"] = research.data_version(con, ("strategy_candidates",))
     db.set_kv(con, "market_efficiency", out)
     return out
 

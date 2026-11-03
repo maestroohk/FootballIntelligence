@@ -138,3 +138,29 @@ def test_score_shape_families_preserve_means_and_nest_dixon_coles():
         assert np.allclose(m.sum(axis=2) @ g, lh, atol=1e-3) and np.allclose(m.sum(axis=1) @ g, la, atol=1e-3)
     p = shapes.outcome(shapes.diagonal_gap(lh, la, 0.0, 0.2, 0.0))
     assert np.allclose(p.sum(axis=1), 1.0) and (p[:, 1] > shapes.outcome(shapes.dixon_coles(lh, la, 0.0))[:, 1]).all()
+
+
+def test_standings_flags_relegated_title_race_and_early_season():
+    from fie.features import standings_features
+    teams = list(range(10))
+    rounds = []
+    rot = teams[1:]
+    for r in range(9):
+        order = [teams[0]] + rot
+        rounds.append([(order[i], order[9 - i]) for i in range(5)])
+        rot = rot[-1:] + rot[:-1]
+    rounds += [[(b, a) for a, b in rnd] for rnd in rounds]
+    rows = []
+    for k, rnd in enumerate(rounds):
+        for h, a in rnd:
+            rows.append({"match_id": len(rows) + 1, "competition": "E0", "season": 2020, "date": pd.Timestamp("2020-08-01") + pd.Timedelta(days=7 * k),
+                         "home": h, "away": a, "status": "finished", "hg": 1 if h < a else 0, "ag": 0 if h < a else 1})
+    frame = pd.DataFrame(rows)
+    f = standings_features(frame).merge(frame, on="match_id")
+    first = f[f["date"] == f["date"].min()]
+    assert (first[["h_dead", "a_dead", "h_danger", "a_danger"]] == 0).all().all()
+    last = f[f["date"] == f["date"].max()]
+    flag = lambda team, col: float(last.loc[last["home"] == team, f"h_{col}"].sum() + last.loc[last["away"] == team, f"a_{col}"].sum())
+    assert flag(9, "dead") == 1 and flag(9, "danger") == 0
+    assert flag(1, "chasing") == 1 and flag(0, "dead") == 0
+    assert flag(5, "dead") == 1

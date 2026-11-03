@@ -143,7 +143,7 @@ else
         </div>
         <div class="card">
             <div class="card-head"><h2>Model vs market</h2><span class="sub">de-vigged bookmaker odds, power method</span></div>
-            @if (odds.Count == 0)
+            @if (odds.Count == 0 && recorded.Count == 0)
             {
                 <div class="small dim">No bookmaker odds recorded for this match.</div>
             }
@@ -153,15 +153,21 @@ else
                     <thead><tr><th>Source</th><th class="num">Home</th><th class="num">Draw</th><th class="num">Away</th><th class="num">Over 2.5</th></tr></thead>
                     <tbody>
                         <tr><td><b>Model</b></td><td class="num">@Fmt.Pct(mk.PHome, 1)</td><td class="num">@Fmt.Pct(mk.PDraw, 1)</td><td class="num">@Fmt.Pct(mk.PAway, 1)</td><td class="num">@Fmt.Pct(mk.Over.GetValueOrDefault("2.5"), 1)</td></tr>
-                        @foreach (var o in odds)
+                        @foreach (var o in recorded.GroupBy(r => r.Bookmaker).SelectMany(g => g.Take(1).Concat(g.Where(r => (r.Home, r.Draw, r.Away) != (g.First().Home, g.First().Draw, g.First().Away)).Take(1))))
                         {
                             var p = Devig(o);
-                            <tr><td>@o.Bookmaker <span class="faint small">@o.Timing</span></td><td class="num">@Fmt.Pct(p[0], 1)</td><td class="num">@Fmt.Pct(p[1], 1)</td><td class="num">@Fmt.Pct(p[2], 1)</td>
+                            <tr><td>@ValueFmt.Book(o.Bookmaker) <span class="faint small" title="@o.Timing">recorded @Fmt.Ago(o.Timing)</span></td><td class="num">@Fmt.Pct(p[0], 1)</td><td class="num">@Fmt.Pct(p[1], 1)</td><td class="num">@Fmt.Pct(p[2], 1)</td>
+                                <td class="num">@(o.Over25 is null || o.Under25 is null ? "—" : Fmt.Pct((1 / o.Over25.Value) / (1 / o.Over25.Value + 1 / o.Under25.Value), 1))</td></tr>
+                        }
+                        @foreach (var o in recorded.Count > 0 ? odds.Where(o => o.Timing == "close") : odds)
+                        {
+                            var p = Devig(o);
+                            <tr><td>@ValueFmt.Book(o.Bookmaker) <span class="faint small">@(o.Timing == "close" ? "closing" : "pre-closing")</span></td><td class="num">@Fmt.Pct(p[0], 1)</td><td class="num">@Fmt.Pct(p[1], 1)</td><td class="num">@Fmt.Pct(p[2], 1)</td>
                                 <td class="num">@(o.Over25 is null || o.Under25 is null ? "—" : Fmt.Pct((1 / o.Over25.Value) / (1 / o.Over25.Value + 1 / o.Under25.Value), 1))</td></tr>
                         }
                     </tbody>
                 </table>
-                <div class="small faint" style="margin-top:8px">Closing odds are published after the model's data cutoff and are used only as an external benchmark, never as a model input.</div>
+                <div class="small faint" style="margin-top:8px">@(recorded.Count > 0 ? "Recorded prices are timestamped snapshots taken before kick-off; the latest per bookmaker is shown, with the previous price when it has moved. " : "")Bookmaker prices are an external benchmark and never a model input; closing prices are only known at kick-off. @if (recorded.Count > 0 && match.Status == "scheduled") { <a href="value">Full price analysis →</a> }</div>
             }
         </div>
     </div>
@@ -283,6 +289,7 @@ else
     private MatchRow? match;
     private Markets? mk;
     private List<OddsRow> odds = [];
+    private List<OddsRow> recorded = [];
     private List<FormRow> homeForm = [];
     private List<FormRow> awayForm = [];
     private List<MatchRow> h2h = [];
@@ -327,6 +334,7 @@ else
             mk = ScoreModel.Compute(ScoreModel.DixonColes(match.LambdaHome.Value, match.LambdaAway!.Value, rho));
         }
         odds = Football.Odds(Id);
+        recorded = Football.RecordedOdds(Id);
         homeForm = Football.Form(match.HomeTeamId, match.MatchDate, 6);
         awayForm = Football.Form(match.AwayTeamId, match.MatchDate, 6);
         h2h = Football.HeadToHead(match.HomeTeamId, match.AwayTeamId, match.MatchDate, 6);

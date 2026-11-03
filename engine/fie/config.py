@@ -8,7 +8,7 @@ DB_PATH = Path(os.environ.get("FIE_DB", DATA / "football.db"))
 
 PROFILE = os.environ.get("FIE_PROFILE", "full").strip().lower()
 LIGHT = PROFILE == "light"
-HEAVY_JOBS = {"ingest_history", "research_full", "expand_coverage", "final_test", "train_inplay", "experiments", "publish_predictions", "player_study", "ingest_market_odds", "strategy_research"}
+HEAVY_JOBS = {"ingest_history", "research_full", "expand_coverage", "final_test", "train_inplay", "experiments", "publish_predictions", "player_study", "ingest_market_odds", "strategy_research", "shape_study", "market_model_study", "stakes_study", "market_efficiency", "distillation_study"}
 
 THREADS = int(os.environ.get("FIE_THREADS", "2" if LIGHT else "4"))
 MAX_CONCURRENT_JOBS = int(os.environ.get("FIE_MAX_JOBS", "1" if LIGHT else "2"))

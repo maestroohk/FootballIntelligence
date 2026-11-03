@@ -65,7 +65,7 @@
             </div>
             <div class="table-wrap">
                 <table class="data compact">
-                    <thead><tr><th>Match</th><th>Market</th><th>Pick</th><th>Bookmaker</th><th class="num">Odds</th><th class="num">Implied</th><th class="num">Market (no margin)</th><th class="num">Model</th><th class="num">Break-even</th><th class="num">Model EV</th><th class="num">Margin</th><th>Evidence</th><th>Price seen</th></tr></thead>
+                    <thead><tr><th>Match</th><th>Market</th><th>Pick</th><th>Bookmaker</th><th class="num">Odds</th><th class="num">Implied</th><th class="num">Market (no margin)</th><th class="num">Model</th><th class="num">Break-even</th><th class="num">Model EV</th><th class="num">Margin</th><th>Evidence</th><th>Paper decision</th><th>Price seen</th></tr></thead>
                     <tbody>
                         @foreach (var r in rows.Take(300))
                         {
@@ -83,6 +83,7 @@
                                 <td class="num @(r.S.Ev > 0 ? "good" : "dim")">@Fmt.Signed(r.S.Ev * 100, 1)%</td>
                                 <td class="num dim">@Fmt.Pct(r.K.Margin, 1)</td>
                                 <td class="small">@Evidence(r.K.Market, r.K.Bookmaker, gap)</td>
+                                <td class="small">@PaperNote(r)</td>
                                 <td class="small faint" title="@r.K.ObservedAt">@Fmt.Ago(r.K.ObservedAt)</td>
                             </tr>
                         }
@@ -445,6 +446,18 @@ else
         <span class="@(s.Roi >= 0 ? "good" : "bad")">@Fmt.Signed(s.Roi * 100, 1)%</span>
         <span class="faint"> n=@s.N.ToString("N0")</span>
         if (ci) { <div class="faint">@ValueFmt.Ci(s.RoiCi)</div> }
+    };
+
+    private RenderFragment PaperNote(Row r) => __builder =>
+    {
+        var d = decisions.FirstOrDefault(x => x.MatchId == r.M.MatchId);
+        if (d is null) { <span class="faint">no decision yet</span>; return; }
+        var same = d.Decision == "bet" && d.Market == r.K.Market && d.Line == r.K.Line && d.Selection == r.S.Selection && d.Bookmaker == r.K.Bookmaker;
+        if (same) { <span class="badge sim">paper selection</span>; return; }
+        if (d.Decision == "bet") { <span class="faint">match taken on another pick</span>; return; }
+        if (r.K.Bookmaker is not ("bet365" or "market_avg")) { <span class="faint">bookmaker outside the rule</span>; return; }
+        if (r.S.Odds < 1.5 || r.S.Odds > 4.0) { <span class="faint">odds outside 1.50–4.00</span>; return; }
+        <span class="faint" title="@d.Reason">@(r.S.Ev < 0.05 ? "model EV below +5%" : d.Reason)</span>
     };
 
     private RenderFragment Evidence(string mkt, string bk, double gap) => __builder =>

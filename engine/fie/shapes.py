@@ -178,6 +178,7 @@ def study(con, families=("bivariate_poisson", "com_poisson", "gap_rho", "diagona
             entry["confirmation_2023_on"] = compare(base, cand, [2023, 2024, 2025], PRIMARY_COMPETITIONS)
         research.save_cached(f"oos_shape_{fam}", cand)
         results["candidates"][fam] = entry
+    results["data_version"] = research.data_version(con)
     db.set_kv(con, "shape_study", results)
     return results
 

@@ -58,6 +58,18 @@ public class FootballQueries(Database db)
         FROM predictions WHERE match_id=@id ORDER BY prediction_id
         """, new { id }).ToList();
 
+    public List<OddsRow> RecordedOdds(long id) => db.Query<OddsRow>("""
+        SELECT bookmaker, observed_at timing,
+               MAX(CASE WHEN market = '1x2' AND selection = 'home' THEN odds END) home,
+               MAX(CASE WHEN market = '1x2' AND selection = 'draw' THEN odds END) draw,
+               MAX(CASE WHEN market = '1x2' AND selection = 'away' THEN odds END) away,
+               MAX(CASE WHEN market = 'ou' AND line = 2.5 AND selection = 'over' THEN odds END) over25,
+               MAX(CASE WHEN market = 'ou' AND line = 2.5 AND selection = 'under' THEN odds END) under25
+        FROM market_odds WHERE match_id = @id AND timing = 'pre_close' AND observed_at LIKE '20%'
+        GROUP BY bookmaker, observed_at HAVING home IS NOT NULL AND draw IS NOT NULL AND away IS NOT NULL
+        ORDER BY bookmaker, observed_at DESC
+        """, new { id }).ToList();
+
     public List<OddsRow> Odds(long id) => db.Query<OddsRow>("SELECT bookmaker, timing, home, draw, away, over25, under25 FROM odds WHERE match_id=@id ORDER BY bookmaker, timing", new { id }).ToList();
 
     public List<FormRow> Form(long teamId, string beforeDate, int limit) => db.Query<FormRow>($"""
