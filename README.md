@@ -112,7 +112,7 @@ Downloads use the Windows certificate store (`truststore`), so they work behind 
 ..\.venv\Scripts\python -m fie assets                          # report what is present and what is still missing
 ```
 
-The bundle holds a consistent database snapshot, model caches and raw downloads with a SHA-256 manifest. Import verifies every file, copies via `.part` files and skips files already restored, so an interrupted import resumes. With raw downloads present, `ingest_history` rebuilds tables without downloading. The Data health page shows the same asset check.
+The bundle holds a consistent database snapshot, model caches and raw downloads with a SHA-256 manifest. Import verifies every checksum, checks free disk space, refuses to run while the worker is writing (override with `--force`), stages files as `.part` copies (an interrupted import resumes from them), then checks the staged database's integrity and that the model caches load in this environment. Only after all of that passes are files replaced; the current database is backed up first with SQLite's backup API. With raw downloads present, `ingest_history` rebuilds tables without downloading. The Data health page shows the same asset check.
 
 1. Install Git, the .NET 10 SDK and Python 3.12 (the `py` launcher is used if present).
 2. Clone and set up:

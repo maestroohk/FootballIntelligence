@@ -30,6 +30,7 @@ def main():
     imp = sub.add_parser("bundle-import")
     imp.add_argument("source")
     imp.add_argument("--replace", action="store_true")
+    imp.add_argument("--force", action="store_true")
     run = sub.add_parser("run")
     run.add_argument("kind")
     run.add_argument("--args", default="{}")
@@ -56,7 +57,11 @@ def main():
                 print(" ", p)
             sys.exit(1 if problems else 0)
         else:
-            status = bundle.import_bundle(args.source, replace=args.replace)
+            try:
+                status = bundle.import_bundle(args.source, replace=args.replace, force=args.force)
+            except RuntimeError as exc:
+                print(f"import stopped: {exc}")
+                sys.exit(1)
             print("operational" if status["operational"] else "still missing: " + ", ".join(m["asset"] for m in status["missing"]))
     elif args.cmd == "run-job":
         jobs.run_job(args.job_id)

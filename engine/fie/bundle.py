@@ -73,6 +73,11 @@ def assets(con):
 
 def export(target):
     target = Path(target)
+    target.mkdir(parents=True, exist_ok=True)
+    size = DB_PATH.stat().st_size + sum(p.stat().st_size for base in (CACHE, RAW) if base.exists() for p in base.rglob("*") if p.is_file())
+    free = shutil.disk_usage(target).free
+    if size * 1.05 > free:
+        raise RuntimeError(f"not enough disk space at {target}: need {size / 1e9:.1f} GB, {free / 1e9:.1f} GB free")
     (target / "cache").mkdir(parents=True, exist_ok=True)
     src = sqlite3.connect(DB_PATH)
     dst = sqlite3.connect(target / "football.db")
@@ -120,8 +125,64 @@ def _destination(rel):
     return DB_PATH if rel == "football.db" else (CACHE if folder == "cache" else RAW) / rest
 
 
-def import_bundle(source, replace=False, progress=print):
+def _needs_copy(dest, f):
+    return not (dest.exists() and dest.stat().st_size == f["size"] and _sha256(dest) == f["sha256"])
+
+
+def _worker_active():
+    if not DB_PATH.exists():
+        return False
+    con = db.connect()
+    try:
+        beat = db.get_kv(con, "worker_heartbeat")
+    finally:
+        con.close()
+    if not beat:
+        return False
+    age = datetime.now(timezone.utc) - datetime.fromisoformat(beat.replace("Z", "+00:00"))
+    return age.total_seconds() < 60
+
+
+def _validate_staged(staged):
+    problems = []
+    db_part = staged.get("football.db")
+    if db_part is not None:
+        con = sqlite3.connect(db_part)
+        try:
+            if con.execute("PRAGMA quick_check").fetchone()[0] != "ok":
+                problems.append("database integrity check failed")
+            tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            missing = {"matches", "teams", "predictions", "kv"} - tables
+            if missing:
+                problems.append(f"database is missing tables: {', '.join(sorted(missing))}")
+        except sqlite3.DatabaseError as exc:
+            problems.append(f"database unreadable: {exc}")
+        finally:
+            con.close()
+    import pandas as pd
+    for rel, part in staged.items():
+        if rel.startswith("cache/") and Path(rel).stem in REQUIRED_CACHES:
+            try:
+                pd.read_pickle(part)
+            except Exception as exc:
+                problems.append(f"model cache {rel} cannot be loaded by this environment ({type(exc).__name__}: {str(exc)[:120]})")
+    return problems
+
+
+def _backup_database():
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    target = DB_PATH.with_name(f"football.db.bak-{stamp}")
+    src = sqlite3.connect(DB_PATH)
+    dst = sqlite3.connect(target)
+    src.backup(dst)
+    dst.close()
+    src.close()
+    return target
+
+
+def import_bundle(source, replace=False, force=False, progress=print):
     source = Path(source)
+    progress("verifying bundle checksums")
     manifest, problems = verify(source)
     if problems:
         raise RuntimeError("bundle failed verification: " + "; ".join(problems[:10]))
@@ -131,31 +192,49 @@ def import_bundle(source, replace=False, progress=print):
         con.close()
         if current["matches_history"]:
             raise RuntimeError("this machine already has match history; pass --replace to overwrite it (the current database is backed up first)")
-    files = sorted(manifest["files"], key=lambda f: f["path"] == "football.db")
-    for i, f in enumerate(files, 1):
+    if _worker_active() and not force:
+        raise RuntimeError("the engine worker is running and writing to the database; stop the web app and worker first (or pass --force)")
+    todo = [f for f in manifest["files"] if _needs_copy(_destination(f["path"]), f)]
+    needed = sum(f["size"] for f in todo) + (DB_PATH.stat().st_size if DB_PATH.exists() and any(f["path"] == "football.db" for f in todo) else 0)
+    DATA.mkdir(parents=True, exist_ok=True)
+    free = shutil.disk_usage(DATA).free
+    if needed * 1.05 > free:
+        raise RuntimeError(f"not enough disk space: need {needed / 1e9:.1f} GB, {free / 1e9:.1f} GB free")
+    staged = {}
+    for i, f in enumerate(todo, 1):
         dest = _destination(f["path"])
-        if dest.exists() and dest.stat().st_size == f["size"] and _sha256(dest) == f["sha256"]:
-            progress(f"[{i}/{len(files)}] already present {f['path']}")
-            continue
         dest.parent.mkdir(parents=True, exist_ok=True)
-        if f["path"] == "football.db" and dest.exists():
-            stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-            shutil.copy2(dest, dest.with_name(f"football.db.bak-{stamp}"))
+        part = dest.with_name(dest.name + ".part")
+        if part.exists() and part.stat().st_size == f["size"] and _sha256(part) == f["sha256"]:
+            progress(f"[{i}/{len(todo)}] already staged {f['path']}")
+        else:
+            shutil.copy2(source / f["path"], part)
+            if _sha256(part) != f["sha256"]:
+                part.unlink()
+                raise RuntimeError(f"copy of {f['path']} did not match its checksum; rerun to resume")
+            progress(f"[{i}/{len(todo)}] staged {f['path']}")
+        staged[f["path"]] = part
+    problems = _validate_staged(staged)
+    if problems:
+        raise RuntimeError("staged files failed validation, nothing was replaced: " + "; ".join(problems))
+    backup = None
+    if "football.db" in staged and DB_PATH.exists():
+        backup = _backup_database()
+        progress(f"backed up current database to {backup.name}")
+    for rel, part in sorted(staged.items(), key=lambda kv: kv[0] == "football.db"):
+        dest = _destination(rel)
+        if rel == "football.db":
             for suffix in ("-wal", "-shm"):
                 side = dest.with_name(dest.name + suffix)
                 if side.exists():
                     side.unlink()
-        part = dest.with_name(dest.name + ".part")
-        shutil.copy2(source / f["path"], part)
-        if _sha256(part) != f["sha256"]:
-            part.unlink()
-            raise RuntimeError(f"copy of {f['path']} did not match its checksum")
         os.replace(part, dest)
-        progress(f"[{i}/{len(files)}] restored {f['path']}")
+    progress(f"replaced {len(staged)} files, {len(manifest['files']) - len(staged)} already up to date")
     con = db.init()
     db.set_kv(con, "restored_from_bundle", {"at": db.now(), "bundle_created_at": manifest["created_at"], "machine": manifest["machine"],
-                                           "commit": manifest["commit"], "files": len(files)})
+                                           "commit": manifest["commit"], "files": len(manifest["files"]), "replaced": len(staged),
+                                           "backup": backup.name if backup else None})
     status = assets(con)
     db.notify(con, "success" if status["operational"] else "warning", "Data bundle imported",
-              f"{len(files)} files from {manifest['machine']} ({manifest['created_at'][:10]}); " + ("all required assets present" if status["operational"] else f"{len(status['missing'])} assets still missing"))
+              f"{len(staged)} files restored from {manifest['machine']} ({manifest['created_at'][:10]}); " + ("all required assets present" if status["operational"] else f"{len(status['missing'])} assets still missing"))
     return status
