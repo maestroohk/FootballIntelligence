@@ -112,6 +112,45 @@
     </div>
 </div>
 
+<div class="grid g2">
+    <div class="card">
+        <div class="card-head"><h2>By league</h2><span class="sub">log loss of stored predictions · lower is better</span></div>
+        @if (leagues.Count == 0) { <div class="empty">Not evaluated yet.</div> }
+        else
+        {
+            <table class="data">
+                <thead><tr><th>League</th><th class="num">Matches</th><th class="num">Log loss</th><th style="width:40%"></th></tr></thead>
+                <tbody>
+                    @foreach (var l in leagues.OrderBy(l => l.GetProperty("log_loss").GetDouble()))
+                    {
+                        var ll = l.GetProperty("log_loss").GetDouble();
+                        <tr><td><LeagueChip Code="@(l.GetProperty("competition").GetString() ?? "")" /></td><td class="num">@l.GetProperty("n").GetInt64().ToString("N0")</td><td class="num">@ll.ToString("F4", System.Globalization.CultureInfo.InvariantCulture)</td><td><div class="trend-bar"><span style="width:@BarWidth(ll)"></span></div></td></tr>
+                    }
+                </tbody>
+            </table>
+            <div class="small faint" style="margin-top:6px">Leagues differ in how predictable they are, so compare a league with itself over time rather than with other leagues.</div>
+        }
+    </div>
+    <div class="card">
+        <div class="card-head"><h2>Model versions</h2><span class="sub">every version is kept; predictions record the version that made them</span></div>
+        @if (versions.Count == 0) { <div class="empty">No model versions registered on this computer.</div> }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <thead><tr><th>Version</th><th>Status</th><th>Registered</th></tr></thead>
+                    <tbody>
+                        @foreach (var v in versions.Take(20))
+                        {
+                            <tr><td><span class="mono small">@v.Version</span><div class="small faint">@Fmt.ModelLabel(v.Version)</div></td><td><span class="badge @(v.Status == "champion" ? "ok" : v.Status == "benchmark" ? "info" : "")">@v.Status</span></td><td class="small dim">@Fmt.Local(v.CreatedAt)</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
 @code {
     private string? champion;
     private string? trainedAt;
@@ -123,6 +162,8 @@
     private List<JsonElement> promotions = [];
     private List<JsonElement> history = [];
     private List<ExperimentRow> experiments = [];
+    private List<JsonElement> leagues = [];
+    private List<ModelVersionRow> versions = [];
     private TrackRecord forward = new();
     private TrackRecord backtest = new();
     private long minN = 200;
@@ -145,6 +186,8 @@
         promotions = Research.KvJson("promotion_log") is { } pl ? pl.EnumerateArray().Reverse().Take(8).ToList() : [];
         history = Research.KvJson("champion_history") is { } ch ? ch.EnumerateArray().ToList() : [];
         experiments = Research.Experiments();
+        leagues = weak is { } w4 && w4.TryGetProperty("by_league", out var bl) ? bl.EnumerateArray().ToList() : [];
+        versions = Research.Versions();
         forward = Football.Record("forward");
         backtest = Football.Record("backtest");
         trend = Trend();
