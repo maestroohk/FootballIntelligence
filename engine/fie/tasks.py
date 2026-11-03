@@ -112,7 +112,6 @@ def research_full(ctx, refresh=False, configs=None):
     ctx.stage("loading matches")
     frame, coef = research.prepared_frame(con)
     research.save_cached("frame", frame)
-    db.set_kv(con, "xg_proxy", coef)
     results = {}
     oos = {}
     ctx.stage("frequency baseline")
@@ -161,7 +160,6 @@ def research_full(ctx, refresh=False, configs=None):
     comp_names = [best_dc, best_xg, best_elo, "gbm_features"]
     ens, weights = research.run_ensemble([oos[n] for n in comp_names], comp_names, frame)
     oos["ensemble"] = ens
-    db.set_kv(con, "ensemble_weights", {"components": comp_names, "by_season": weights})
     ctx.stage("bookmaker benchmark")
     oos["bookmaker_close"] = research.bookmaker_oos(con, frame)
     for name in ("gbm_stacked", "gbm_features", "logistic", "ensemble", "bookmaker_close"):
@@ -193,6 +191,8 @@ def research_full(ctx, refresh=False, configs=None):
     if not history or history[-1]["champion"] != selection["champion"]:
         history.append({"at": db.now(), "champion": selection["champion"], "reason": selection["reasons"][-1]})
         db.set_kv(con, "champion_history", history)
+    db.set_kv(con, "xg_proxy", coef)
+    db.set_kv(con, "ensemble_weights", {"components": comp_names, "by_season": weights})
     db.set_kv(con, "research_summary", {"results": results, "best": {"elo": best_elo, "dc": best_dc, "xg": best_xg}, "selection": selection,
                                          "xg_proxy": coef, "finished_at": db.now()})
     register_versions(con, results, selection, best_dc, best_xg, best_elo)
