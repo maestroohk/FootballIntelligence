@@ -333,3 +333,19 @@ def test_crest_licences_files_and_matching():
     clubs = [{"qid": "A", "names": {"VfL Leverkusen"}}, {"qid": "B", "names": {"Bayer 04 Leverkusen"}}, {"qid": "C", "names": {"1. FSV Mainz 05"}}]
     assert crests.match_teams(teams, clubs) == {2: ("C", 1.0)}
     assert crests.display_keys("AFC Bournemouth") == {"afc bournemouth", "bournemouth"}
+
+
+def test_forward_evaluation_scores_clean_forecasts_and_challengers(con):
+    from fie import forward
+    con.execute("INSERT INTO competitions VALUES('E0','PL','ENG',1)")
+    con.execute("INSERT INTO teams(team_id, name, country) VALUES(1,'A','ENG'),(2,'B','ENG')")
+    con.execute("INSERT INTO matches(match_id, competition, season, match_date, kickoff, home_team_id, away_team_id, status, source, first_seen, updated_at) VALUES(1,'E0',2099,'2099-01-10','15:00',1,2,'scheduled','t',?,?)", (db.now(), db.now()))
+    rows = [("m@v1", "forward", .6), ("market_hybrid@v2", "challenger", .7), ("m@v0", "forward", .5)]
+    for version, purpose, ph in rows:
+        con.execute("INSERT INTO predictions(match_id, model_version, purpose, created_at, data_cutoff, p_home, p_draw, p_away, lambda_home, lambda_away) VALUES(1,?,?,?,'2099-01-01',?,?,?,1.6,0.9)", (version, purpose, db.now(), ph, (1 - ph) / 2, (1 - ph) / 2))
+    pid = con.execute("SELECT prediction_id FROM predictions WHERE model_version='m@v0'").fetchone()[0]
+    con.execute("INSERT INTO prediction_flags VALUES(?, 'team_identity', 'x', ?)", (pid, db.now()))
+    con.execute("UPDATE matches SET status='finished', fthg=2, ftag=0 WHERE match_id=1")
+    out = forward.evaluate_forward(con)
+    assert out["n"] == 1 and "m@v1" in out and "market_hybrid@v2" in out and "m@v0" not in out
+    assert out["market_hybrid@v2"]["log_loss"] < out["m@v1"]["log_loss"]

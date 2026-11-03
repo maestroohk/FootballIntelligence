@@ -204,9 +204,9 @@ def evaluate_forward(con):
     flag_late_forward_predictions(con)
     rows = pd.read_sql_query("""SELECT p.match_id, p.model_version, p.p_home, p.p_draw, p.p_away, p.lambda_home, p.lambda_away, m.fthg, m.ftag, m.match_date, m.competition
                                 FROM predictions p JOIN matches m ON m.match_id=p.match_id
-                                WHERE p.purpose='forward' AND m.status='finished'
-                                  AND p.prediction_id NOT IN (SELECT prediction_id FROM prediction_flags WHERE flag='after_kickoff_possible')""", con)
-    out = {"n": int(len(rows))}
+                                WHERE p.purpose IN ('forward', 'challenger') AND m.status='finished'
+                                  AND p.prediction_id NOT IN (SELECT prediction_id FROM prediction_flags)""", con)
+    out = {"n": int(rows["match_id"].nunique()) if len(rows) else 0}
     if rows.empty:
         db.set_kv(con, "forward_performance", out)
         return out
@@ -214,6 +214,17 @@ def evaluate_forward(con):
         p = g[["p_home", "p_draw", "p_away"]].to_numpy()
         y = metrics.outcome_index(g["fthg"], g["ftag"])
         out[version] = metrics.summarise(p, y, g["lambda_home"], g["lambda_away"], g["fthg"].to_numpy(), g["ftag"].to_numpy())
+    champ = con.execute("SELECT version FROM model_versions WHERE status = 'champion'").fetchone()
+    challenger = rows.loc[rows["model_version"].str.startswith("market_hybrid"), "model_version"].max() if (rows["model_version"].str.startswith("market_hybrid")).any() else None
+    if champ and challenger:
+        a = rows[rows["model_version"] == champ[0]].set_index("match_id")
+        b = rows[rows["model_version"] == challenger].set_index("match_id")
+        ids = a.index.intersection(b.index)
+        if len(ids) >= 30:
+            y = metrics.outcome_index(a.loc[ids, "fthg"], a.loc[ids, "ftag"])
+            la = metrics.log_loss_rows(a.loc[ids, ["p_home", "p_draw", "p_away"]].to_numpy(), y)
+            lb = metrics.log_loss_rows(b.loc[ids, ["p_home", "p_draw", "p_away"]].to_numpy(), y)
+            out["champion_vs_challenger"] = {"champion": champ[0], "challenger": challenger, **metrics.paired_bootstrap(la, lb)}
     db.set_kv(con, "forward_performance", out)
     return out
 
