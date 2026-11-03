@@ -176,8 +176,11 @@ def team_strengths(con, frame, summary):
     as_of = pd.Timestamp(date.today())
     finished = frame[frame["status"] == "finished"]
     for country in sorted(frame["country"].unique()):
-        f = finished[finished["country"] == country]
-        model = StrengthModel(**{**research.STRENGTH_DEFAULTS, **STRENGTH_CONFIGS[name]}).fit(f, as_of)
+        config = {**research.STRENGTH_DEFAULTS, **STRENGTH_CONFIGS[name]}
+        f = finished[(finished["country"] == country) & (finished["date"] > as_of - pd.Timedelta(days=config["window_days"]))]
+        if f.empty:
+            continue
+        model = StrengthModel(**config).fit(f, as_of)
         names = dict(zip(frame["home"], frame["home_name"]))
         current = set(frame.loc[(frame["country"] == country) & (frame["season"] == CURRENT_SEASON), "home"])
         a, d, mu, h, rho = model.params
