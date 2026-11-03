@@ -123,8 +123,8 @@ public class FootballQueries(Database db)
         """, new { search, limit }).ToList();
 
     public List<MatchRow> TeamMatches(long teamId, string status, int limit) => db.Query<MatchRow>(
-        MatchSelect + $" WHERE (m.home_team_id=@teamId OR m.away_team_id=@teamId) AND m.status=@status ORDER BY m.match_date {(status == "finished" ? "DESC" : "ASC")}, m.kickoff LIMIT @limit",
-        new { teamId, status, limit }).ToList();
+        MatchSelect + $" WHERE (m.home_team_id=@teamId OR m.away_team_id=@teamId) AND m.status=@status {(status == "scheduled" ? "AND m.match_date >= @today" : "")} ORDER BY m.match_date {(status == "finished" ? "DESC" : "ASC")}, m.kickoff LIMIT @limit",
+        new { teamId, status, limit, today = DateTime.Now.ToString("yyyy-MM-dd") }).ToList();
 
     public List<StandingRow> Standings(string competition, long season) => db.Query<StandingRow>($"""
         WITH rows AS (

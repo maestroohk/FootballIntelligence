@@ -97,8 +97,11 @@
     private List<MatchRow> rows = [];
     private List<TeamInfo> teams = [];
 
+    [SupplyParameterFromQuery(Name = "team")] public string? TeamQuery { get; set; }
+
     protected override void OnInitialized()
     {
+        if (!string.IsNullOrWhiteSpace(TeamQuery)) team = TeamQuery;
         competitions = Football.Competitions().OrderBy(c => Array.IndexOf(["E0", "SP1", "D1", "I1", "F1"], c) is var i && i < 0 ? 99 : i).ToList();
         Load();
         if (rows.Count == 0) SetView("results");

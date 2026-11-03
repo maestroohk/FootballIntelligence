@@ -23,7 +23,7 @@
         <div class="row small">
             @if (Stale) { <span class="badge warn">Historical data · last match @team.LastPlayed</span> }
             else if (team.LastPlayed is not null) { <span class="badge ok">Current season · last result @team.LastPlayed</span> }
-            @if (upcoming.Count > 0) { <span class="badge info">@upcoming.Count upcoming fixture@(upcoming.Count == 1 ? "" : "s")</span> }
+            @if (upcoming.Count > 0) { <span class="badge info">@(upcoming.Count >= 10 ? "10+" : upcoming.Count.ToString()) upcoming fixture@(upcoming.Count == 1 ? "" : "s")</span> }
         </div>
     </div>
     @if (me is not null)
@@ -43,6 +43,7 @@
             <div class="card-head"><h2>Upcoming fixtures</h2><span class="sub">probabilities from stored forward predictions</span></div>
             @if (upcoming.Count == 0) { <div class="empty">No scheduled fixtures are known for this team.</div> }
             @foreach (var m in upcoming) { <MatchLine Match="m" /> }
+            @if (upcoming.Count >= 10) { <div style="margin-top:8px"><a class="small" href="matches?team=@Uri.EscapeDataString(team.Name)">All fixtures →</a></div> }
         </div>
         <div class="card">
             <div class="card-head"><h2>Recent results</h2><span class="sub">with the prediction stored for each match</span></div>
