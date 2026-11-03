@@ -63,6 +63,16 @@ Open http://localhost:5281. The web app starts the Python worker automatically (
 - In-play goal-hazard model with historical event replay (clearly labelled REPLAY) and a score-based live adapter for football-data.org.
 - Player and team-tactics profiles from StatsBomb Open Data (2015/16).
 
+## Fan and Analyst modes
+
+The top-bar switch changes how predictions are presented, not where they come from: both modes read the same stored prediction. Fan mode (default) explains a match in plain language (favourite, likely scores with their probabilities, chance of 3+ goals, both teams scoring, form, reasons drawn from the model's inputs, reliability and competition rules). Analyst mode shows the full score matrix, every goal line, model components, ratings, style profiles and bookmaker comparison, and the Learning, Model lab, Performance, Jobs and Data health pages.
+
+## Learning loop
+
+- Forward predictions are stored at least 3 hours before kick-off (using each league's latest UTC offset) and can never be edited.
+- Each update cycle refreshes results, scores stored forecasts against verified final scores (one forecast per match, the pre-match one when it exists), checks for drift and looks for systematic weaknesses (outcome rates, over-confident favourites, goal totals, promoted teams, post-break matches). A weakness is flagged only with at least 200 matches and a deviation beyond 2.5 standard errors.
+- Weekly challenger research runs only when at least `FIE_RESEARCH_MIN_NEW` (default 300) new results have arrived. A challenger replaces the champion only if it is significantly better overall and not significantly worse in any primary league; every decision is logged, the previous champion can be restored with `rollback`, and a failed run leaves the champion's inputs untouched.
+
 ## Current limitations
 
 - No live event feed is connected; live tracking needs `FOOTBALL_DATA_API_KEY` and is untested against the real API.
@@ -98,6 +108,7 @@ Teams are shown with a generated shield in the club's real colours (a curated li
 | `FIE_RESEARCH_PROCESSES` | CPU threads ÷ 4, between 1 and 3 | Parallel processes for walk-forward research. |
 | `FIE_CACHE` | `data/cache` | Model cache directory (lets you run isolated experiments). |
 | `FIE_LIVE_POLL_SECONDS` | 60 | Live-provider polling interval when an API key is set. |
+| `FIE_RESEARCH_MIN_NEW` | 300 | New finished matches required before scheduled challenger research runs. |
 
 `appsettings.json` → `Engine` holds the database, Python and engine paths and `StartWorker`.
 

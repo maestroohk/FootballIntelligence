@@ -339,7 +339,7 @@ details.card[open] > summary h2::after { content: " ▾"; }
 }
 @media (max-width: 1100px) {
     .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .g3, .g-main-side { grid-template-columns: 1fr; }
+    .g2, .g3, .g-main-side { grid-template-columns: 1fr; }
     .match-line { grid-template-columns: 60px 1fr 52px 1fr; }
     .match-line .pbar { grid-column: 1 / -1; }
 }
@@ -362,7 +362,10 @@ details.card[open] > summary h2::after { content: " ▾"; }
     .nav-link { white-space: nowrap; padding: 7px 9px; }
     .page-head .row { flex-wrap: wrap; }
     .sidebar-foot, .brand-sub { display: none; }
-    .g2, .g4 { grid-template-columns: 1fr; }
+    .g2 { grid-template-columns: 1fr; }
+    .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .kpi .value { font-size: 18px; }
+    .kpi .note { font-size: 11px; }
     .content { padding: 16px; }
     .hero { gap: 8px; padding: 14px 10px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "home away" "center center"; }
     .hero > .side:first-child { grid-area: home; }
