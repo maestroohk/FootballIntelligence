@@ -106,9 +106,9 @@ Teams are shown with a generated shield in the club's real colours (a curated li
 Downloads use the Windows certificate store (`truststore`), so they work behind HTTPS-inspecting corporate proxies. Some corporate web filters block football-data.co.uk (rated as gambling); on such a network the history and odds cannot be downloaded, so move the data with a checksummed bundle instead (run from `engine/`, app stopped):
 
 ```powershell
-..\.venv\Scripts\python -m fie bundle-export D:ie-bundle    # on the machine that has the data
-..\.venv\Scripts\python -m fie bundle-verify D:ie-bundle    # on this machine, after copying the folder
-..\.venv\Scripts\python -m fie bundle-import D:ie-bundle    # add --replace to overwrite existing history (backed up first)
+..\.venv\Scripts\python -m fie bundle-export D:ie-bundle   # on the machine that has the data
+..\.venv\Scripts\python -m fie bundle-verify D:ie-bundle   # on this machine, after copying the folder
+..\.venv\Scripts\python -m fie bundle-import D:ie-bundle   # add --replace to overwrite existing history (backed up first)
 ..\.venv\Scripts\python -m fie assets                          # report what is present and what is still missing
 ```
 
