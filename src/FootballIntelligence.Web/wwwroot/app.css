@@ -437,3 +437,8 @@ details.card[open] > summary h2::after { content: " ▾"; }
 .es-icon { font-size: 14px; line-height: 1; }
 .es-label { color: var(--text-dim); }
 @media (max-width: 760px) { .es-label { display: none; } }
+.card { container-type: inline-size; }
+@container (max-width: 560px) {
+    .fixture { grid-template-columns: 50px minmax(0, 1fr); }
+    .fx-pred { grid-column: 1 / -1; }
+}
