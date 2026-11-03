@@ -157,7 +157,7 @@
 
     private static string Count(JsonElement e, string key) => e.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt64().ToString("N0") : "0";
 
-    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange;
+    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.JobStatuses != next.JobStatuses;
 
     protected override void Load()
     {

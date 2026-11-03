@@ -140,7 +140,7 @@
 
     protected override void OnParametersSet() => Load();
 
-    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange;
+    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.JobStatuses != next.JobStatuses;
 
     protected override void Load()
     {

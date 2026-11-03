@@ -345,6 +345,7 @@ details.card[open] > summary h2::after { content: " ▾"; }
 }
 @media (max-width: 760px) {
     .nav-section { display: none; }
+    .league-filter { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
     .featured { grid-template-columns: minmax(0, 1fr); }
     .fan-verdict h2 { font-size: 21px; }
     .fan-pct { font-size: 22px; }

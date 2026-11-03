@@ -17,12 +17,12 @@
     <div class="center">
         <div class="row" style="justify-content:center"><LeagueChip Code="@match.Competition" /><span class="small faint">@match.Season/@((match.Season + 1) % 100)</span></div>
         <div class="big-score">@(match.Fthg is null ? "vs" : $"{match.Fthg} – {match.Ftag}")</div>
-        <div class="small dim">@match.MatchDate @(match.Kickoff is null ? "" : match.Kickoff + " local")@(match.Hthg is not null ? $" · HT {match.Hthg}–{match.Htag}" : "")</div>
+        <div class="small dim">@FriendlyDate @(match.Kickoff is null ? "· kick-off time not announced" : $"· {match.Kickoff} local time")@(match.Hthg is not null ? $" · half-time {match.Hthg}–{match.Htag}" : "")</div>
         <div class="row" style="justify-content:center;margin-top:8px">
-            <span class="badge @(match.Status == "scheduled" ? "info" : "")">@match.Status</span>
+            <span class="badge @(match.Status == "finished" ? "" : "info")">@StatusLabel</span>
             @if (match.Purpose == "forward" && match.PredictionFlag is not null) { <span class="badge warn" title="@match.PredictionFlag">forward prediction stored close to kick-off · excluded from evaluation</span> }
-            else if (match.Purpose == "forward") { <span class="badge ok">forward prediction · stored before kick-off</span> }
-            else if (match.Purpose == "backtest") { <span class="badge">walk-forward backtest prediction</span> }
+            else if (match.Purpose == "forward") { <span class="badge ok">@(Mode.Analyst ? "forward prediction · stored before kick-off" : "prediction made before kick-off")</span> }
+            else if (match.Purpose == "backtest") { <span class="badge" title="Made with only the results available before this match">@(Mode.Analyst ? "walk-forward backtest prediction" : "historical re-forecast")</span> }
         </div>
     </div>
     <div class="side"><Crest Name="@match.AwayName" TeamId="@match.AwayTeamId" Large="true" /><div class="name"><a href="team/@match.AwayTeamId">@match.AwayName</a></div><div class="small dim">Away</div></div>
@@ -292,6 +292,17 @@ else
     private StyleProfile? styleAway;
     private (double Attack, double Defence, int Rank, int Of)? strengthHome;
     private (double Attack, double Defence, int Rank, int Of)? strengthAway;
+
+    private string FriendlyDate => DateTime.TryParse(match?.MatchDate, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d)
+        ? d.ToString("dddd d MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture) : match?.MatchDate ?? "";
+
+    private string StatusLabel => match?.Status switch
+    {
+        "finished" => "Full time",
+        "scheduled" when string.CompareOrdinal(match.MatchDate, DateTime.Today.ToString("yyyy-MM-dd")) < 0 => "Result not yet received",
+        "scheduled" => "Not started",
+        var other => other ?? ""
+    };
 
     protected override void OnInitialized() => Mode.Changed += OnMode;
 

@@ -180,7 +180,7 @@
     private JsonElement? bookVal;
     private List<(string, JsonElement)> perfRows = [];
 
-    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange || previous.MaxSnapshotId != next.MaxSnapshotId;
+    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.JobStatuses != next.JobStatuses || previous.MaxSnapshotId != next.MaxSnapshotId;
 
     protected override void Load()
     {

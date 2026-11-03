@@ -129,7 +129,7 @@
     private long minN = 200;
     private (string Title, string Text, string Css) trend;
 
-    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange;
+    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.JobStatuses != next.JobStatuses;
 
     protected override void Load()
     {

@@ -124,7 +124,7 @@
     private double goalMax = 1, goalPredMean, goalObsMean, goalMae;
     private long goalN;
 
-    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange;
+    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.JobStatuses != next.JobStatuses;
 
     private void SetPurpose(string p) { purpose = p; Load(); }
 
