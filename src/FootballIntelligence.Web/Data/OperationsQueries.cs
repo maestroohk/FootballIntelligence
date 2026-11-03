@@ -4,7 +4,7 @@ namespace FootballIntelligence.Web.Data;
 
 public class OperationsQueries(Database db)
 {
-    public static readonly string[] JobKinds = ["daily_cycle", "ingest_fixtures", "ingest_history", "ingest_statsbomb", "research_full", "predict_upcoming", "train_inplay", "evaluate_forward", "final_test", "player_study", "experiments", "rollback", "live_replay", "poll_live"];
+    public static readonly string[] JobKinds = ["daily_cycle", "check_assets", "ingest_fixtures", "ingest_history", "ingest_statsbomb", "research_full", "predict_upcoming", "train_inplay", "evaluate_forward", "final_test", "player_study", "experiments", "rollback", "live_replay", "poll_live"];
 
     public List<JobRow> Jobs(int limit = 100) => db.Query<JobRow>("SELECT * FROM jobs ORDER BY job_id DESC LIMIT @limit", new { limit }).ToList();
 
@@ -25,7 +25,12 @@ public class OperationsQueries(Database db)
         return (long)cmd.ExecuteScalar()!;
     }
 
-    public void Cancel(long id) => db.Execute("UPDATE jobs SET cancel_requested=1 WHERE job_id=@id AND status IN ('queued','running')", new { id });
+    public void Cancel(long id) => db.Execute("""
+        UPDATE jobs SET cancel_requested=1,
+               status=CASE WHEN status='queued' OR COALESCE(heartbeat_at, started_at) < @stale THEN 'cancelled' ELSE status END,
+               finished_at=CASE WHEN status='queued' OR COALESCE(heartbeat_at, started_at) < @stale THEN @now ELSE finished_at END
+        WHERE job_id=@id AND status IN ('queued','running')
+        """, new { id, now = Now(), stale = DateTime.UtcNow.AddSeconds(-90).ToString("yyyy-MM-ddTHH:mm:ss") });
 
     public long Retry(long id)
     {
@@ -82,6 +87,8 @@ public class OperationsQueries(Database db)
           AND EXISTS (SELECT 1 FROM predictions p WHERE p.match_id=s.match_id AND p.purpose='backtest')
         ORDER BY s.match_date DESC LIMIT @limit
         """, new { search, limit }).ToList();
+
+    public JsonElement? Assets() => db.Kv("assets_status") is { } v ? JsonDocument.Parse(v).RootElement.Clone() : null;
 
     public static string Now() => DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ");
 }

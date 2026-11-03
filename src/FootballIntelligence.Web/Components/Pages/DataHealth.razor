@@ -15,6 +15,42 @@
     </div>
 </div>
 
+<div class="card">
+    <div class="card-head">
+        <h2>Prediction engine assets</h2>
+        <div class="row">
+            @if (assets is { } checkedAssets) { <span class="sub">checked @Fmt.Ago(checkedAssets.GetProperty("checked_at").GetString())</span> }
+            <button class="btn sm" @onclick='() => Ops.Enqueue("check_assets")'>Check now</button>
+        </div>
+    </div>
+    @if (assets is null)
+    {
+        <div class="empty">Not checked yet. Run "Check now" (or <span class="mono">python -m fie assets</span>).</div>
+    }
+    else
+    {
+        var a = assets.Value;
+        var inv = a.GetProperty("database");
+        <div class="row" style="margin-bottom:10px">
+            @if (a.GetProperty("operational").GetBoolean()) { <span class="badge ok">All required assets present</span> }
+            else { <span class="badge bad">Prediction engine not restored on this machine</span> }
+            <span class="small dim">@Count(inv, "matches_history") historical matches · @Count(inv, "predictions") predictions · @Count(inv, "model_versions") model versions · @a.GetProperty("model_caches").GetArrayLength() model caches · @Count(inv, "statsbomb_matches") StatsBomb matches</span>
+        </div>
+        @foreach (var m in a.GetProperty("missing").EnumerateArray())
+        {
+            <div class="spread small" style="padding:6px 0;border-bottom:1px solid var(--border-soft)"><b>@m.GetProperty("asset").GetString()</b><span class="dim">@m.GetProperty("fix").GetString()</span></div>
+        }
+        @if (!a.GetProperty("operational").GetBoolean())
+        {
+            <div class="callout" style="margin-top:12px">
+                Restore from the other laptop: on that machine run <span class="mono">python -m fie bundle-export D:ie-bundle</span>, copy the folder here, then run
+                <span class="mono">python -m fie bundle-verify D:ie-bundle</span> and <span class="mono">python -m fie bundle-import D:ie-bundle</span> from <span class="mono">engine/</span> with the app stopped.
+                Files are checked against SHA-256 checksums and an interrupted import resumes, skipping files already restored.
+            </div>
+        }
+    }
+</div>
+
 <div class="grid g4">
     <Kpi Label="Matches stored" Value="@coverage.Sum(c => c.Matches).ToString("N0")" Note="@($"{coverage.Count} competitions")" />
     <Kpi Label="Finished matches" Value="@coverage.Sum(c => c.Finished).ToString("N0")" Note="@($"latest result {coverage.Select(c => c.LatestResult).Max()}")" />
@@ -117,6 +153,9 @@
     private List<FieldRow> fields = [];
     private List<SourceRow> sources = [];
     private List<LiveSessionRow> live = [];
+    private JsonElement? assets;
+
+    private static string Count(JsonElement e, string key) => e.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt64().ToString("N0") : "0";
 
     protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange;
 
@@ -127,5 +166,6 @@
         fields = Ops.Fields();
         sources = Ops.Sources();
         live = Ops.LiveSessions(10);
+        assets = Ops.Assets();
     }
 }

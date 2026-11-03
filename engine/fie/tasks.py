@@ -44,6 +44,12 @@ def ingest_fixtures(ctx):
     return out
 
 
+@handler("check_assets")
+def check_assets(ctx):
+    from . import bundle
+    return bundle.assets(ctx.con)
+
+
 @handler("ingest_statsbomb")
 def ingest_sb(ctx):
     ctx.stage("downloading StatsBomb events")

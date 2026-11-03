@@ -20,7 +20,7 @@ public class ChangeFeed(Database db, ILogger<ChangeFeed> logger) : BackgroundSer
                 {
                     var next = new FeedState(
                         db.Single<long?>("SELECT MAX(snapshot_id) FROM live_snapshots") ?? 0,
-                        db.Single<string>("SELECT MAX(COALESCE(heartbeat_at, created_at)) || '|' || COUNT(*) || '|' || SUM(done_units) || '|' || GROUP_CONCAT(status) FROM (SELECT * FROM jobs ORDER BY job_id DESC LIMIT 30)"),
+                        db.Single<string>("SELECT MAX(COALESCE(heartbeat_at, created_at)) || '|' || COUNT(*) || '|' || SUM(done_units) || '|' || GROUP_CONCAT(status) FROM (SELECT * FROM jobs ORDER BY job_id DESC LIMIT 30)") + "|" + DateTime.UtcNow.Ticks / TimeSpan.FromSeconds(30).Ticks,
                         db.Single<long?>("SELECT MAX(notification_id) FROM notifications") ?? 0,
                         db.Single<long?>("SELECT COUNT(*) FROM notifications WHERE seen=0") ?? 0);
                     LastPoll = DateTime.UtcNow;

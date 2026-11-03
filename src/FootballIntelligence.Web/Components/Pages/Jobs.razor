@@ -24,7 +24,7 @@
         <div class="card-head">
             <h2>Job #@selected.JobId · @selected.Kind</h2>
             <div class="row">
-                <StatusBadge Status="@selected.Status" />
+                <StatusBadge Status="@selected.State(workerAlive)" Note="@selected.StateNote(workerAlive)" />
                 @if (selected.Status is "queued" or "running") { <button class="btn sm danger" @onclick="() => Ops.Cancel(selected.JobId)" disabled="@(selected.CancelRequested == 1)">@(selected.CancelRequested == 1 ? "Cancelling…" : "Cancel")</button> }
                 @if (selected.Status is "failed" or "cancelled" or "succeeded") { <button class="btn sm" @onclick="() => Retry(selected.JobId)">Run again</button> }
             </div>
@@ -37,6 +37,7 @@
             <div class="kpi"><span class="label">Heartbeat · retries</span><span class="small">@Fmt.Ago(selected.HeartbeatAt) · @selected.Retries</span></div>
         </div>
         <div class="small dim" style="margin:10px 0">Created @Fmt.Local(selected.CreatedAt) · started @Fmt.Local(selected.StartedAt) · finished @Fmt.Local(selected.FinishedAt) · args <span class="mono">@selected.Args</span></div>
+        @if (selected.StateNote(workerAlive) is { Length: > 0 } note) { <div class="callout @(selected.State(workerAlive) == "running" ? "" : "warn")">@note</div> }
         @if (selected.Error is not null) { <div class="callout bad">@selected.Error</div> }
         @if (selected.Result is not null) { <h3 style="margin:10px 0 6px">Result</h3><div class="pre">@Pretty(selected.Result)</div> }
         <h3 style="margin:14px 0 6px">Log</h3>
@@ -56,7 +57,7 @@
                     <tr>
                         <td><a href="jobs/@j.JobId">#@j.JobId</a></td>
                         <td>@j.Kind</td>
-                        <td><StatusBadge Status="@j.Status" /></td>
+                        <td><StatusBadge Status="@j.State(workerAlive)" Note="@j.StateNote(workerAlive)" /></td>
                         <td class="small dim" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@j.Stage</td>
                         <td>@if (j.Progress is not null) { <div class="meter"><div style="width:@Fmt.Pct(j.Progress, 1)"></div></div><span class="small faint">@Fmt.Pct(j.Progress)</span> } else { <span class="faint small">@j.DoneUnits</span> }</td>
                         <td class="small dim">@Fmt.Local(j.StartedAt)</td>
@@ -66,6 +67,7 @@
                         <td class="right">
                             @if (j.Status is "queued" or "running") { <button class="btn sm danger" @onclick="() => Ops.Cancel(j.JobId)">Cancel</button> }
                             else if (j.Status is "failed" or "cancelled") { <button class="btn sm" @onclick="() => Retry(j.JobId)">Retry</button> }
+                            @if (j.State(workerAlive) == "stalled") { <button class="btn sm" @onclick="() => { Ops.Cancel(j.JobId); Retry(j.JobId); }">Retry</button> }
                         </td>
                     </tr>
                 }
@@ -88,6 +90,7 @@
 @code {
     [Parameter] public long? Id { get; set; }
     private List<JobRow> jobs = [];
+    private bool workerAlive;
     private JobRow? selected;
     private List<JobLogRow> logs = [];
     private List<NotificationRow> notes = [];
@@ -100,6 +103,7 @@
     protected override void Load()
     {
         jobs = Ops.Jobs(60);
+        workerAlive = Ops.WorkerStatus().Alive;
         notes = Ops.Notifications(15);
         if (Id is not null)
         {

@@ -34,11 +34,13 @@
             <div class="row small dim">
                 @if (active.Count > 0)
                 {
-                    <span class="dot ok"></span>
-                    <span>@active.Count background job@(active.Count == 1 ? "" : "s") active:</span>
+                    var stalled = active.Count(j => j.State(worker.Alive) is "stalled" or "waiting");
+                    <span class="dot @(stalled > 0 ? "bad" : "ok")"></span>
+                    <span>@(stalled > 0 ? $"{stalled} job{(stalled == 1 ? "" : "s")} need attention" : $"{active.Count} background job{(active.Count == 1 ? "" : "s")} running"):</span>
                     @foreach (var j in active.Take(3))
                     {
-                        <a href="jobs/@j.JobId" class="badge info">#@j.JobId @j.Kind @(j.Progress is null ? "" : Fmt.Pct(j.Progress))</a>
+                        var st = j.State(worker.Alive);
+                        <a href="jobs/@j.JobId" class="badge @(st == "running" ? "info" : st == "queued" ? "" : "bad")" title="@j.StateNote(worker.Alive)">#@j.JobId @j.Kind @(st == "running" ? (j.Progress is null ? "" : Fmt.Pct(j.Progress)) : st == "waiting" ? "· waiting for worker" : st == "stalled" ? "· stalled" : "· queued")</a>
                     }
                 }
                 else

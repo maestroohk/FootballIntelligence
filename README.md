@@ -103,7 +103,16 @@ Teams are shown with a generated shield in the club's real colours (a curated li
 
 ## Continuing on another Windows laptop
 
-Downloads use the Windows certificate store (`truststore`), so they work behind HTTPS-inspecting corporate proxies. Some corporate web filters block football-data.co.uk (rated as gambling); on such a network the history and odds cannot be downloaded, so copy `data/` from another machine or run `setup.ps1` on an unfiltered network.
+Downloads use the Windows certificate store (`truststore`), so they work behind HTTPS-inspecting corporate proxies. Some corporate web filters block football-data.co.uk (rated as gambling); on such a network the history and odds cannot be downloaded, so move the data with a checksummed bundle instead (run from `engine/`, app stopped):
+
+```powershell
+..\.venv\Scripts\python -m fie bundle-export D:ie-bundle    # on the machine that has the data
+..\.venv\Scripts\python -m fie bundle-verify D:ie-bundle    # on this machine, after copying the folder
+..\.venv\Scripts\python -m fie bundle-import D:ie-bundle    # add --replace to overwrite existing history (backed up first)
+..\.venv\Scripts\python -m fie assets                          # report what is present and what is still missing
+```
+
+The bundle holds a consistent database snapshot, model caches and raw downloads with a SHA-256 manifest. Import verifies every file, copies via `.part` files and skips files already restored, so an interrupted import resumes. With raw downloads present, `ingest_history` rebuilds tables without downloading. The Data health page shows the same asset check.
 
 1. Install Git, the .NET 10 SDK and Python 3.12 (the `py` launcher is used if present).
 2. Clone and set up:

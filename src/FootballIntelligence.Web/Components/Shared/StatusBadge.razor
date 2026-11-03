@@ -1,5 +1,6 @@
-<span class="badge @(Status switch { "succeeded" => "ok", "running" => "info", "failed" => "bad", "cancelled" => "warn", _ => "" })">@Status</span>
+<span class="badge @(Status switch { "succeeded" => "ok", "running" => "info", "failed" or "stalled" => "bad", "cancelled" or "waiting" => "warn", _ => "" })" title="@Note">@(Status == "waiting" ? "waiting for worker" : Status)</span>
 
 @code {
     [Parameter] public string Status { get; set; } = "";
+    [Parameter] public string? Note { get; set; }
 }

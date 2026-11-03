@@ -88,6 +88,23 @@ public class JobRow
     public long CancelRequested { get; set; }
     public string? Result { get; set; }
     public double? Progress => TotalUnits is > 0 ? Math.Min(1.0, (double)DoneUnits / TotalUnits.Value) : null;
+    public TimeSpan? HeartbeatAge => Services.Fmt.Since(HeartbeatAt ?? StartedAt);
+
+    public string State(bool workerAlive) => Status switch
+    {
+        "queued" when !workerAlive => "waiting",
+        "running" when HeartbeatAge is null || HeartbeatAge > TimeSpan.FromSeconds(90) => "stalled",
+        _ => Status
+    };
+
+    public string StateNote(bool workerAlive) => State(workerAlive) switch
+    {
+        "waiting" => "Queued, but the engine worker is offline. It starts when the worker is running.",
+        "stalled" => workerAlive ? $"No heartbeat for {Services.Fmt.Duration(HeartbeatAge)}; the worker re-queues it automatically." : $"No heartbeat for {Services.Fmt.Duration(HeartbeatAge)} and the worker is offline; the process has stopped. Retry it or start the worker.",
+        "running" when !workerAlive => "Running outside the worker (command line); heartbeat is current.",
+        "running" => $"Heartbeat {Services.Fmt.Duration(HeartbeatAge)} ago.",
+        _ => ""
+    };
 }
 
 public class JobLogRow
