@@ -6,7 +6,9 @@
 <div class="page-head">
     <div>
         <h1>Prediction history</h1>
-        <p>What the model said before each match, and what actually happened. Forecasts are stored before kick-off and never changed afterwards.</p>
+        <p>@(purpose == "forward"
+            ? "Genuine pre-match forecasts: recorded at least 3 hours before kick-off, never edited, scored after the final whistle."
+            : "Walk-forward re-forecasts: rebuilt after the matches were played, using only results from before each forecast's cutoff. They show how the method would have performed, but they were not recorded in advance.")</p>
     </div>
     <div class="tabs" style="border:none">
         <button class="tab @(purpose == "forward" ? "active" : "")" @onclick='() => Set(() => purpose = "forward")'>Pre-match forecasts</button>
@@ -15,12 +17,16 @@
 </div>
 
 <div class="grid g4">
-    <Kpi Label="Matches scored" Value="@summary.Total.ToString("N0")" Note="@(purpose == "forward" ? "stored before kick-off" : "made with only earlier results")" />
+    <Kpi Label="Matches scored" Value="@summary.Total.ToString("N0")" Note="@(purpose == "forward" ? "recorded before kick-off" : "reconstructed, champion model only")" />
     <Kpi Label="Most likely result happened" Value="@(summary.Total == 0 ? "—" : Fmt.Pct((double)summary.Hits / summary.Total, 1))" Note="@($"{summary.Hits:N0} of {summary.Total:N0}")" />
     <Kpi Label="Average chance given to the actual result" Value="@Fmt.Pct(summary.MeanActual, 1)" Note="a coin-flip between three outcomes would give 33%" />
     <Kpi Label="Log loss" Value="@Fmt.Num(summary.LogLoss, 4)" Note="lower is better; 1.0986 = always a third each" />
 </div>
 
+@if (purpose == "backtest")
+{
+    <div class="callout warn"><b>Not recorded in advance.</b> These rows were created after the results were known by re-running the champion with each week's information cutoff (training uses only results dated before the cutoff). They are valid for walk-forward evaluation but are not evidence of forecasts made before kick-off. Superseded model versions, benchmark rows and forecasts stored too close to kick-off are excluded.</div>
+}
 <div class="callout">A single wrong pick does not mean the model was poor: if it gives a team 60%, that team should still fail to win about 4 times in 10. Judge it on many matches, using the average chance it gave to what happened and the log loss.</div>
 
 <div class="card">
@@ -62,7 +68,7 @@
             </div>
             <div class="hist-actual"><b>@m.Fthg–@m.Ftag</b><span class="small dim">@Fmt.Pct(actualP) for this result</span></div>
             <div class="hist-hit"><span class="badge @(hit ? "ok" : "")">@(hit ? "as expected" : "upset")</span></div>
-            <div class="hist-meta small faint">@m.ModelVersion · @Fmt.Local(m.PredictionCreated)</div>
+            <div class="hist-meta small faint">@(m.Purpose == "forward" ? $"pre-match · {m.ModelVersion} · recorded {Fmt.Local(m.PredictionCreated)}" : $"re-forecast · {m.ModelVersion} · results before {m.DataCutoff} · rebuilt {Fmt.Local(m.PredictionCreated)}")</div>
         </a>
     }
     @if (summary.Total > PageSize)

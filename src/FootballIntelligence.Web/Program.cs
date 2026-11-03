@@ -13,6 +13,7 @@ builder.Services.AddSingleton<Database>();
 builder.Services.AddSingleton<FootballQueries>();
 builder.Services.AddSingleton<ResearchQueries>();
 builder.Services.AddSingleton<OperationsQueries>();
+builder.Services.AddSingleton<ValueQueries>();
 builder.Services.AddScoped<ViewMode>();
 builder.Services.AddSingleton<ChangeFeed>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ChangeFeed>());

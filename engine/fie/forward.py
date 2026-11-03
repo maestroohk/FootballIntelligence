@@ -167,7 +167,7 @@ def publish_backtest(con, oos, version, since_season=2012):
         if r.match_id in existing:
             continue
         mk = {"rho": None if pd.isna(r.rho) else float(r.rho), "over25": None if pd.isna(r.over25) else float(r.over25)}
-        rows.append((int(r.match_id), version, "backtest", db.now(), str(pd.Timestamp(r.fit_cutoff).date()) if hasattr(r, "fit_cutoff") and not pd.isna(r.fit_cutoff) else f"{r.season}-07-01",
+        rows.append((int(r.match_id), version, "backtest", db.now(), str(pd.Timestamp(r.fit_cutoff).date()) if hasattr(r, "fit_cutoff") and not pd.isna(r.fit_cutoff) else f"{int(r.season)}-07-01",
                      float(r.p_home), float(r.p_draw), float(r.p_away), None if pd.isna(r.lh) else float(r.lh), None if pd.isna(r.la) else float(r.la), db.dumps(mk)))
     with db.transaction(con):
         con.executemany("INSERT OR IGNORE INTO predictions(match_id, model_version, purpose, created_at, data_cutoff, p_home, p_draw, p_away, lambda_home, lambda_away, markets) VALUES(?,?,?,?,?,?,?,?,?,?,?)", rows)

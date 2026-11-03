@@ -159,6 +159,7 @@ public class FootballQueries(Database db)
     private const string SettledFrom = """
         FROM (SELECT MAX(prediction_id) pid FROM predictions
               WHERE purpose=@purpose AND model_version NOT LIKE 'bookmaker%' AND prediction_id NOT IN (SELECT prediction_id FROM prediction_flags)
+                AND (@purpose = 'forward' OR model_version = (SELECT version FROM model_versions WHERE status='champion' LIMIT 1))
               GROUP BY match_id) latest
         JOIN predictions p ON p.prediction_id=latest.pid JOIN matches m ON m.match_id=p.match_id
         JOIN teams th ON th.team_id=m.home_team_id JOIN teams ta ON ta.team_id=m.away_team_id

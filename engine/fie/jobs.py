@@ -88,7 +88,8 @@ def run_job(job_id):
                     (status, db.now(), db.dumps(result)[:20000] if result is not None else None, db.now(), job_id))
         ctx.log(f"job {status}")
         if job["kind"] in tasks.NOTIFY_KINDS:
-            db.notify(con, "success" if status == "succeeded" else "info", f"{tasks.NOTIFY_KINDS[job['kind']]} {status}", f"Job #{job_id}")
+            db.notify(con, "success" if status == "succeeded" else "info", f"{tasks.NOTIFY_KINDS[job['kind']]} {status}", f"Job #{job_id}",
+                      seen=status == "succeeded" and job["kind"] in tasks.ROUTINE_KINDS)
     except Cancelled:
         con.execute("UPDATE jobs SET status='cancelled', finished_at=? WHERE job_id=?", (db.now(), job_id))
         ctx.log("job cancelled")

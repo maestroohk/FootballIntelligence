@@ -196,6 +196,15 @@ CREATE TABLE IF NOT EXISTS prediction_flags (
     PRIMARY KEY(prediction_id, flag)
 );
 
+CREATE VIEW IF NOT EXISTS prediction_provenance AS
+SELECT p.prediction_id, p.match_id, p.model_version, p.purpose,
+       CASE WHEN p.model_version LIKE 'bookmaker%' THEN 'market_benchmark'
+            WHEN EXISTS (SELECT 1 FROM prediction_flags f WHERE f.prediction_id = p.prediction_id) THEN 'not_eligible'
+            WHEN p.purpose = 'forward' THEN 'pre_match'
+            WHEN p.model_version = (SELECT version FROM model_versions WHERE status = 'champion' LIMIT 1) THEN 'walk_forward'
+            ELSE 'exploratory' END AS category
+FROM predictions p;
+
 CREATE TABLE IF NOT EXISTS backtest_runs (
     run_id INTEGER PRIMARY KEY,
     model_version TEXT NOT NULL,
@@ -413,6 +422,10 @@ def init(path=None) -> sqlite3.Connection:
         migrate(con)
     con.executescript(SCHEMA)
     add_columns(con)
+    from .odds import SCHEMA as ODDS_SCHEMA
+    from .paper import SCHEMA as PAPER_SCHEMA
+    con.executescript(ODDS_SCHEMA)
+    con.executescript(PAPER_SCHEMA)
     return con
 
 
@@ -439,8 +452,8 @@ def get_kv(con, key, default=None):
     return json.loads(row["value"]) if row else default
 
 
-def notify(con, level, title, body=None):
-    con.execute("INSERT INTO notifications(ts, level, title, body) VALUES(?,?,?,?)", (now(), level, title, body))
+def notify(con, level, title, body=None, seen=False):
+    con.execute("INSERT INTO notifications(ts, level, title, body, seen) VALUES(?,?,?,?,?)", (now(), level, title, body, int(seen)))
 
 
 def provider_event(con, provider, ok, error=None, rate_limit=None):

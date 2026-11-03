@@ -99,6 +99,15 @@ Every experiment with its hypothesis, numbers and decision is in the experiment 
 - UEFA Champions League is not covered (no free source with results plus statistics across seasons, and cross-league team strengths were out of scope).
 - Kick-off times are local times from each source.
 
+## 6a. Value research against bookmaker prices
+
+All results are simulated with 1-unit level stakes; nothing places bets. Prices: 4.2 million football-data.co.uk prices (one pre-closing and one closing snapshot per match; 1X2, totals 2.5, main Asian handicap line; Pinnacle, Bet365, market average and best available). Decisions use pre-closing prices only; closing prices are used only for closing-line value. Forecasts are the champion's walk-forward re-forecasts.
+
+- Probability quality, match result, same matches (log loss, lower is better): model 1.0111 vs Pinnacle opening 0.9994 (2012/13–2019/20), 1.0089 vs 0.9974 (2020/21–2022/23), 1.0019 vs 0.9881 (2023/24 onwards). The opening market is more accurate in every period, so the model's positive expected-value estimates are mostly its own error.
+- Selection rules (minimum model EV 0/2/5/10%, three odds bands) were chosen per market and bookmaker on 2012/13–2019/20 only (at least 300 selections) and applied once to the later periods. All nine returned a loss in both later periods; for example match result at Pinnacle −3.1% (n=4,518) then −3.7% (n=3,263, 95% week-clustered interval −6.8% to −1.0%); Asian handicap at Pinnacle +1.9% in development, then −4.8% and −4.2%. Totals rules had intervals spanning zero but negative point estimates.
+- Baselines: backing every selection loses about the bookmaker margin (match result at Pinnacle −5.1%); backing the Pinnacle favourite loses −2.2%. Closing-line value of the chosen rules is close to zero or negative (best: Asian handicap at Pinnacle +0.2%, beating the close 48% of the time).
+- Conclusion: no repeatable out-of-sample advantage over realistic market prices has been demonstrated. A paper portfolio (rule `research-ev5`, explicitly unvalidated) now records forward decisions from live-recorded prices so that any future claim rests on prices captured before kick-off.
+
 ## 7. Incomplete or partial features
 
 - Live tracking of real matches is untested end to end (no API key); replay mode is fully working.

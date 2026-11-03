@@ -44,7 +44,7 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 
 `setup.ps1 -SkipData` only installs and builds; `setup.ps1 -Quick` runs a 5-minute pipeline smoke test on the Premier League 2005/06–2013/14.
 
-The full run executes these jobs in order (each can also be run alone with `cd engine` then `../.venv/Scripts/python -m fie run <job>`, or queued from the dashboard): `ingest_history`, `ingest_statsbomb`, `ingest_fixtures`, `research_full`, `expand_coverage`, `publish_predictions`, `train_inplay`, `experiments` (half-time recalibration), `final_test`, `predict_upcoming`, `build_report`.
+The full run executes these jobs in order (each can also be run alone with `cd engine` then `../.venv/Scripts/python -m fie run <job>`, or queued from the dashboard): `ingest_history`, `ingest_statsbomb`, `ingest_fixtures`, `research_full`, `expand_coverage`, `publish_predictions`, `train_inplay`, `experiments` (half-time recalibration), `final_test`, `ingest_market_odds`, `strategy_research`, `predict_upcoming`, `paper_cycle`, `build_report`.
 
 Measured on this project's development laptop (i7-13650HX, 4-thread budget): about 15 minutes of downloads, 50 minutes for `research_full`, and 1.5–2 hours in total; about 2 GB of disk under `data/`. No GPU is needed. `research_full` and the shared models train on the original 11 divisions; `expand_coverage` adds the seven further divisions without retraining the champion. `final_test` refuses to run twice unless forced. The pipeline is deterministic: an isolated from-scratch rerun reproduced every model's validation results within 2e-8.
 
@@ -62,6 +62,11 @@ Open http://localhost:5281. The web app starts the Python worker automatically (
 - Walk-forward evaluation (validation 2012/13–2022/23, untouched final test 2023/24 onwards), paired bootstrap comparisons, calibration and reliability analysis, bookmaker benchmark.
 - In-play goal-hazard model with historical event replay (clearly labelled REPLAY) and a score-based live adapter for football-data.org.
 - Player and team-tactics profiles from StatsBomb Open Data (2015/16).
+- Value research (simulated only, no bet placement): bookmaker prices for 1X2, totals 2.5 and the main Asian handicap line stored with their timing and source; margin, de-vigged probability, break-even odds and expected value from the model's score distribution; pre-registered selection rules tested chronologically (chosen on 2012/13–2019/20, checked on 2020/21–2022/23 and 2023/24 onwards) with week-clustered confidence intervals, drawdown and closing-line value; and an immutable paper portfolio that records a selection or a no-bet decision for each upcoming match from prices recorded before the decision.
+
+## Prediction provenance
+
+The `prediction_provenance` view puts every stored prediction in one category: `pre_match` (stored at least 3 hours before kick-off), `walk_forward` (champion re-forecasts rebuilt after the matches using only earlier data), `exploratory` (superseded or challenger versions), `market_benchmark` (de-vigged bookmaker prices) and `not_eligible` (flagged, for example possibly stored after kick-off). Only `pre_match` forecasts count as a live record.
 
 ## Fan and Analyst modes
 
@@ -77,7 +82,8 @@ The top-bar switch changes how predictions are presented, not where they come fr
 
 - No live event feed is connected; live tracking needs `FOOTBALL_DATA_API_KEY` and is untested against the real API.
 - Player, lineup and event data cover StatsBomb 2015/16 only; no injury, weather or travel data.
-- The model does not beat bookmaker closing odds. See `docs/REPORT.md` for measured results and open issues.
+- The model does not beat bookmaker closing odds, and is also less accurate than Pinnacle's opening prices; no selection rule showed a positive out-of-sample return. See `docs/REPORT.md` and the Value research page.
+- Historical prices are one pre-closing and one closing snapshot per match from football-data.co.uk; exact collection times are not published. Double chance, BTTS and correct-score prices are not available.
 
 ## Data
 
@@ -109,6 +115,8 @@ Teams are shown with a generated shield in the club's real colours (a curated li
 | `FIE_CACHE` | `data/cache` | Model cache directory (lets you run isolated experiments). |
 | `FIE_LIVE_POLL_SECONDS` | 60 | Live-provider polling interval when an API key is set. |
 | `FIE_RESEARCH_MIN_NEW` | 300 | New finished matches required before scheduled challenger research runs. |
+| `FIE_PAPER_BANKROLL` | 100 | Notional starting bankroll (units) of the paper portfolio. |
+| `FIE_PAPER_MAX_DAILY_UNITS` | 10 | Maximum paper stake per match day. |
 
 `appsettings.json` → `Engine` holds the database, Python and engine paths and `StartWorker`.
 

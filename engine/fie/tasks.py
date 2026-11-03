@@ -15,8 +15,10 @@ NOTIFY_KINDS = {
     "ingest_history": "Historical ingestion", "ingest_statsbomb": "StatsBomb ingestion", "research_full": "Model research run",
     "train_inplay": "In-play model training", "final_test": "Final test evaluation", "daily_cycle": "Daily update cycle",
     "predict_upcoming": "Upcoming predictions", "evaluate_forward": "Prediction evaluation", "ingest_fixtures": "Fixture refresh",
-    "check_assets": "Asset check", "rollback": "Champion rollback",
+    "check_assets": "Asset check", "rollback": "Champion rollback", "ingest_market_odds": "Market price ingestion",
+    "strategy_research": "Strategy research", "paper_cycle": "Paper portfolio update",
 }
+ROUTINE_KINDS = {"daily_cycle", "predict_upcoming", "evaluate_forward", "ingest_fixtures", "check_assets", "paper_cycle"}
 
 PRIMARY = PRIMARY_COMPETITIONS
 
@@ -30,6 +32,13 @@ def _check(ctx):
 def ingest_history(ctx, seasons=None, codes=None):
     ctx.stage("downloading football-data.co.uk CSVs")
     return ingest_fdco.ingest_history(ctx.con, seasons=seasons, codes=codes, progress=lambda d, t, s: (ctx.progress(d, t, s), _check(ctx)))
+
+
+@handler("ingest_market_odds")
+def ingest_market_odds(ctx):
+    from . import odds
+    ctx.stage("reading cached football-data.co.uk files")
+    return odds.ingest_history(ctx.con, progress=lambda d, t, s: ctx.progress(d, t, s))
 
 
 @handler("ingest_fixtures")
@@ -304,7 +313,7 @@ def predict_upcoming(ctx, lookback_days=21):
     n_back = forward.publish_backtest(con, research.load_cached(f"oos_{champ}"), version, since_season=CURRENT_SEASON_PUBLISH)
     forward.team_strengths(con, research.load_cached("frame"), db.get_kv(con, "research_summary"))
     if n_fwd:
-        db.notify(con, "success", f"{n_fwd} new forward predictions stored", version)
+        db.notify(con, "success", f"{n_fwd} new forward predictions stored", version, seen=True)
     return {"forward": n_fwd, "backtest_new": n_back}
 
 
@@ -349,13 +358,31 @@ def daily_cycle(ctx, trigger="manual"):
     except Exception as exc:
         ctx.log(f"openfootball failed: {exc}", "warning")
         of = None
-    out = {"results": {k: v for k, v in res.items() if k != "failed"}, "fixtures": fx, "openfootball": of}
+    ctx.stage("recording market prices")
+    try:
+        from . import odds
+        from .config import RAW
+        latest = max((RAW / "fdco" / "fixtures").glob("fixtures_*.csv"), default=None)
+        snap = odds.ingest_fixture_snapshot(ctx.con, latest, CURRENT_SEASON_PUBLISH) if latest is not None and fx is not None else None
+        if not LIGHT:
+            for f in sorted((RAW / "fdco").glob(f"{str(CURRENT_SEASON_PUBLISH)[2:]}{str(CURRENT_SEASON_PUBLISH + 1)[2:]}/*.csv")):
+                if f.stem in odds.COMPETITIONS:
+                    odds.ingest_file(ctx.con, f, f.stem, CURRENT_SEASON_PUBLISH)
+    except Exception as exc:
+        ctx.log(f"market prices failed: {exc}", "warning")
+        snap = None
+    out = {"results": {k: v for k, v in res.items() if k != "failed"}, "fixtures": fx, "openfootball": of, "prices": snap}
     out["evaluation"] = evaluate_forward(ctx)
     if db.get_kv(ctx.con, "research_summary"):
         out["prediction"] = predict_upcoming(ctx)
     else:
         ctx.log("no champion model on this machine; forward predictions skipped", "warning")
         out["prediction"] = "skipped: no champion model"
+    try:
+        from . import paper
+        out["paper"] = paper.paper_cycle(ctx)
+    except Exception as exc:
+        ctx.log(f"paper portfolio failed: {exc}", "warning")
     from .live import poll_live_provider
     out["live"] = poll_live_provider(ctx.con)
     return out
@@ -542,3 +569,6 @@ def expand_coverage(ctx):
     n_back = forward.publish_backtest(con, research.load_cached(f"oos_{champ}"), version)
     n_bench = forward.publish_backtest(con, research.load_cached("oos_bookmaker_close"), "bookmaker_close@v1")
     return {"n": len(common), "log_loss": {k: round(v["log_loss"], 4) for k, v in results.items()}, "core_gbm_max_change": drift, "published": n_back, "benchmark": n_bench}
+
+
+from . import paper, strategy

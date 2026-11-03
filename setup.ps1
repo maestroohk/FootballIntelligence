@@ -52,6 +52,9 @@ Run-Job "publish_predictions"
 Run-Job "train_inplay"
 Run-Job "experiments" '{"names": ["ht_recalibration"]}'
 Run-Job "final_test"
+Run-Job "ingest_market_odds"
+Run-Job "strategy_research" '{"rebuild": true}'
 Run-Job "predict_upcoming"
+Run-Job "paper_cycle"
 Run-Job "build_report"
 Write-Host "`nFull pipeline finished. Start the app with: dotnet run --project src/FootballIntelligence.Web --urls http://localhost:5281"

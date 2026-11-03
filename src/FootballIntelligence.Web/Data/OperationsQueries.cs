@@ -4,7 +4,7 @@ namespace FootballIntelligence.Web.Data;
 
 public class OperationsQueries(Database db)
 {
-    public static readonly string[] JobKinds = ["daily_cycle", "check_assets", "ingest_fixtures", "ingest_history", "ingest_statsbomb", "research_full", "predict_upcoming", "train_inplay", "evaluate_forward", "final_test", "player_study", "experiments", "rollback", "live_replay", "poll_live"];
+    public static readonly string[] JobKinds = ["daily_cycle", "check_assets", "ingest_fixtures", "ingest_history", "ingest_statsbomb", "research_full", "predict_upcoming", "train_inplay", "evaluate_forward", "final_test", "player_study", "experiments", "rollback", "live_replay", "poll_live", "ingest_market_odds", "strategy_research", "paper_cycle"];
 
     public List<JobRow> Jobs(int limit = 100) => db.Query<JobRow>("SELECT * FROM jobs ORDER BY job_id DESC LIMIT @limit", new { limit }).ToList();
 
@@ -44,7 +44,16 @@ public class OperationsQueries(Database db)
         return Enqueue(job.Kind, JsonSerializer.Deserialize<JsonElement>(job.Args));
     }
 
-    public List<NotificationRow> Notifications(int limit = 30) => db.Query<NotificationRow>("SELECT * FROM notifications ORDER BY notification_id DESC LIMIT @limit", new { limit }).ToList();
+    public List<NotificationRow> Notifications(int limit = 30, string filter = "all") => db.Query<NotificationRow>("""
+        SELECT * FROM notifications
+        WHERE @filter = 'all' OR (@filter = 'unread' AND seen = 0) OR (@filter = 'problems' AND level IN ('warning', 'error'))
+        ORDER BY notification_id DESC LIMIT @limit
+        """, new { limit, filter }).ToList();
+
+    public (long Unread, long Problems) NotificationCounts() =>
+        (db.Single<long>("SELECT COUNT(*) FROM notifications WHERE seen = 0"), db.Single<long>("SELECT COUNT(*) FROM notifications WHERE seen = 0 AND level IN ('warning', 'error')"));
+
+    public void MarkRoutineSeen() => db.Execute("UPDATE notifications SET seen = 1 WHERE seen = 0 AND level IN ('success', 'info')");
 
     public void MarkSeen(long id) => db.Execute("UPDATE notifications SET seen=1 WHERE notification_id=@id", new { id });
 

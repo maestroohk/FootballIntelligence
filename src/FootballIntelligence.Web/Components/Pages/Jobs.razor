@@ -76,13 +76,28 @@
     </div>
 </div>
 
-<div class="card">
-    <div class="card-head"><h2>Notifications</h2><button class="btn sm" @onclick="MarkAll">Mark all read</button></div>
-    @foreach (var n in notes)
+<div class="card" id="notifications">
+    <div class="card-head">
+        <h2>Notifications</h2>
+        <div class="row small">
+            <div class="tabs" style="border:none">
+                <button class="tab @(noteFilter == "unread" ? "active" : "")" @onclick='() => SetFilter("unread")'>Unread (@counts.Unread)</button>
+                <button class="tab @(noteFilter == "problems" ? "active" : "")" @onclick='() => SetFilter("problems")'>Warnings &amp; errors</button>
+                <button class="tab @(noteFilter == "all" ? "active" : "")" @onclick='() => SetFilter("all")'>All</button>
+            </div>
+            @if (counts.Unread > counts.Problems) { <button class="btn sm" @onclick="MarkRoutine">Mark routine read</button> }
+            @if (counts.Unread > 0) { <button class="btn sm" @onclick="MarkAll">Mark all read</button> }
+        </div>
+    </div>
+    @if (notes.Count == 0) { <div class="empty">@(noteFilter == "unread" ? "Nothing unread." : "No notifications.")</div> }
+    @foreach (var g in notes.GroupBy(n => (n.Title, n.Level, n.Seen)).Select(g => g.ToList()))
     {
-        <div class="spread small" style="padding:5px 0;border-bottom:1px solid var(--border-soft)">
-            <span><span class="dot @(n.Level == "error" ? "bad" : n.Level == "warning" ? "warn" : "ok")"></span> <b>@n.Title</b> <span class="dim">@n.Body</span></span>
-            <span class="faint">@Fmt.Ago(n.Ts) @(n.Seen == 0 ? "· new" : "")</span>
+        var n = g[0];
+        <div class="spread small" style="padding:6px 0;border-bottom:1px solid var(--border-soft);@(n.Seen == 0 ? "" : "opacity:.7")">
+            <span><span class="dot @(n.Level == "error" ? "bad" : n.Level == "warning" ? "warn" : "ok")"></span> <b>@n.Title</b>@(g.Count > 1 ? $" ×{g.Count}" : "") <span class="dim">@n.Body</span></span>
+            <span class="row faint" style="gap:8px">@Fmt.Ago(n.Ts)
+                @if (n.Seen == 0) { <button class="btn sm" @onclick="() => MarkRead(g)">Mark read</button> }
+            </span>
         </div>
     }
 </div>
@@ -94,6 +109,8 @@
     private JobRow? selected;
     private List<JobLogRow> logs = [];
     private List<NotificationRow> notes = [];
+    private (long Unread, long Problems) counts;
+    private string noteFilter = "unread";
     private string newKind = "daily_cycle";
 
     protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange || previous.MaxNotificationId != next.MaxNotificationId;
@@ -104,7 +121,8 @@
     {
         jobs = Ops.Jobs(60);
         workerAlive = Ops.WorkerStatus().Alive;
-        notes = Ops.Notifications(15);
+        notes = Ops.Notifications(noteFilter == "all" ? 40 : 100, noteFilter);
+        counts = Ops.NotificationCounts();
         if (Id is not null)
         {
             selected = Ops.Job(Id.Value);
@@ -115,6 +133,9 @@
     private void Enqueue() => Ops.Enqueue(newKind);
     private void Retry(long id) => Ops.Retry(id);
     private void MarkAll() { Ops.MarkAllSeen(); Load(); }
+    private void MarkRoutine() { Ops.MarkRoutineSeen(); Load(); }
+    private void MarkRead(List<NotificationRow> group) { foreach (var n in group) Ops.MarkSeen(n.NotificationId); Load(); }
+    private void SetFilter(string f) { noteFilter = f; Load(); }
 
     private static TimeSpan? Elapsed(JobRow j)
     {

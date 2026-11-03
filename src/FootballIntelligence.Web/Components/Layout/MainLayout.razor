@@ -22,6 +22,7 @@
         <NavLink class="nav-link" href="players"><span class="nav-ico">♟</span>Players</NavLink>
         <NavLink class="nav-link" href="teams"><span class="nav-ico">⬡</span>Team tactics</NavLink>
         <NavLink class="nav-link" href="history"><span class="nav-ico">✓</span>Prediction history</NavLink>
+        <NavLink class="nav-link" href="value"><span class="nav-ico">⚖</span>Value research</NavLink>
         <div class="nav-section">Analyst</div>
         <NavLink class="nav-link" href="learning"><span class="nav-ico">↻</span>Learning</NavLink>
         <NavLink class="nav-link" href="lab"><span class="nav-ico">⚗</span>Model lab</NavLink>
@@ -60,7 +61,7 @@
                     <button class="@(Mode.Analyst ? "" : "active")" @onclick="() => SetMode(false)">Fan</button>
                     <button class="@(Mode.Analyst ? "active" : "")" @onclick="() => SetMode(true)">Analyst</button>
                 </div>
-                <a href="jobs" class="badge @(unseen > 0 ? "warn" : "")">@unseen unread notification@(unseen == 1 ? "" : "s")</a>
+                <a href="jobs#notifications" class="badge @(unseen > 0 ? "warn" : "")">@unseen unread notification@(unseen == 1 ? "" : "s")</a>
             </div>
         </div>
         <div class="content">

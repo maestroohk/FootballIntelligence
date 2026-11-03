@@ -1,0 +1,360 @@
+@page "/value"
+@inherits FeedComponent
+@inject ValueQueries Values
+@inject ViewMode Mode
+
+<PageTitle>Value research · Football Intelligence</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Value research <span class="badge sim">simulated · no real money</span></h1>
+        <p>Compares the model's probabilities with bookmaker prices and tests, chronologically, whether any selection rule would have beaten them. Nothing here places bets; every result is simulated.</p>
+    </div>
+    <div class="tabs" style="border:none">
+        @foreach (var (key, label) in Tabs)
+        {
+            <button class="tab @(tab == key ? "active" : "")" @onclick="() => tab = key">@label</button>
+        }
+    </div>
+</div>
+
+<div class="callout @(edgeRules == 0 ? "warn" : "ok")">
+    <b>Current evidence: @(strategy is null ? "not yet evaluated" : edgeRules == 0 ? "no demonstrated edge over the market" : $"{edgeRules} rule(s) positive in both untouched periods")</b>.
+    @if (strategy is not null)
+    {
+        <span>
+            Rules were chosen on @PeriodText("development") and then checked once on @PeriodText("holdout") and @PeriodText("final").
+            @(edgeRules == 0 ? "None returned a profit with a confidence interval above zero in both later periods, and the opening Pinnacle prices were more accurate than the model in every period. Positive model expected value is therefore mostly model error, not value." : "Treat this cautiously until it holds on prices recorded live.")
+        </span>
+    }
+</div>
+
+@if (tab == "prices")
+{
+    @if (board is null || board.Matches.Count == 0)
+    {
+        <div class="card"><div class="empty">No upcoming fixture has both a stored pre-match forecast and a recorded price yet. Prices are recorded by the daily update cycle from the football-data.co.uk fixtures file.</div></div>
+    }
+    else if (!Mode.Analyst)
+    {
+        <div class="card">
+            <div class="card-head"><h2>Model versus bookmakers</h2><span class="sub">match result · market average prices with the margin removed</span></div>
+            <p class="small dim">Where the bars differ, the model and the bookmakers disagree. Historically the bookmakers have been right more often than the model, so a disagreement is not a tip.</p>
+            @foreach (var m in board.Matches)
+            {
+                var mk = m.Markets.FirstOrDefault(x => x.Market == "1x2" && x.Bookmaker == "market_avg") ?? m.Markets.FirstOrDefault(x => x.Market == "1x2");
+                if (mk is null) { continue; }
+                var s = mk.Selections;
+                <div style="padding:8px 0;border-bottom:1px solid var(--border-soft)">
+                    <div class="spread small"><a href="matches/@m.MatchId"><b>@m.Home – @m.Away</b></a><span class="faint">@Fmt.CompetitionName(m.Competition) · @m.Date @m.Kickoff</span></div>
+                    <div class="row small" style="gap:8px;margin-top:4px"><span class="dim" style="width:84px">Model</span><div style="flex:1;min-width:160px"><ProbBar Home="s[0].ModelWin" Draw="s[1].ModelWin" Away="s[2].ModelWin" Slim="true" /></div></div>
+                    <div class="row small" style="gap:8px"><span class="dim" style="width:84px">Bookmakers</span><div style="flex:1;min-width:160px"><ProbBar Home="s[0].MarketProb" Draw="s[1].MarketProb" Away="s[2].MarketProb" Slim="true" /></div></div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-head"><h2>Upcoming prices</h2><span class="sub">@rows.Count selections · board built @Fmt.Ago(board.GeneratedAt)</span></div>
+            <div class="row small" style="margin-bottom:10px">
+                <select class="input" @bind="market"><option value="">All markets</option><option value="1x2">Match result</option><option value="ou">Total goals</option><option value="ah">Asian handicap</option></select>
+                <select class="input" @bind="book"><option value="">All bookmakers</option><option value="bet365">Bet365</option><option value="market_avg">Market average</option><option value="market_max">Best available</option><option value="pinnacle">Pinnacle</option></select>
+                <select class="input" @bind="minEv"><option value="-1">Any model EV</option><option value="0">EV ≥ 0</option><option value="0.05">EV ≥ +5%</option><option value="0.1">EV ≥ +10%</option></select>
+                <label class="row" style="gap:6px"><input type="checkbox" @bind="eligibleOnly" />only ≥3 h before kick-off</label>
+            </div>
+            <div class="table-wrap">
+                <table class="data compact">
+                    <thead><tr><th>Match</th><th>Market</th><th>Pick</th><th>Bookmaker</th><th class="num">Odds</th><th class="num">Implied</th><th class="num">Market (no margin)</th><th class="num">Model</th><th class="num">Break-even</th><th class="num">Model EV</th><th class="num">Margin</th><th>Evidence</th><th>Price seen</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in rows.Take(300))
+                        {
+                            var gap = r.S.ModelWin + r.S.ModelPush / 2 - r.S.MarketProb;
+                            <tr>
+                                <td><a href="matches/@r.M.MatchId">@r.M.Home – @r.M.Away</a><div class="faint">@r.M.Competition · @r.M.Date @r.M.Kickoff@(r.M.SafelyBeforeKickoff ? "" : " · too close to kick-off")</div></td>
+                                <td>@ValueFmt.Market(r.K.Market)</td>
+                                <td>@ValueFmt.Pick(r.K.Market, r.K.Line, r.S.Selection, r.M.Home, r.M.Away)</td>
+                                <td>@ValueFmt.Book(r.K.Bookmaker)</td>
+                                <td class="num mono">@r.S.Odds.ToString("0.00")</td>
+                                <td class="num">@Fmt.Pct(r.S.Implied, 1)</td>
+                                <td class="num">@Fmt.Pct(r.S.MarketProb, 1)</td>
+                                <td class="num" title="@(r.S.ModelPush > 0 ? $"plus {Fmt.Pct(r.S.ModelPush, 1)} stake returned" : "")">@Fmt.Pct(r.S.ModelWin, 1)@(r.S.ModelPush > 0.001 ? "*" : "")</td>
+                                <td class="num mono">@(double.IsFinite(r.S.BreakEvenOdds) ? r.S.BreakEvenOdds.ToString("0.00") : "—")</td>
+                                <td class="num @(r.S.Ev > 0 ? "good" : "dim")">@Fmt.Signed(r.S.Ev * 100, 1)%</td>
+                                <td class="num dim">@Fmt.Pct(r.K.Margin, 1)</td>
+                                <td class="small">@Evidence(r.K.Market, r.K.Bookmaker, gap)</td>
+                                <td class="small faint" title="@r.K.ObservedAt">@Fmt.Ago(r.K.ObservedAt)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="small faint" style="margin-top:8px">
+                Model EV is the expected return per unit staked using the model's full score distribution (Asian handicap quarter lines settle half-and-half; * marks a chance of the stake being returned).
+                The market probability removes the bookmaker margin with the power method. Break-even odds are the price at which the model would expect zero return.
+                Prices are the latest recorded pre-match snapshot; they are not closing prices and may have moved. Model @(board.Matches.FirstOrDefault()?.ModelVersion).
+            </div>
+        </div>
+    }
+}
+else if (tab == "backtest")
+{
+    @if (strategy is null)
+    {
+        <div class="card"><div class="empty">Strategy research has not been run. Run the <span class="mono">strategy_research</span> job.</div></div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-head"><h2>Pre-registered selection rules</h2><span class="sub">simulated level stakes of 1 unit · walk-forward forecasts · pre-closing prices only</span></div>
+            <p class="small dim">For each market and bookmaker, a grid of thresholds (minimum model EV 0/2/5/10%, three odds bands) was evaluated on the development seasons only; the best rule with at least 300 selections was then applied unchanged to the holdout and final seasons. Intervals are 95% bootstrap intervals resampling whole weeks.</p>
+            <div class="table-wrap">
+                <table class="data compact">
+                    <thead><tr><th>Market</th><th>Bookmaker</th><th>Rule (chosen on development)</th><th class="num">Development</th><th class="num">Holdout</th><th class="num">Final</th><th class="num">CLV (final)</th><th class="num">Max drawdown</th><th class="num">Losing run</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in strategy.Rules)
+                        {
+                            <tr style="cursor:pointer" class="@(selectedRule == r ? "selected" : "")" @onclick="() => selectedRule = r">
+                                <td>@ValueFmt.Market(r.Market)</td>
+                                <td>@ValueFmt.Book(r.Bookmaker)</td>
+                                @if (r.Selected is null)
+                                {
+                                    <td colspan="7" class="dim">@r.Reason</td>
+                                }
+                                else
+                                {
+                                    <td class="small">EV ≥ @Fmt.Pct(r.Selected.MinEv) · odds @r.Selected.OddsMin.ToString("0.00")–@r.Selected.OddsMax.ToString("0.00")</td>
+                                    <td class="num">@Roi(r.Development, false)</td>
+                                    <td class="num">@Roi(r.Holdout, true)</td>
+                                    <td class="num">@Roi(r.Final, true)</td>
+                                    <td class="num">@(r.Final?.ClvMean is null ? "—" : $"{Fmt.Signed(r.Final.ClvMean * 100, 1)}% · {Fmt.Pct(r.Final.ClvBeatShare)} beat")</td>
+                                    <td class="num">@Fmt.Num(Math.Max(r.Holdout?.MaxDrawdown ?? 0, r.Final?.MaxDrawdown ?? 0), 1) u</td>
+                                    <td class="num">@Math.Max(r.Holdout?.LongestLosingStreak ?? 0, r.Final?.LongestLosingStreak ?? 0)</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="small faint" style="margin-top:6px">Closing-line value (CLV) compares the taken price with the Pinnacle closing price (market average when Pinnacle is missing); beating the close consistently is the usual early sign of a real edge.</div>
+        </div>
+
+        @if (selectedRule?.Selected is not null)
+        {
+            var eq = selectedRule.EquityHoldoutFinal;
+            <div class="card">
+                <div class="card-head"><h2>Simulated equity · @ValueFmt.Market(selectedRule.Market), @ValueFmt.Book(selectedRule.Bookmaker)</h2><span class="sub">cumulative units, holdout then final seasons</span></div>
+                @if (eq.Count < 2) { <div class="empty">Too few selections to draw.</div> }
+                else
+                {
+                    var pts = eq.Select((p, i) => new LineChart.Point(i, p.Units)).ToList();
+                    var peak = 0.0;
+                    var dd = eq.Select((p, i) => { peak = Math.Max(peak, p.Units); return new LineChart.Point(i, p.Units - peak); }).ToList();
+                    var lo = Math.Floor(Math.Min(0, dd.Concat(pts).Min(p => p.Y)) / 10) * 10;
+                    var hi = Math.Ceiling(Math.Max(1, pts.Max(p => p.Y)) / 10) * 10;
+                    var split = eq.FindIndex(p => string.CompareOrdinal(p.Date, "2023-07-01") >= 0);
+                    <LineChart Series="@([new("Cumulative units", "var(--accent)", pts), new("Drawdown from peak", "var(--danger)", dd, Dashed: true)])"
+                               Markers="@(split > 0 ? [new LineChart.Marker(split, "final period", "var(--text-faint)")] : [])"
+                               XTicks="@(eq.Select((p, i) => (p, i)).Where(x => x.i % Math.Max(1, eq.Count / 6) == 0).Select(x => (x.p.Date[..7], (double)x.i)).ToList())"
+                               YMin="lo" YMax="hi" Height="240" YFormat="@(v => v.ToString("0"))" />
+                    <div class="grid g4" style="margin-top:10px">
+                        <Kpi Label="Holdout selections" Value="@(selectedRule.Holdout?.N.ToString("N0") ?? "0")" Note="@($"avg odds {Fmt.Num(selectedRule.Holdout?.AvgOdds)} · win rate {Fmt.Pct(selectedRule.Holdout?.WinRate)}")" />
+                        <Kpi Label="Final selections" Value="@(selectedRule.Final?.N.ToString("N0") ?? "0")" Note="@($"avg odds {Fmt.Num(selectedRule.Final?.AvgOdds)} · win rate {Fmt.Pct(selectedRule.Final?.WinRate)}")" />
+                        <Kpi Label="Model's average claimed EV" Value="@($"{Fmt.Signed((selectedRule.Final?.MeanModelEv ?? 0) * 100, 1)}%")" Note="what the model expected (final)" />
+                        <Kpi Label="Realised return" Value="@($"{Fmt.Signed((selectedRule.Final?.Roi ?? 0) * 100, 1)}%")" Note="what actually happened (final)" Color="@((selectedRule.Final?.Roi ?? 0) >= 0 ? "var(--ok)" : "var(--danger)")" />
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="grid g2">
+            <div class="card">
+                <div class="card-head"><h2>Baselines</h2><span class="sub">holdout + final seasons, 1 unit on each</span></div>
+                <div class="table-wrap">
+                    <table class="data compact">
+                        <thead><tr><th>Approach</th><th class="num">n</th><th class="num">Return</th></tr></thead>
+                        <tbody>
+                            @foreach (var (name, s) in strategy.Baselines)
+                            {
+                                var p = name.Split('/');
+                                <tr><td>@ValueFmt.Market(p[0]) · @ValueFmt.Book(p[1]) · @p[2]</td><td class="num">@s.N.ToString("N0")</td><td class="num">@Roi(s, true)</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="small faint" style="margin-top:6px">Backing everything loses roughly the bookmaker margin; this is the bar any rule has to clear.</div>
+            </div>
+            <div class="card">
+                <div class="card-head"><h2>Probability quality</h2><span class="sub">match result, same matches · lower is better</span></div>
+                <table class="data compact">
+                    <thead><tr><th>Period</th><th class="num">n</th><th class="num">Model log loss</th><th class="num">Pinnacle opening</th><th class="num">Model Brier</th><th class="num">Pinnacle Brier</th></tr></thead>
+                    <tbody>
+                        @foreach (var (period, q) in strategy.ProbabilityQuality)
+                        {
+                            <tr><td>@period</td><td class="num">@q.N.ToString("N0")</td><td class="num @(q.ModelLogLoss <= q.PinnacleOpenLogLoss ? "good" : "bad")">@q.ModelLogLoss.ToString("0.0000")</td><td class="num">@q.PinnacleOpenLogLoss.ToString("0.0000")</td><td class="num">@q.ModelBrier.ToString("0.0000")</td><td class="num">@q.PinnacleOpenBrier.ToString("0.0000")</td></tr>
+                        }
+                    </tbody>
+                </table>
+                <div class="small faint" style="margin-top:6px">If the model's probabilities are less accurate than the market's, apparent value is expected to be mostly the model's own error.</div>
+            </div>
+        </div>
+    }
+}
+else if (tab == "paper")
+{
+    <div class="callout">
+        <b>Paper portfolio — research only.</b> Rule <span class="mono">@PaperRule</span> records a decision for every upcoming match with a stored forecast: either a 1-unit paper selection at a recorded price, or a no-bet with its reason. Decisions are immutable, use only prices observed before the decision, and are settled from official results. The rule has <b>not</b> been validated by the backtest; it exists to measure live, forward performance honestly.
+    </div>
+    @if (decisions.Count == 0)
+    {
+        <div class="card"><div class="empty">No paper decisions recorded yet. They are made by the daily update cycle once forecasts and prices exist.</div></div>
+    }
+    else
+    {
+        var bets = decisions.Where(d => d.Decision == "bet").ToList();
+        var settled = bets.Where(d => d.Profit is not null).ToList();
+        var profit = settled.Sum(d => d.Profit!.Value);
+        <div class="grid g4">
+            <Kpi Label="Paper selections" Value="@bets.Count.ToString()" Note="@($"{decisions.Count(d => d.Decision == "no_bet")} no-bet decisions")" />
+            <Kpi Label="Settled" Value="@settled.Count.ToString()" Note="@($"{bets.Count - settled.Count} open")" />
+            <Kpi Label="Paper profit" Value="@($"{Fmt.Signed(profit, 2)} u")" Note="@(settled.Count == 0 ? "nothing settled yet" : $"return {Fmt.Signed(profit / settled.Sum(d => d.Stake) * 100, 1)}% on {settled.Count}")" Color="@(profit >= 0 ? null : "var(--danger)")" />
+            <Kpi Label="Notional bankroll" Value="@($"{bankroll + profit:0.0} u")" Note="@($"started at {bankroll:0} u · far too few results to judge")" />
+        </div>
+        <div class="card">
+            <div class="card-head"><h2>Decisions</h2><span class="sub">latest @decisions.Count</span></div>
+            <div class="table-wrap">
+                <table class="data compact">
+                    <thead><tr><th>Match</th><th>Decision</th><th>Pick</th><th class="num">Odds</th><th class="num">Model</th><th class="num">Market</th><th class="num">Model EV</th><th>Outcome</th><th>Recorded</th></tr></thead>
+                    <tbody>
+                        @foreach (var d in decisions)
+                        {
+                            <tr class="@(d.Decision == "bet" ? "" : "dim")">
+                                <td><a href="matches/@d.MatchId">@d.HomeName – @d.AwayName</a><div class="faint">@d.Competition · @d.MatchDate @d.Kickoff</div></td>
+                                <td><span class="badge @(d.Decision == "bet" ? "sim" : "")">@(d.Decision == "bet" ? "paper selection" : "no bet")</span><div class="faint" style="max-width:260px">@d.Reason</div></td>
+                                <td>@(d.Market is null ? "—" : $"{ValueFmt.Pick(d.Market, d.Line, d.Selection, d.HomeName, d.AwayName)} · {ValueFmt.Book(d.Bookmaker)}")</td>
+                                <td class="num mono">@(d.Odds?.ToString("0.00") ?? "—")</td>
+                                <td class="num">@Fmt.Pct(d.ModelProb, 1)</td>
+                                <td class="num">@Fmt.Pct(d.MarketProb, 1)</td>
+                                <td class="num">@(d.Ev is null ? "—" : $"{Fmt.Signed(d.Ev * 100, 1)}%")</td>
+                                <td>@(d.Decision != "bet" ? "" : d.Profit is null ? "open" : $"{d.HomeGoals}–{d.AwayGoals} · {Fmt.Signed(d.Profit, 2)} u")</td>
+                                <td class="small faint" title="price observed @d.OddsObservedAt">@Fmt.Local(d.CreatedAt)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+else
+{
+    <div class="grid g2">
+        <div class="card">
+            <div class="card-head"><h2>Research log</h2><span class="sub">market, calibration and value experiments</span></div>
+            @foreach (var e in experiments)
+            {
+                <div style="padding:8px 0;border-bottom:1px solid var(--border-soft)">
+                    <div class="spread small"><b>@e.Name</b><span class="faint">#@e.ExperimentId · @e.CreatedAt[..10]</span></div>
+                    <div class="small dim">@e.Hypothesis</div>
+                    @if (e.Decision is not null) { <div class="small" style="margin-top:2px"><span class="badge @(e.Decision.StartsWith("adopt") || e.Decision.StartsWith("keep") ? "ok" : "warn")">decision</span> @e.Decision</div> }
+                </div>
+            }
+            <a href="lab" class="small">All experiments in the model lab →</a>
+        </div>
+        <div class="card">
+            <div class="card-head"><h2>Data limitations</h2></div>
+            <ul class="small dim" style="padding-left:18px;margin:0">
+                <li>Historical prices come from football-data.co.uk files: one pre-closing snapshot (collected shortly before kick-off) and one closing price per match. Exact collection times are not published, so historical simulations assume the pre-closing price was available when the forecast was made.</li>
+                <li>Pinnacle and bet365 1X2 prices start in 2012; totals and Asian handicap only for the main market line. Double chance, both-teams-to-score and correct score prices are not in the source and are not shown.</li>
+                <li>Closing prices are never used for decisions — only to measure closing-line value afterwards.</li>
+                <li>Live snapshots are recorded only when the daily cycle downloads the fixtures file; the time shown is when that file was fetched.</li>
+                <li>Simulations assume every price could be taken at the full 1-unit stake, with no limits, account restrictions or price changes.</li>
+                <li>The model's forecasts for older seasons are walk-forward re-forecasts, not forecasts stored before those matches.</li>
+            </ul>
+            @if (board is not null && board.Coverage.Count > 0)
+            {
+                <div class="table-wrap" style="margin-top:12px">
+                    <table class="data compact">
+                        <thead><tr><th>Source</th><th>Bookmaker</th><th>Timing</th><th class="num">Matches</th><th class="num">Prices</th></tr></thead>
+                        <tbody>
+                            @foreach (var c in board.Coverage)
+                            {
+                                <tr><td>@c.Kind@(c.Kind == "recorded snapshot" ? $" · {Fmt.Ago(c.Latest)}" : "")</td><td>@ValueFmt.Book(c.Bookmaker)</td><td>@(c.Timing == "close" ? "closing" : "pre-match")</td><td class="num">@c.Matches.ToString("N0")</td><td class="num">@c.Prices.ToString("N0")</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly (string, string)[] Tabs = [("prices", "Upcoming prices"), ("backtest", "Strategy backtests"), ("paper", "Paper portfolio"), ("log", "Research log")];
+    private string tab = "prices";
+    private ValueBoard? board;
+    private StrategyResults? strategy;
+    private StrategyRule? selectedRule;
+    private List<PaperDecisionRow> decisions = [];
+    private List<ExperimentRow> experiments = [];
+    private int edgeRules;
+    private string market = "";
+    private string book = "";
+    private double minEv = -1;
+    private bool eligibleOnly = true;
+    private const string PaperRule = "research-ev5 (model EV ≥ +5%, odds 1.50–4.00, Bet365 or market average, max 10 units per day)";
+    private readonly double bankroll = double.TryParse(Environment.GetEnvironmentVariable("FIE_PAPER_BANKROLL"), System.Globalization.CultureInfo.InvariantCulture, out var b) ? b : 100;
+
+    private record Row(BoardMatch M, BoardMarket K, BoardSelection S);
+
+    private List<Row> rows => board is null ? [] : board.Matches
+        .Where(m => !eligibleOnly || m.SafelyBeforeKickoff)
+        .SelectMany(m => m.Markets.Where(k => (market == "" || k.Market == market) && (book == "" || k.Bookmaker == book))
+            .SelectMany(k => k.Selections.Where(s => s.Ev >= minEv).Select(s => new Row(m, k, s))))
+        .OrderByDescending(r => r.S.Ev).ToList();
+
+    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.JobStatuses != next.JobStatuses;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Mode.Changed += OnMode;
+    }
+
+    private void OnMode() => InvokeAsync(StateHasChanged);
+
+    public override void Dispose()
+    {
+        Mode.Changed -= OnMode;
+        base.Dispose();
+    }
+
+    protected override void Load()
+    {
+        board = Values.Board();
+        strategy = Values.Strategy();
+        decisions = Values.PaperExists() ? Values.PaperDecisions() : [];
+        experiments = Values.MarketExperiments();
+        edgeRules = strategy?.Rules.Count(r => r.Holdout?.RoiCi is { Count: 2 } h && h[0] > 0 && r.Final?.RoiCi is { Count: 2 } f && f[0] > 0) ?? 0;
+        selectedRule = strategy?.Rules.FirstOrDefault(r => r.Market == selectedRule?.Market && r.Bookmaker == selectedRule?.Bookmaker)
+                       ?? strategy?.Rules.FirstOrDefault(r => r.Selected is not null);
+    }
+
+    private string PeriodText(string key) => strategy?.Periods.TryGetValue(key, out var s) == true && s.Count > 0 ? $"{s[0]}/{(s[0] + 1) % 100:00}–{s[^1]}/{(s[^1] + 1) % 100:00}" : key;
+
+    private static RenderFragment Roi(StrategySummary? s, bool ci) => __builder =>
+    {
+        if (s is null || s.N == 0 || s.Roi is null) { <span class="dim">—</span>; return; }
+        <span class="@(s.Roi >= 0 ? "good" : "bad")">@Fmt.Signed(s.Roi * 100, 1)%</span>
+        <span class="faint"> n=@s.N.ToString("N0")</span>
+        if (ci) { <div class="faint">@ValueFmt.Ci(s.RoiCi)</div> }
+    };
+
+    private RenderFragment Evidence(string mkt, string bk, double gap) => __builder =>
+    {
+        var rule = strategy?.Rules.FirstOrDefault(r => r.Market == mkt && r.Bookmaker == (bk == "market_max" ? "market_avg" : bk));
+        if (Math.Abs(gap) > 0.08) { <span class="badge warn" title="Model and market differ by more than 8 percentage points; historically such gaps were mostly model error">large disagreement</span> }
+        if (rule?.Final?.Roi is { } roi) { <div class="faint" title="realised return of the backtested rule for this market and bookmaker in the final seasons">backtest @Fmt.Signed(roi * 100, 1)%</div> }
+        else { <span class="faint">untested</span> }
+    };
+}
