@@ -103,3 +103,61 @@ FEATURE_COLUMNS = [
     "a_gf", "a_ga", "a_sf", "a_sa", "a_tf", "a_ta", "a_xf", "a_xa", "a_n", "a_rest", "a_m28", "a_promoted",
     "elo_h", "elo_a", "elo_diff",
 ]
+
+
+SPLIT_LEAGUES = {"SC0", "SC1", "B1", "G1"}
+
+
+def standings_features(frame):
+    teams = frame.groupby(["competition", "season"])["home"].agg(lambda s: set(s)).to_dict()
+    for k, v in frame.groupby(["competition", "season"])["away"].agg(lambda s: set(s)).items():
+        teams[k] = teams.get(k, set()) | v
+    pts = defaultdict(lambda: defaultdict(int))
+    played = defaultdict(lambda: defaultdict(int))
+    cols = defaultdict(list)
+    rows = frame.to_dict("records")
+    dates = frame["date"].to_numpy()
+    i, n = 0, len(rows)
+    while i < n:
+        j = i
+        while j < n and dates[j] == dates[i]:
+            j += 1
+        block = rows[i:j]
+        for r in block:
+            key = (r["competition"], r["season"])
+            members = teams[key]
+            size = len(members)
+            if r["competition"] in SPLIT_LEAGUES or size < 10:
+                for side in ("h", "a"):
+                    for c in ("dead", "danger", "chasing"):
+                        cols[f"{side}_{c}"].append(np.nan)
+                cols["season_left"].append(np.nan)
+                continue
+            games = 2 * (size - 1)
+            table = sorted(((pts[key][t], games - played[key][t]) for t in members), reverse=True)
+            leader, fourth = table[0][0], table[min(3, size - 1)][0]
+            drop_pts, drop_left = table[size - 3]
+            safe_line = table[size - 4][0]
+            for side, team in (("h", r["home"]), ("a", r["away"])):
+                p, left = pts[key][team], games - played[key][team]
+                safe = p > drop_pts + 3 * drop_left
+                down = p + 3 * left < safe_line
+                can_climb = p + 3 * left >= fourth
+                cols[f"{side}_dead"].append(float((safe and not can_climb) or down))
+                cols[f"{side}_danger"].append(float(not safe and not down and left <= 10 and p - drop_pts <= 3))
+                cols[f"{side}_chasing"].append(float(can_climb and left <= 10 and (fourth - p <= 3 or leader - p <= 3)))
+            cols["season_left"].append((games - (played[key][r["home"]] + played[key][r["away"]]) / 2) / games)
+        for r in block:
+            if r.get("status") != "finished" or pd.isna(r["hg"]):
+                continue
+            key = (r["competition"], r["season"])
+            hp, ap = (3, 0) if r["hg"] > r["ag"] else (1, 1) if r["hg"] == r["ag"] else (0, 3)
+            pts[key][r["home"]] += hp
+            pts[key][r["away"]] += ap
+            played[key][r["home"]] += 1
+            played[key][r["away"]] += 1
+        i = j
+    out = frame[["match_id"]].copy()
+    for k, v in cols.items():
+        out[k] = v
+    return out

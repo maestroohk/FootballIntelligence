@@ -154,6 +154,83 @@ def probability_quality(con, pinnacle_1x2):
     return out
 
 
+ODDS_BREAKS = [1.01, 1.5, 2.0, 2.5, 3.5, 5.0, 8.0, 1000.0]
+
+
+def _band_rows(c):
+    c = c.assign(band=pd.cut(c["odds"], ODDS_BREAKS, right=False).astype(str), won=(c["profit"] > 0).astype(float))
+    return [{"band": b, "n": int(len(g)), "market_prob": float(g["market_prob"].mean()), "win_rate": float(g["won"].mean()),
+             "roi": float(g["profit"].mean())} for b, g in c.groupby("band", sort=False) if len(g) >= 200]
+
+
+def market_efficiency(con):
+    cand = research.load_cached("strategy_candidates")
+    if cand is None:
+        cand = build_candidates(con)
+    late = cand[cand["period"].isin(["holdout", "final"])]
+    x12 = late[late["market"] == "1x2"].sort_values("odds")
+    out = {"scope": "seasons 2020/21 onwards, every 1X2 selection backed at 1 unit (descriptive, not a strategy)", "bookmakers": {}, "longshot": {}, "draws": {}, "leagues": [], "band_rules": []}
+    for book, g in x12.groupby("bookmaker"):
+        per = g.drop_duplicates("match_id")
+        out["bookmakers"][book] = {"matches": int(len(per)), "mean_margin": float((-per["payout_minus_one"] / (1 + per["payout_minus_one"])).mean()),
+                                   "roi_all": float(g["profit"].mean())}
+        out["longshot"][book] = _band_rows(g)
+        d = g[g["selection"] == "draw"].assign(bucket=lambda t: pd.cut(t["market_prob"], [0, .2, .24, .27, .3, .33, 1]).astype(str), won=lambda t: (t["profit"] > 0).astype(float))
+        out["draws"][book] = [{"band": b, "n": int(len(h)), "market_prob": float(h["market_prob"].mean()), "rate": float(h["won"].mean())}
+                              for b, h in d.groupby("bucket", sort=False) if len(h) >= 200]
+    pin = x12[x12["bookmaker"] == "pinnacle"]
+    for comp, g in pin.groupby("competition"):
+        mx = x12[(x12["bookmaker"] == "market_max") & (x12["competition"] == comp)]
+        won = g[g["profit"] > 0]
+        out["leagues"].append({"competition": comp, "matches": int(g["match_id"].nunique()),
+                               "margin": float((-g["payout_minus_one"] / (1 + g["payout_minus_one"])).mean()),
+                               "log_loss": float(-np.log(won["market_prob"]).mean()), "roi_pinnacle": float(g["profit"].mean()),
+                               "roi_best_price": float(mx["profit"].mean()) if len(mx) else None})
+    for book in ("pinnacle", "market_max"):
+        sub = cand[(cand["market"] == "1x2") & (cand["bookmaker"] == book)]
+        dev = sub[sub["period"] == "development"]
+        bands = [(lo, hi) for lo, hi in zip(ODDS_BREAKS[:-1], ODDS_BREAKS[1:])]
+        grid = [((lo, hi), summarise(dev[(dev["odds"] >= lo) & (dev["odds"] < hi)], n_boot=200)) for lo, hi in bands]
+        grid = [g for g in grid if g[1]["n"] >= MIN_BETS]
+        if not grid:
+            continue
+        (lo, hi), dev_s = max(grid, key=lambda g: g[1]["roi"])
+        pick_ = lambda per: sub[(sub["period"] == per) & (sub["odds"] >= lo) & (sub["odds"] < hi)]
+        out["band_rules"].append({"bookmaker": book, "odds_min": lo, "odds_max": hi, "development": dev_s,
+                                  "holdout": summarise(pick_("holdout")), "final": summarise(pick_("final"))})
+    out["opening_vs_closing"] = opening_vs_closing(con)
+    db.set_kv(con, "market_efficiency", out)
+    return out
+
+
+def opening_vs_closing(con):
+    q = pd.read_sql_query("""SELECT o.match_id, o.timing, o.selection, o.odds, m.fthg, m.ftag, m.season FROM market_odds o JOIN matches m ON m.match_id = o.match_id
+                             WHERE o.market = '1x2' AND o.bookmaker = 'pinnacle' AND m.status = 'finished' AND m.season >= 2012 AND o.observed_at NOT LIKE '20%'""", con)
+    w = q.pivot_table(index=["match_id", "season", "fthg", "ftag"], columns=["timing", "selection"], values="odds").dropna().reset_index()
+    y = metrics.outcome_index(w["fthg"], w["ftag"])
+    out = {"n": int(len(w))}
+    probs = {}
+    for t in ("pre_close", "close"):
+        p = metrics.devig(w[(t, "home")], w[(t, "draw")], w[(t, "away")])
+        probs[t] = p
+        out[f"{t}_log_loss"] = float(metrics.log_loss_rows(p, y).mean())
+    moved = probs["close"][np.arange(len(y)), y] - probs["pre_close"][np.arange(len(y)), y]
+    out["share_moved_towards_result"] = float((moved > 0.005).mean())
+    out["share_moved_against_result"] = float((moved < -0.005).mean())
+    seasons = w["season"].to_numpy()
+    out["by_season"] = [{"season": int(s), "n": int((seasons == s).sum()),
+                         "pre_close": float(metrics.log_loss_rows(probs["pre_close"][seasons == s], y[seasons == s]).mean()),
+                         "close": float(metrics.log_loss_rows(probs["close"][seasons == s], y[seasons == s]).mean())} for s in sorted(set(seasons))]
+    return out
+
+
+@handler("market_efficiency")
+def market_efficiency_job(ctx):
+    ctx.stage("summarising market efficiency by bookmaker, odds band and league")
+    out = market_efficiency(ctx.con)
+    return {"bookmakers": out["bookmakers"], "band_rules": [{k: r[k] for k in ("bookmaker", "odds_min", "odds_max")} | {p: r[p].get("roi") for p in ("development", "holdout", "final")} for r in out["band_rules"]]}
+
+
 @handler("strategy_research")
 def strategy_research(ctx, rebuild=False):
     if rebuild:

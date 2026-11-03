@@ -86,6 +86,44 @@ def study(con):
     return out
 
 
+STAKES = ["h_dead", "a_dead", "h_danger", "a_danger", "h_chasing", "a_chasing"]
+
+
+def stakes_study(con):
+    from .features import standings_features
+    d = dataset(con).merge(standings_features(research.load_cached("frame")), on="match_id", how="left")
+    d = d[d["h_dead"].notna()].reset_index(drop=True)
+    base = walk_forward(d, ["ch_hd", "ch_dd"])
+    cand = walk_forward(d, ["ch_hd", "ch_dd"] + STAKES)
+    y = metrics.outcome_index(d["hg"], d["ag"])
+    block = (d["competition"] + d["season"].astype(str)).to_numpy()
+    raw = d[["p_home", "p_draw", "p_away"]].to_numpy()
+    mkt = d[["m_home", "m_draw", "m_away"]].to_numpy()
+    out = {"leagues": "single round-robin leagues (split and play-off leagues excluded)", "periods": {}}
+    for period, seasons in (("validation_2013_2022", [s for s in VALIDATION_SEASONS if s >= 2013]), ("confirmation_2023_on", [2023, 2024, 2025, 2026])):
+        res = {}
+        for scope in ("all", "late_season"):
+            k = d["season"].isin(seasons).to_numpy() & ~np.isnan(cand).any(axis=1)
+            if scope == "late_season":
+                k &= (d["season_left"] <= 0.2).to_numpy()
+            lb, lc = metrics.log_loss_rows(base[k], y[k]), metrics.log_loss_rows(cand[k], y[k])
+            lr, lm = metrics.log_loss_rows(raw[k], y[k]), metrics.log_loss_rows(mkt[k], y[k])
+            res[scope] = {"n": int(k.sum()), "champion": float(lr.mean()), "champion_recalibrated": float(lb.mean()), "with_stakes": float(lc.mean()),
+                          "market": float(lm.mean()), "stakes_vs_recalibrated": _cmp(lb, lc, block[k]),
+                          "gap_to_market_before": float((lb - lm).mean()), "gap_to_market_after": float((lc - lm).mean())}
+        out["periods"][period] = res
+    out["passed_validation"] = out["periods"]["validation_2013_2022"]["all"]["stakes_vs_recalibrated"]["ci_low"] > 0
+    db.set_kv(con, "stakes_study", out)
+    return out
+
+
+@handler("stakes_study")
+def stakes_study_job(ctx):
+    ctx.stage("testing end-of-season stakes features against the recalibrated champion")
+    res = stakes_study(ctx.con)
+    return {p: {s: {k: v for k, v in r.items() if k != "stakes_vs_recalibrated"} | {"gain": r["stakes_vs_recalibrated"]} for s, r in v.items()} for p, v in res["periods"].items()}
+
+
 @handler("market_model_study")
 def market_model_study(ctx):
     ctx.stage("fitting market-informed challengers walk-forward")
