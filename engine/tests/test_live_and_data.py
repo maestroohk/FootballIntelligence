@@ -201,3 +201,30 @@ def test_forward_predictions_require_future_kickoff(con):
                 (soon.strftime("%Y-%m-%d"), soon.strftime("%H:%M"), db.now(), db.now()))
     con.execute("INSERT INTO predictions(match_id, model_version, purpose, created_at, data_cutoff, p_home, p_draw, p_away) VALUES(5,'m','forward',?,'2026-01-01',.4,.3,.3)", (db.now(),))
     assert forward.flag_late_forward_predictions(con) == 1
+
+
+def _scored_matches(con, stated, true, n=1200, seed=5):
+    rng = np.random.default_rng(seed)
+    con.execute("INSERT INTO competitions VALUES('E0','PL','ENG',1)")
+    con.executemany("INSERT INTO teams(team_id, name, country) VALUES(?,?,'ENG')", [(i, f"T{i}") for i in range(1, 21)])
+    for i in range(n):
+        h, a = rng.choice(np.arange(1, 21), 2, replace=False)
+        y = rng.choice(3, p=true)
+        hg, ag = (2, 0) if y == 0 else (1, 1) if y == 1 else (0, 2)
+        date = (pd.Timestamp("2024-08-01") + pd.Timedelta(days=i // 10)).strftime("%Y-%m-%d")
+        con.execute("INSERT INTO matches(match_id, competition, season, match_date, home_team_id, away_team_id, status, fthg, ftag, source, first_seen, updated_at) VALUES(?,?,?,?,?,?,'finished',?,?,'t',?,?)",
+                    (i + 1, "E0", 2024, date, int(h), int(a), hg, ag, db.now(), db.now()))
+        con.execute("INSERT INTO predictions(match_id, model_version, purpose, created_at, data_cutoff, p_home, p_draw, p_away, lambda_home, lambda_away) VALUES(?,'m','backtest',?,?,?,?,?,1.4,1.1)",
+                    (i + 1, db.now(), date, *stated))
+
+
+def test_weakness_report_flags_overconfidence_but_not_calibrated_models(con, tmp_path):
+    from fie import forward
+    _scored_matches(con, (0.45, 0.27, 0.28), (0.45, 0.27, 0.28))
+    calibrated = forward.weakness_report(con)
+    assert calibrated["n"] == 1200
+    assert not [f["key"] for f in calibrated["findings"] if f["flagged"] and f["key"].startswith(("rate_", "fav_"))]
+    other = db.init(tmp_path / "over.db")
+    _scored_matches(other, (0.75, 0.15, 0.10), (0.50, 0.25, 0.25))
+    flagged = {f["key"] for f in forward.weakness_report(other)["findings"] if f["flagged"]}
+    assert {"rate_home", "fav_home_70"} <= flagged

@@ -284,6 +284,25 @@ input.input, select.input { background: var(--bg-elev); border: 1px solid var(--
 .feat-tag { font-size: 12px; color: var(--text-dim); }
 .follow-row { padding: 8px 0; border-bottom: 1px solid var(--border-soft); color: var(--text); gap: 10px; }
 .follow-row:hover { text-decoration: none; background: rgba(255,255,255,.02); }
+.trend-banner { border-left: 4px solid var(--info); }
+.trend-banner.ok { border-left-color: var(--ok); }
+.trend-banner.warn { border-left-color: var(--warn); }
+.trend-banner.bad { border-left-color: var(--danger); }
+.trend-banner h2 { font-size: 22px; margin: 4px 0 6px; }
+.trend-banner p { margin: 0; color: var(--text-dim); max-width: 80ch; }
+.trend-row { display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px 60px; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border-soft); font-size: 13px; }
+.trend-bar { height: 8px; background: var(--border-soft); border-radius: 4px; overflow: hidden; }
+.trend-bar span { display: block; height: 100%; background: var(--accent); }
+.weak-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.weak { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); display: flex; flex-direction: column; gap: 6px; }
+.weak.flagged { border-color: var(--danger); }
+.weak.thin { opacity: .7; }
+.weak-q { font-weight: 600; font-size: 13px; }
+.weak-v { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-dim); }
+.weak-v b { color: var(--text); }
+.decision { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 10px; align-items: start; padding: 8px 0; border-bottom: 1px solid var(--border-soft); font-size: 13px; }
+.decision .badge { justify-self: start; }
+.nav-section { margin: 14px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); }
 @media (max-width: 1400px) {
     .g-main-side { grid-template-columns: minmax(0, 1fr) 320px; }
 }
@@ -294,6 +313,7 @@ input.input, select.input { background: var(--bg-elev); border: 1px solid var(--
     .match-line .pbar { grid-column: 1 / -1; }
 }
 @media (max-width: 760px) {
+    .nav-section { display: none; }
     .featured { grid-template-columns: minmax(0, 1fr); }
     .fan-verdict h2 { font-size: 21px; }
     .fan-pct { font-size: 22px; }

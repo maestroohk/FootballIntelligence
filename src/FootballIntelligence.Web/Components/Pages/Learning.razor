@@ -1,0 +1,174 @@
+@page "/learning"
+@inherits FeedComponent
+@inject FootballQueries Football
+@inject ResearchQueries Research
+@inject OperationsQueries Ops
+
+<PageTitle>Learning · Football Intelligence</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Learning and performance</h1>
+        <p>Every forecast is stored before kick-off and never edited. After the final whistle it is scored against the verified result; the evidence decides whether a challenger model may replace the champion.</p>
+    </div>
+    <div class="row">
+        <button class="btn" @onclick='() => Ops.Enqueue("evaluate_forward")'>Evaluate now</button>
+    </div>
+</div>
+
+<div class="card trend-banner @trend.Css">
+    <div>
+        <div class="fan-kicker">System status</div>
+        <h2>@trend.Title</h2>
+        <p>@trend.Text</p>
+    </div>
+</div>
+
+<div class="grid g4">
+    <Kpi Label="Champion model" Value="@(champion is null ? "None" : Fmt.ModelLabel(champion))" Note="@(champion ?? "no trained champion on this computer")" />
+    <Kpi Label="Last evaluation" Value="@(weak is null ? "never" : Fmt.Ago(Str(weak.Value, "at")))" Note="@(weak is null ? "run Evaluate now" : $"{Num(weak.Value, "n"):N0} predictions scored")" />
+    <Kpi Label="Latest training" Value="@(trainedAt is null ? "never" : Fmt.Ago(trainedAt))" Note="@(postponed ?? "challenger research runs weekly when enough new results exist")" />
+    <Kpi Label="Next evaluation" Value="@NextCycle()" Note="results, scoring and drift checks run in each update cycle" />
+</div>
+
+<div class="grid g2">
+    <div class="card">
+        <div class="card-head"><h2>Track record</h2><span class="sub">latest stored prediction per match</span></div>
+        <table class="data">
+            <thead><tr><th></th><th class="num">Matches</th><th class="num">Most likely result happened</th><th class="num">Log loss</th></tr></thead>
+            <tbody>
+                @foreach (var (label, r) in new[] { ("Pre-match forecasts", forward), ("Historical re-forecasts (walk-forward)", backtest) })
+                {
+                    <tr><td>@label</td><td class="num">@r.N.ToString("N0")</td><td class="num">@(r.N == 0 ? "—" : Fmt.Pct((double)r.TopPickHits / r.N, 1))</td><td class="num">@Fmt.Num(r.LogLoss, 4)</td></tr>
+                }
+            </tbody>
+        </table>
+        <div class="small faint" style="margin-top:8px">Log loss rewards honest probabilities: lower is better, and always guessing a third each scores 1.0986. Hit rate alone can look good while probabilities are badly judged.</div>
+    </div>
+    <div class="card">
+        <div class="card-head"><h2>Trend by season</h2><span class="sub">log loss of stored predictions · longer bar is better</span></div>
+        @if (seasons.Count == 0) { <div class="empty">No scored predictions yet.</div> }
+        @foreach (var s in seasons)
+        {
+            var ll = s.GetProperty("log_loss").GetDouble();
+            <div class="trend-row">
+                <span>@s.GetProperty("season").GetInt32()/@((s.GetProperty("season").GetInt32() + 1) % 100)</span>
+                <span class="trend-bar"><span style="width:@BarWidth(ll)"></span></span>
+                <span class="num">@ll.ToString("F4", System.Globalization.CultureInfo.InvariantCulture)</span>
+                <span class="small faint">n=@s.GetProperty("n").GetInt64()</span>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head"><h2>Systematic weaknesses</h2><span class="sub">a finding is flagged only with at least @(weak is null ? 200 : Num(weak.Value, "min_n")) matches and a deviation beyond 2.5 standard errors</span></div>
+    @if (findings.Count == 0) { <div class="empty">Not evaluated yet.</div> }
+    <div class="weak-grid">
+        @foreach (var f in findings)
+        {
+            var flagged = f.GetProperty("flagged").GetBoolean();
+            var n = f.GetProperty("n").GetInt64();
+            var unit = f.GetProperty("unit").GetString();
+            <div class="weak @(flagged ? "flagged" : n < minN ? "thin" : "")">
+                <div class="weak-q">@f.GetProperty("question").GetString()</div>
+                <div class="weak-v">
+                    <span>expected <b>@Show(f.GetProperty("expected").GetDouble(), unit)</b></span>
+                    <span>observed <b>@Show(f.GetProperty("observed").GetDouble(), unit)</b></span>
+                </div>
+                <div class="small @(flagged ? "bad" : "faint")">@(flagged ? "Flagged: systematic difference" : n < minN ? $"Too few matches to judge (n={n})" : "No significant difference") · n=@n · z=@f.GetProperty("z").GetDouble().ToString("F1", System.Globalization.CultureInfo.InvariantCulture)</div>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="grid g2">
+    <div class="card">
+        <div class="card-head"><h2>Champion and challengers</h2><span class="sub">promotion needs a significant overall gain and no significantly worse primary league</span></div>
+        @if (promotions.Count == 0 && history.Count == 0) { <div class="empty">No promotion decisions on this computer yet. They are recorded each time challenger research runs.</div> }
+        @foreach (var p in promotions)
+        {
+            var decision = Str(p, "decision");
+            <div class="decision">
+                <span class="badge @(decision == "promoted" ? "ok" : decision == "rejected" ? "bad" : "")">@decision</span>
+                <div><b>@Fmt.ModelLabel(Str(p, "candidate"))</b>@(Str(p, "previous") is { } prev ? $" vs {Fmt.ModelLabel(prev)}" : "") <span class="small faint">@Fmt.Local(Str(p, "at"))</span>
+                    @if (Str(p, "reason") is { } reason) { <div class="small dim">@reason</div> }</div>
+            </div>
+        }
+        @if (history.Count > 1)
+        {
+            <button class="btn sm" style="margin-top:10px" @onclick='() => Ops.Enqueue("rollback")'>Roll back to previous champion</button>
+        }
+    </div>
+    <div class="card">
+        <div class="card-head"><h2>Experiments</h2><a href="lab" class="small">Model lab →</a></div>
+        @if (experiments.Count == 0) { <div class="empty">No experiments recorded on this computer.</div> }
+        @foreach (var e in experiments.Take(6))
+        {
+            <div class="decision">
+                <span class="badge">@(e.Decision ?? "open")</span>
+                <div><b>@e.Name</b> <span class="small faint">@Fmt.Local(e.CreatedAt)</span><div class="small dim">@e.Hypothesis</div></div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string? champion;
+    private string? trainedAt;
+    private string? postponed;
+    private JsonElement? weak;
+    private JsonElement? drift;
+    private List<JsonElement> findings = [];
+    private List<JsonElement> seasons = [];
+    private List<JsonElement> promotions = [];
+    private List<JsonElement> history = [];
+    private List<ExperimentRow> experiments = [];
+    private TrackRecord forward = new();
+    private TrackRecord backtest = new();
+    private long minN = 200;
+    private (string Title, string Text, string Css) trend;
+
+    protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.LatestJobChange != next.LatestJobChange;
+
+    protected override void Load()
+    {
+        champion = Research.Champion();
+        var summary = Research.KvJson("research_summary");
+        trainedAt = summary is { } s && s.TryGetProperty("finished_at", out var f) ? f.GetString() : null;
+        postponed = Research.KvJson("research_postponed") is { } pp ? $"last postponed: {Num(pp, "new_results")} of {Num(pp, "needed")} new results" : null;
+        weak = Research.KvJson("weaknesses");
+        drift = Research.KvJson("drift");
+        findings = weak is { } w ? w.GetProperty("findings").EnumerateArray().ToList() : [];
+        seasons = weak is { } w2 ? w2.GetProperty("by_season").EnumerateArray().ToList() : [];
+        minN = weak is { } w3 ? Num(w3, "min_n") : 200;
+        promotions = Research.KvJson("promotion_log") is { } pl ? pl.EnumerateArray().Reverse().Take(8).ToList() : [];
+        history = Research.KvJson("champion_history") is { } ch ? ch.EnumerateArray().ToList() : [];
+        experiments = Research.Experiments();
+        forward = Football.Record("forward");
+        backtest = Football.Record("backtest");
+        trend = Trend();
+    }
+
+    private (string, string, string) Trend()
+    {
+        if (champion is null)
+            return ("Not enough to judge on this computer", "No trained champion model is present here, so drift and promotion checks cannot run. Restore the prediction engine from Data health to resume learning.", "warn");
+        if (drift is { } d && d.GetProperty("alarm").GetBoolean())
+            return ("Deteriorating", $"Recent log loss {d.GetProperty("recent_log_loss").GetDouble():F4} is significantly worse than validation ({d.GetProperty("validation_log_loss").GetDouble():F4}). A challenger review is recommended.", "bad");
+        if (drift is { } d2)
+            return ("Stable", $"Recent log loss {d2.GetProperty("recent_log_loss").GetDouble():F4} is within the expected range of validation ({d2.GetProperty("validation_log_loss").GetDouble():F4}).", "ok");
+        return ("Awaiting evaluation", "The champion exists but has not been checked for drift yet.", "");
+    }
+
+    private string NextCycle()
+    {
+        var last = Research.KvJson("scheduler_last_cycle")?.GetString();
+        return Fmt.Since(last) is not { } since ? "when the worker starts" : since >= TimeSpan.FromHours(6) ? "due now" : $"in {Fmt.Duration(TimeSpan.FromHours(6) - since)}";
+    }
+
+    private static string? Str(JsonElement e, string k) => e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+    private static long Num(JsonElement e, string k) => e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt64() : 0;
+    private static string Show(double v, string? unit) => unit == "share" ? Fmt.Pct(v, 1) : v.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + (unit == "goals" ? " goals" : "");
+    private static string BarWidth(double ll) => (Math.Clamp((1.1 - ll) / 0.2, 0.02, 1) * 100).ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + "%";
+}

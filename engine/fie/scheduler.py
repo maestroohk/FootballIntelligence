@@ -5,6 +5,7 @@ from . import db, jobs
 
 CYCLE_HOURS = float(os.environ.get("FIE_CYCLE_HOURS", "6"))
 RESEARCH_DAYS = float(os.environ.get("FIE_RESEARCH_DAYS", "7"))
+RESEARCH_MIN_NEW = int(os.environ.get("FIE_RESEARCH_MIN_NEW", "300"))
 
 
 LIVE_POLL_SECONDS = float(os.environ.get("FIE_LIVE_POLL_SECONDS", "60"))
@@ -38,5 +39,10 @@ def tick(con):
     last_research = db.get_kv(con, "scheduler_last_research")
     if RESEARCH_DAYS > 0 and (last_research is None or now - datetime.fromisoformat(last_research) >= timedelta(days=RESEARCH_DAYS)):
         if last_research is not None:
+            new = con.execute("SELECT COUNT(*) FROM matches WHERE status='finished' AND updated_at > ?", (last_research,)).fetchone()[0]
+            if new < RESEARCH_MIN_NEW:
+                db.set_kv(con, "research_postponed", {"at": now.isoformat(), "new_results": new, "needed": RESEARCH_MIN_NEW})
+                db.set_kv(con, "scheduler_last_research", now.isoformat())
+                return
             jobs.enqueue(con, "research_full", {"refresh": True})
         db.set_kv(con, "scheduler_last_research", now.isoformat())

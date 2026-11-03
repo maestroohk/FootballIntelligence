@@ -188,6 +188,7 @@ def research_full(ctx, refresh=False, configs=None):
     db.set_kv(con, "gbm_importance", importance)
     selection = select_champion(results, comparisons, best_dc, best_xg)
     history = db.get_kv(con, "champion_history", [])
+    selection = league_guard(con, selection, history, oos)
     if not history or history[-1]["champion"] != selection["champion"]:
         history.append({"at": db.now(), "champion": selection["champion"], "reason": selection["reasons"][-1]})
         db.set_kv(con, "champion_history", history)
@@ -217,6 +218,36 @@ def select_champion(results, comparisons, best_dc, best_xg):
         else:
             reasons.append(f"{c} not promoted over {champion}: score NLL diff {cmp['mean_diff']:.4f}, CI {cmp['ci_low']:.4f}..{cmp['ci_high']:.4f}")
     return {"champion": champion, "reasons": reasons}
+
+
+def league_guard(con, selection, history, oos):
+    previous = history[-1]["champion"] if history else None
+    candidate = selection["champion"]
+    log = db.get_kv(con, "promotion_log", [])
+    entry = {"at": db.now(), "candidate": candidate, "previous": previous, "leagues": {}}
+    if previous is None or previous == candidate or previous not in oos:
+        entry["decision"] = "initial" if previous is None else "kept"
+        log.append(entry)
+        db.set_kv(con, "promotion_log", log[-50:])
+        return selection
+    worse = []
+    for league in PRIMARY:
+        cmp = backtest.compare(oos[candidate], oos[previous], "validation", [league], "log_loss")
+        entry["leagues"][league] = cmp
+        if cmp["ci_low"] > 0:
+            worse.append(league)
+    if worse:
+        entry["decision"] = "rejected"
+        entry["reason"] = f"{candidate} is significantly worse than {previous} in {', '.join(worse)} (league log loss, 95% CI above zero)"
+        selection = {"champion": previous, "reasons": selection["reasons"] + [entry["reason"] + "; champion kept"]}
+        db.notify(con, "warning", "Challenger rejected", entry["reason"])
+    else:
+        entry["decision"] = "promoted"
+        entry["reason"] = f"{candidate} beats {previous} overall and is not significantly worse in any primary league"
+        db.notify(con, "success", "New champion promoted", entry["reason"])
+    log.append(entry)
+    db.set_kv(con, "promotion_log", log[-50:])
+    return selection
 
 
 def register_versions(con, results, selection, best_dc, best_xg, best_elo):
@@ -280,9 +311,15 @@ def evaluate_forward(ctx):
     from . import forward
     ctx.stage("comparing stored forward predictions with results")
     perf = forward.evaluate_forward(ctx.con)
+    ctx.stage("looking for systematic weaknesses")
+    weak = forward.weakness_report(ctx.con)
+    flagged = [f["key"] for f in weak["findings"] if f["flagged"]]
+    if not db.get_kv(ctx.con, "research_summary"):
+        ctx.log("no champion model on this machine; drift check skipped", "warning")
+        return {"forward": perf, "weaknesses": flagged, "drift": "skipped: no champion"}
     ctx.stage("drift detection")
     drift = forward.drift_check(ctx.con)
-    return {"forward": perf, "drift_alarm": drift["alarm"], "recent_log_loss": drift["recent_log_loss"]}
+    return {"forward": perf, "weaknesses": flagged, "drift_alarm": drift["alarm"], "recent_log_loss": drift["recent_log_loss"]}
 
 
 @handler("daily_cycle")

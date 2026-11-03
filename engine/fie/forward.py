@@ -233,3 +233,82 @@ def drift_check(con, window=300, threshold=0.03):
     if alarm:
         db.notify(con, "warning", "Model drift alarm", f"{champ} recent log loss {mean_recent:.4f} vs validation {val:.4f}; challenger review recommended")
     return result
+
+
+def _finding(key, question, n, expected, observed, se, unit="share"):
+    z = (observed - expected) / se if se > 0 else 0.0
+    flagged = n >= 200 and abs(z) >= 2.5
+    return {"key": key, "question": question, "n": int(n), "expected": float(expected), "observed": float(observed), "z": float(z), "flagged": bool(flagged), "unit": unit}
+
+
+def weakness_report(con, min_n=200):
+    d = pd.read_sql_query("""
+        SELECT p.match_id, p.purpose, p.model_version, p.p_home, p.p_draw, p.p_away, p.lambda_home lh, p.lambda_away la,
+               m.competition, m.season, m.match_date, m.home_team_id home, m.away_team_id away, m.fthg hg, m.ftag ag
+        FROM predictions p JOIN matches m ON m.match_id=p.match_id
+        WHERE m.status='finished' AND m.fthg IS NOT NULL AND p.model_version NOT LIKE 'bookmaker%'
+          AND p.prediction_id NOT IN (SELECT prediction_id FROM prediction_flags)
+          AND p.prediction_id = (SELECT MAX(p2.prediction_id) FROM predictions p2 WHERE p2.match_id=p.match_id AND p2.purpose=p.purpose AND p2.model_version NOT LIKE 'bookmaker%')""", con)
+    out = {"at": db.now(), "n": int(len(d)), "min_n": min_n, "findings": [], "by_league": [], "by_season": [], "sources": {}}
+    if d.empty:
+        db.set_kv(con, "weaknesses", out)
+        return out
+    out["sources"] = {k: int(v) for k, v in d["purpose"].value_counts().items()}
+    d["date"] = pd.to_datetime(d["match_date"])
+    y = metrics.outcome_index(d["hg"], d["ag"])
+    p = d[["p_home", "p_draw", "p_away"]].to_numpy()
+    d["ll"] = metrics.log_loss_rows(p, y)
+    for i, (key, label) in enumerate((("home", "home wins"), ("draw", "draws"), ("away", "away wins"))):
+        pred = p[:, i]
+        obs = (y == i).astype(float)
+        out["findings"].append(_finding(f"rate_{key}", f"Are {label} predicted at the right rate?", len(d), pred.mean(), obs.mean(), np.sqrt((pred * (1 - pred)).sum()) / len(d)))
+    fav_home = d["p_home"] >= d["p_away"]
+    fav_p = np.where(fav_home, d["p_home"], d["p_away"])
+    fav_won = np.where(fav_home, y == 0, y == 2).astype(float)
+    for lo, hi in ((0.5, 0.6), (0.6, 0.7), (0.7, 1.01)):
+        for side, mask in (("home", fav_home), ("away", ~fav_home)):
+            m = mask & (fav_p >= lo) & (fav_p < hi)
+            if m.sum() == 0:
+                continue
+            fp = fav_p[m]
+            out["findings"].append(_finding(f"fav_{side}_{int(lo * 100)}", f"Are {side} favourites at {int(lo * 100)}–{min(100, int(hi * 100))}% too confident?", m.sum(), fp.mean(), fav_won[m].mean(), np.sqrt((fp * (1 - fp)).sum()) / m.sum()))
+    g = d.dropna(subset=["lh", "la"])
+    if len(g):
+        actual = (g["hg"] + g["ag"]).to_numpy(float)
+        expected = (g["lh"] + g["la"]).to_numpy(float)
+        out["findings"].append(_finding("goals_total", "Are total goals forecast too high or too low?", len(g), expected.mean(), actual.mean(), np.sqrt(expected.sum()) / len(g), "goals"))
+    seasons = pd.read_sql_query("SELECT DISTINCT competition, season, home_team_id team FROM matches UNION SELECT DISTINCT competition, season, away_team_id FROM matches", con)
+    present = set(zip(seasons["competition"], seasons["season"], seasons["team"]))
+    known = set(zip(seasons["competition"], seasons["season"]))
+    for side, team_col, own, opp in (("home", "home", "lh", "la"), ("away", "away", "la", "lh")):
+        prev_known = [(c, s - 1) in known for c, s in zip(d["competition"], d["season"])]
+        promoted = np.array([pk and (c, s - 1, t) not in present for pk, c, s, t in zip(prev_known, d["competition"], d["season"], d[team_col])])
+        m = promoted & d[own].notna().to_numpy()
+        if m.sum():
+            goals = np.where(side == "home", d["hg"], d["ag"])[m].astype(float)
+            exp = d[own].to_numpy(float)[m]
+            out["findings"].append(_finding(f"promoted_{side}", f"Are newly promoted teams' goals forecast correctly when playing {side}?", m.sum(), exp.mean(), goals.mean(), np.sqrt(exp.sum()) / m.sum(), "goals"))
+    long = pd.concat([d[["match_id", "date", "home"]].rename(columns={"home": "team"}), d[["match_id", "date", "away"]].rename(columns={"away": "team"})])
+    allm = pd.read_sql_query("SELECT match_date, home_team_id team FROM matches WHERE status='finished' UNION ALL SELECT match_date, away_team_id FROM matches WHERE status='finished'", con)
+    allm["date"] = pd.to_datetime(allm["match_date"])
+    allm = allm.sort_values("date")
+    allm["prev"] = allm.groupby("team")["date"].shift()
+    gaps = long.merge(allm[["team", "date", "prev"]], on=["team", "date"], how="left")
+    gaps["gap"] = (gaps["date"] - gaps["prev"]).dt.days
+    rested = gaps[(gaps["gap"] >= 13) & (gaps["gap"] <= 21)].groupby("match_id").size()
+    m = d["match_id"].isin(rested.index).to_numpy()
+    if m.sum() and (~m).sum():
+        a, b = d["ll"][m], d["ll"][~m]
+        out["findings"].append(_finding("after_break", "Is the model worse after a 13–21 day break (e.g. international breaks)?", m.sum(), b.mean(), a.mean(), np.sqrt(a.var(ddof=1) / len(a) + b.var(ddof=1) / len(b)), "log loss"))
+    for c, grp in d.groupby("competition"):
+        out["by_league"].append({"competition": c, "n": int(len(grp)), "log_loss": float(grp["ll"].mean())})
+    for s, grp in d.groupby("season"):
+        out["by_season"].append({"season": int(s), "n": int(len(grp)), "log_loss": float(grp["ll"].mean()), "top_hit": float((grp[["p_home", "p_draw", "p_away"]].to_numpy().argmax(axis=1) == metrics.outcome_index(grp["hg"], grp["ag"])).mean())})
+    flagged = [f for f in out["findings"] if f["flagged"]]
+    prev = db.get_kv(con, "weaknesses")
+    prev_flags = {f["key"] for f in (prev or {}).get("findings", []) if f.get("flagged")}
+    new = [f for f in flagged if f["key"] not in prev_flags]
+    db.set_kv(con, "weaknesses", out)
+    if new:
+        db.notify(con, "warning", "Systematic weakness detected", "; ".join(f["question"] for f in new[:3]))
+    return out
