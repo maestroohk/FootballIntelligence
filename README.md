@@ -36,55 +36,17 @@ football-data.org ───┘        v                           │
 
 ## First-time setup
 
-```bash
-python -m venv .venv
+On Windows, one script restores dependencies, builds, creates the database and regenerates all data and models from the public sources:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File setup.ps1
 ```
 
-```bash
-.venv/Scripts/python -m pip install -r engine/requirements.txt
-```
+`setup.ps1 -SkipData` only installs and builds; `setup.ps1 -Quick` runs a 5-minute pipeline smoke test on the Premier League 2005/06–2013/14.
 
-Build the database and models (each command runs one job in the foreground; the same jobs can be queued from the dashboard):
+The full run executes these jobs in order (each can also be run alone with `cd engine` then `../.venv/Scripts/python -m fie run <job>`, or queued from the dashboard): `ingest_history`, `ingest_statsbomb`, `ingest_fixtures`, `research_full`, `expand_coverage`, `publish_predictions`, `train_inplay`, `experiments` (half-time recalibration), `final_test`, `predict_upcoming`, `build_report`.
 
-```bash
-cd engine && ../.venv/Scripts/python -m fie run ingest_history
-```
-
-```bash
-cd engine && ../.venv/Scripts/python -m fie run ingest_statsbomb
-```
-
-```bash
-cd engine && ../.venv/Scripts/python -m fie run research_full
-```
-
-```bash
-cd engine && ../.venv/Scripts/python -m fie run publish_predictions
-```
-
-```bash
-cd engine && ../.venv/Scripts/python -m fie run train_inplay
-```
-
-```bash
-cd engine && ../.venv/Scripts/python -m fie run experiments
-```
-
-```bash
-cd engine && ../.venv/Scripts/python -m fie run final_test
-```
-
-```bash
-cd engine && ../.venv/Scripts/python -m fie run expand_coverage
-```
-
-```bash
-cd engine && ../.venv/Scripts/python -m fie run build_report
-```
-
-`research_full` and the shared models train on the original 11 divisions; `expand_coverage` adds ratings and predictions for the seven further divisions without retraining the champion. `final_test` refuses to run twice unless forced.
-
-`ingest_history` downloads about 400 CSV files for 18 divisions (~10 minutes). `ingest_statsbomb` streams 1,551 event files and keeps only compact tables (~15 minutes). `research_full` runs every walk-forward model with three worker processes (~25 minutes on a 4-thread budget).
+Measured on this project's development laptop (i7-13650HX, 4-thread budget): about 15 minutes of downloads, 50 minutes for `research_full`, and 1.5–2 hours in total; about 2 GB of disk under `data/`. No GPU is needed. `research_full` and the shared models train on the original 11 divisions; `expand_coverage` adds the seven further divisions without retraining the champion. `final_test` refuses to run twice unless forced. The pipeline is deterministic: an isolated from-scratch rerun reproduced every model's validation results within 2e-8.
 
 ## Run the application
 
@@ -133,8 +95,33 @@ Teams are shown with a generated shield in consistent team colours. To show offi
 | `FIE_CYCLE_HOURS` | 6 | Update-cycle interval (0 disables). |
 | `FIE_RESEARCH_DAYS` | 7 | Challenger research interval (0 disables). |
 | `FIE_DB` | `data/football.db` | Database path. |
+| `FIE_RESEARCH_PROCESSES` | CPU threads ÷ 4, between 1 and 3 | Parallel processes for walk-forward research. |
+| `FIE_CACHE` | `data/cache` | Model cache directory (lets you run isolated experiments). |
+| `FIE_LIVE_POLL_SECONDS` | 60 | Live-provider polling interval when an API key is set. |
 
 `appsettings.json` → `Engine` holds the database, Python and engine paths and `StartWorker`.
+
+## Continuing on another Windows laptop
+
+1. Install Git, the .NET 10 SDK and Python 3.12 (the `py` launcher is used if present).
+2. Clone and set up:
+   ```powershell
+   git clone https://github.com/maestroohk/FootballIntelligence.git
+   cd FootballIntelligence
+   powershell -ExecutionPolicy Bypass -File setup.ps1
+   ```
+3. Optional secrets go in environment variables, never in the repository, for example `setx FOOTBALL_DATA_API_KEY "<your-key>"`.
+4. Size the compute budget to the machine with `FIE_THREADS`, `FIE_MAX_JOBS` and `FIE_RESEARCH_PROCESSES` (defaults are conservative because the original laptop overheated under sustained load).
+5. Start the app with `dotnet run --project src/FootballIntelligence.Web --urls http://localhost:5281` and run the tests with `.venv/Scripts/python -m pytest -q`.
+
+Nothing in `data/` is in Git: the database, raw downloads and model caches are rebuilt by `setup.ps1`. Model versions, evaluation results and every experiment are recorded in `docs/RESULTS.md` (generated), with the narrative in `docs/REPORT.md`, methods and sources in `docs/RESEARCH.md` and the build timeline in `docs/SESSION_LOG.md`. The current champion is `ensemble@v3`: a learned blend of Dixon–Coles, a shot-xG Dixon–Coles variant, Elo and LightGBM goal rates.
+
+Current development priorities:
+- Connect a live provider key and validate live tracking against real matches.
+- Obtain confirmed lineups and re-test the starting-XI adjustment on more seasons.
+- Add licensed crest files under `wwwroot/crests/`.
+- Champions League support, which needs a cross-country strength scale.
+- Forward-performance monitoring once stored forward predictions have results.
 
 ## Tests
 
