@@ -100,31 +100,37 @@ FORWARD_HORIZON_DAYS = 10
 KICKOFF_SAFETY_HOURS = 3.0
 
 
-def kickoff_utc_upper_bound(match_date, kickoff):
+MAX_UTC_OFFSET_HOURS = {"ENG": 1, "SCO": 1, "POR": 1, "ESP": 2, "GER": 2, "ITA": 2, "FRA": 2, "NED": 2, "BEL": 2, "GRE": 3, "TUR": 3}
+
+
+def kickoff_utc_upper_bound(match_date, kickoff, competition=None):
     from datetime import datetime, timezone
+    from .config import COMPETITIONS
     hhmm = (kickoff or "00:00").strip()[:5]
     try:
         local = datetime.fromisoformat(f"{match_date}T{hhmm}")
     except ValueError:
         local = datetime.fromisoformat(f"{match_date}T00:00")
-    return (local - timedelta(hours=KICKOFF_SAFETY_HOURS)).replace(tzinfo=timezone.utc)
+    country = COMPETITIONS[competition][1] if competition in COMPETITIONS else None
+    offset = MAX_UTC_OFFSET_HOURS.get(country, 3)
+    return (local - timedelta(hours=KICKOFF_SAFETY_HOURS + offset)).replace(tzinfo=timezone.utc)
 
 
-def safely_before_kickoff(match_date, kickoff):
+def safely_before_kickoff(match_date, kickoff, competition=None):
     from datetime import datetime, timezone
-    return datetime.now(timezone.utc) < kickoff_utc_upper_bound(match_date, kickoff if kickoff else "00:00")
+    return datetime.now(timezone.utc) < kickoff_utc_upper_bound(match_date, kickoff if kickoff else "00:00", competition)
 
 
 def flag_late_forward_predictions(con):
     from datetime import datetime
-    rows = con.execute("""SELECT p.prediction_id, p.created_at, m.match_date, m.kickoff FROM predictions p JOIN matches m ON m.match_id=p.match_id
+    rows = con.execute("""SELECT p.prediction_id, p.created_at, m.match_date, m.kickoff, m.competition FROM predictions p JOIN matches m ON m.match_id=p.match_id
                           WHERE p.purpose='forward' AND p.prediction_id NOT IN (SELECT prediction_id FROM prediction_flags WHERE flag='after_kickoff_possible')""").fetchall()
     flagged = 0
     for r in rows:
         created = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00"))
-        if created >= kickoff_utc_upper_bound(r["match_date"], r["kickoff"]):
+        if created >= kickoff_utc_upper_bound(r["match_date"], r["kickoff"], r["competition"]):
             con.execute("INSERT OR IGNORE INTO prediction_flags VALUES(?,?,?,?)",
-                        (r["prediction_id"], "after_kickoff_possible", "stored within 3 hours of or after the listed local kick-off; excluded from forward evaluation", db.now()))
+                        (r["prediction_id"], "after_kickoff_possible", "stored within 3 hours of or after kick-off (listed local time, latest UTC offset for the country); excluded from forward evaluation", db.now()))
             flagged += 1
     return flagged
 
@@ -138,7 +144,7 @@ def publish_forward(con, oos_champion, version, components=None, horizon_days=FO
     for r in sched.itertuples():
         if status.get(r.match_id) != "scheduled":
             continue
-        if not safely_before_kickoff(str(pd.Timestamp(r.date).date()), kickoffs.get(r.match_id)):
+        if not safely_before_kickoff(str(pd.Timestamp(r.date).date()), kickoffs.get(r.match_id), r.competition):
             continue
         exists = con.execute("SELECT 1 FROM predictions WHERE match_id=? AND model_version=? AND purpose='forward'", (int(r.match_id), version)).fetchone()
         if exists:

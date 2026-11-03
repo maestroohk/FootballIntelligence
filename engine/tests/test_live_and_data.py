@@ -228,3 +228,13 @@ def test_weakness_report_flags_overconfidence_but_not_calibrated_models(con, tmp
     _scored_matches(other, (0.75, 0.15, 0.10), (0.50, 0.25, 0.25))
     flagged = {f["key"] for f in forward.weakness_report(other)["findings"] if f["flagged"]}
     assert {"rate_home", "fav_home_70"} <= flagged
+
+
+def test_kickoff_guard_uses_the_leagues_utc_offset():
+    from datetime import datetime, timedelta, timezone
+    from fie import forward
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    istanbul_local = now + timedelta(hours=4)
+    assert not forward.safely_before_kickoff(istanbul_local.strftime("%Y-%m-%d"), istanbul_local.strftime("%H:%M"), "T1")
+    london_local = now + timedelta(hours=5)
+    assert forward.safely_before_kickoff(london_local.strftime("%Y-%m-%d"), london_local.strftime("%H:%M"), "E0")
