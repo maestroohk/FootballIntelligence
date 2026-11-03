@@ -190,6 +190,20 @@ public class FootballQueries(Database db)
         ORDER BY m.match_date DESC, m.match_id DESC LIMIT @limit OFFSET @offset
         """, new { purpose, competition, team, hit, limit, offset }).ToList();
 
+    public List<MatchRow> TeamSettled(long teamId) => db.Query<MatchRow>("""
+        SELECT m.match_id, m.home_team_id, m.away_team_id, m.fthg, m.ftag, p.p_home, p.p_draw, p.p_away, p.lambda_home, p.lambda_away, p.purpose
+        FROM matches m JOIN predictions p ON p.prediction_id = (
+            SELECT p2.prediction_id FROM predictions p2 WHERE p2.match_id=m.match_id AND p2.model_version NOT LIKE 'bookmaker%'
+              AND p2.prediction_id NOT IN (SELECT prediction_id FROM prediction_flags)
+            ORDER BY p2.purpose='forward' DESC, p2.prediction_id DESC LIMIT 1)
+        WHERE (m.home_team_id=@teamId OR m.away_team_id=@teamId) AND m.status='finished' AND m.fthg IS NOT NULL
+        """, new { teamId }).ToList();
+
+    public (double Gf, double Ga, long N) LeagueAverages(string competition, long season) => db.Single<(double, double, long)>("""
+        SELECT COALESCE(AVG(fthg + ftag) / 2.0, 0), COALESCE(AVG(fthg + ftag) / 2.0, 0), COUNT(*) FROM matches
+        WHERE competition=@competition AND season=@season AND status='finished' AND fthg IS NOT NULL
+        """, new { competition, season });
+
     public List<string> Competitions() => db.Query<string>("SELECT code FROM competitions ORDER BY tier, code").ToList();
 
     public List<PlayerSummary> Players(string? search, string? team, string? position, int limit) => db.Query<PlayerSummary>("""

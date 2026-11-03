@@ -86,8 +86,11 @@
     private List<MatchRow> rows = [];
     private (long Total, long Hits, double? MeanActual, double? LogLoss) summary;
 
+    [SupplyParameterFromQuery(Name = "team")] public string? TeamQuery { get; set; }
+
     protected override void OnInitialized()
     {
+        if (!string.IsNullOrWhiteSpace(TeamQuery)) team = TeamQuery;
         competitions = Football.Competitions();
         Load();
         if (summary.Total == 0)

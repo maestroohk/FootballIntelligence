@@ -2,6 +2,7 @@
 @inherits FeedComponent
 @inject FootballQueries Football
 @inject IJSRuntime JS
+@inject ResearchQueries Research
 
 <PageTitle>@(team?.Name ?? "Team") · Football Intelligence</PageTitle>
 
@@ -101,6 +102,68 @@
     </div>
 </div>
 
+<div class="grid g3">
+    <div class="card">
+        <div class="card-head"><h2>Scoring patterns</h2><span class="sub">@team.Season/@(((team.Season ?? 0) + 1) % 100) league matches · descriptive</span></div>
+        @if (season.Count == 0)
+        {
+            <div class="empty">No league results this season.</div>
+        }
+        else
+        {
+            var n = (double)season.Count;
+            <div class="fan-facts">
+                <div><span class="value">@Fmt.Pct(season.Count(m => GoalsFor(m) > 0) / n)</span><span class="label">matches with a goal</span></div>
+                <div><span class="value">@Fmt.Pct(season.Count(m => GoalsAgainst(m) == 0) / n)</span><span class="label">clean sheets</span></div>
+                <div><span class="value">@Fmt.Pct(season.Count(m => GoalsFor(m) > 0 && GoalsAgainst(m) > 0) / n)</span><span class="label">both teams scored</span></div>
+                <div><span class="value">@Fmt.Pct(season.Count(m => GoalsFor(m) + GoalsAgainst(m) >= 3) / n)</span><span class="label">3 or more goals</span></div>
+            </div>
+            <ul class="fan-reasons" style="margin-top:10px">
+                @foreach (var (kind, text) in Traits()) { <li class="@kind">@text</li> }
+            </ul>
+            <div class="small faint" style="margin-top:6px">Counts from actual results, not model outputs. Small samples early in a season swing a lot.</div>
+        }
+    </div>
+    <div class="card">
+        <div class="card-head"><h2>Model ratings</h2><span class="sub">what the prediction engine uses</span></div>
+        @if (strength is { } st)
+        {
+            <div class="fan-facts">
+                <div><span class="value">@st.Rank / @st.Of</span><span class="label">overall rank in @Fmt.Country(team.Competition ?? "")</span></div>
+                <div><span class="value">@Fmt.Signed(st.Attack, 2)</span><span class="label">attack (0 = average)</span></div>
+                <div><span class="value">@Fmt.Signed(st.Defence, 2)</span><span class="label">defence (higher concedes less)</span></div>
+            </div>
+            <div class="small faint" style="margin-top:8px">Dixon–Coles strengths fitted on time-weighted results across all divisions of the country, log scale.</div>
+        }
+        else
+        {
+            <div class="empty">The model's team ratings are not available on this computer. They are produced by the prediction engine's update cycle.</div>
+        }
+    </div>
+    <div class="card">
+        <div class="card-head"><h2>How the forecasts did</h2><a class="small" href="history?team=@Uri.EscapeDataString(team.Name)">History →</a></div>
+        @if (settled.Count == 0)
+        {
+            <div class="empty">No scored forecasts for this team yet.</div>
+        }
+        else
+        {
+            var hits = settled.Count(m => Hit(m));
+            var withGoals = settled.Where(m => m.LambdaHome is not null).ToList();
+            <div class="fan-facts">
+                <div><span class="value">@settled.Count</span><span class="label">matches scored</span></div>
+                <div><span class="value">@Fmt.Pct((double)hits / settled.Count)</span><span class="label">most likely result happened</span></div>
+                <div><span class="value">@Fmt.Pct(settled.Average(m => ActualP(m)))</span><span class="label">average chance given to what happened</span></div>
+                @if (withGoals.Count > 0)
+                {
+                    <div><span class="value">@withGoals.Average(m => Expected(m)).ToString("F2", System.Globalization.CultureInfo.InvariantCulture) v @withGoals.Average(m => (double)GoalsFor(m)).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)</span><span class="label">goals per game: expected v actual</span></div>
+                }
+            </div>
+            <div class="small faint" style="margin-top:8px">Uses the forecast stored before each match (pre-match when available, otherwise the historical re-forecast).</div>
+        }
+    </div>
+</div>
+
 @code {
     [Parameter] public long Id { get; set; }
 
@@ -110,6 +173,9 @@
     private List<MatchRow> season = [];
     private List<StandingRow> table = [];
     private StandingRow? me;
+    private List<MatchRow> settled = [];
+    private (double Gf, double Ga, long N) league;
+    private (double Attack, double Defence, int Rank, int Of)? strength;
     private bool following;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -152,9 +218,41 @@
         season = results.Where(m => m.Season == team.Season && m.Competition == team.Competition).ToList();
         table = team.Competition is null || team.Season is null ? [] : Football.Standings(team.Competition, team.Season.Value);
         me = table.FirstOrDefault(r => r.TeamId == Id);
+        settled = Football.TeamSettled(Id);
+        league = team.Competition is null || team.Season is null ? (0, 0, 0) : Football.LeagueAverages(team.Competition, team.Season.Value);
+        strength = null;
+        if (Research.KvJson("team_strengths") is { } root)
+            foreach (var country in root.EnumerateObject())
+            {
+                var list = country.Value.GetProperty("teams").EnumerateArray().ToList();
+                var i = list.FindIndex(t => t.GetProperty("team_id").GetInt64() == Id);
+                if (i >= 0) strength = (list[i].GetProperty("attack").GetDouble(), list[i].GetProperty("defence").GetDouble(), i + 1, list.Count);
+            }
     }
 
     private long GoalsFor(MatchRow m) => (m.HomeTeamId == Id ? m.Fthg : m.Ftag) ?? 0;
     private long GoalsAgainst(MatchRow m) => (m.HomeTeamId == Id ? m.Ftag : m.Fthg) ?? 0;
+    private double ActualP(MatchRow m) => (m.Fthg > m.Ftag ? m.PHome : m.Fthg == m.Ftag ? m.PDraw : m.PAway) ?? 0;
+    private bool Hit(MatchRow m) => ActualP(m) >= Math.Max(m.PHome ?? 0, Math.Max(m.PDraw ?? 0, m.PAway ?? 0));
+    private double Expected(MatchRow m) => (m.HomeTeamId == Id ? m.LambdaHome : m.LambdaAway) ?? 0;
+
+    private IEnumerable<(string, string)> Traits()
+    {
+        if (league.N < 20 || season.Count < 5) { yield return ("info", "Too few matches this season to compare with the league average."); yield break; }
+        var gf = season.Average(m => (double)GoalsFor(m));
+        var ga = season.Average(m => (double)GoalsAgainst(m));
+        var avg = league.Gf;
+        string F(double v) => v.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+        yield return (gf >= avg * 1.15 ? "ok" : gf <= avg * 0.85 ? "warn" : "info", $"Scoring {F(gf)} a game against a league average of {F(avg)}" + (gf >= avg * 1.15 ? ": a strength." : gf <= avg * 0.85 ? ": below average." : ": about average."));
+        yield return (ga <= avg * 0.85 ? "ok" : ga >= avg * 1.15 ? "warn" : "info", $"Conceding {F(ga)} a game against {F(avg)}" + (ga <= avg * 0.85 ? ": a strong defence." : ga >= avg * 1.15 ? ": a weakness." : ": about average."));
+        var home = season.Where(m => m.HomeTeamId == Id).ToList();
+        var away = season.Where(m => m.AwayTeamId == Id).ToList();
+        if (home.Count >= 3 && away.Count >= 3)
+        {
+            double Ppg(List<MatchRow> l) => l.Average(m => Outcome(m) == "W" ? 3.0 : Outcome(m) == "D" ? 1.0 : 0.0);
+            yield return ("info", $"{F(Ppg(home))} points a game at home and {F(Ppg(away))} away.");
+        }
+    }
+
     private string Outcome(MatchRow m) => GoalsFor(m) > GoalsAgainst(m) ? "W" : GoalsFor(m) == GoalsAgainst(m) ? "D" : "L";
 }

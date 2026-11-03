@@ -42,6 +42,7 @@
         <div class="card">
             <div class="card-head"><h2>Head to head</h2><span class="sub">last @h2h.Count meetings</span></div>
             @if (h2h.Count == 0) { <div class="empty">No previous meetings in the database.</div> }
+            @if (h2h.Count > 0) { <div class="small faint" style="margin-bottom:6px">Shown for interest. Past meetings are not a separate model input, and a few games between two teams, often with different players and managers, say little about this one.</div> }
             @foreach (var m in h2h)
             {
                 <a class="spread small" href="matches/@m.MatchId" style="padding:6px 0;border-bottom:1px solid var(--border-soft);color:var(--text)">
