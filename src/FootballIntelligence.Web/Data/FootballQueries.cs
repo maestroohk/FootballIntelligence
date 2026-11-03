@@ -167,7 +167,18 @@ public class FootballQueries(Database db)
         ORDER BY SUM(a.xg)+SUM(a.xa) DESC LIMIT @limit
         """, new { search, team, position, limit }).ToList();
 
-    public List<TeamTactics> TeamTactics() => db.Query<TeamTactics>("""
+    private Tuple<long, List<TeamTactics>>? tacticsCache;
+
+    public List<TeamTactics> TeamTactics()
+    {
+        var processed = db.Single<long>("SELECT COUNT(*) FROM sb_matches WHERE processed=1");
+        if (tacticsCache is { } c && c.Item1 == processed) return c.Item2;
+        var rows = LoadTeamTactics();
+        tacticsCache = Tuple.Create(processed, rows);
+        return rows;
+    }
+
+    private List<TeamTactics> LoadTeamTactics() => db.Query<TeamTactics>("""
         WITH sides AS (
             SELECT sb_match_id, 'home' side, home_name team, competition FROM sb_matches WHERE processed=1
             UNION ALL SELECT sb_match_id, 'away', away_name, competition FROM sb_matches WHERE processed=1),
