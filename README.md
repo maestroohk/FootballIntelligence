@@ -145,6 +145,40 @@ Current development priorities:
 - Champions League support, which needs a cross-country strength scale.
 - Forward-performance monitoring once stored forward predictions have results.
 
+## Profiles
+
+`FIE_PROFILE` selects how much work this machine does; the code is the same everywhere.
+
+| | `light` (development laptop) | `full` (default, research machine) |
+|---|---|---|
+| Threads / concurrent jobs | 2 / 1 | 4 / 2 |
+| Update cycle | every 24 h, no football-data.co.uk downloads | every 6 h with result downloads |
+| Scheduled challenger research | off | weekly when enough new results exist |
+| Heavy jobs (`research_full`, `ingest_history`, `final_test`, `train_inplay`, …) | refused unless queued with `{"allow_heavy": true}` | allowed |
+
+Set it once per machine, for example `setx FIE_PROFILE light`. The web app passes it to the worker it starts and shows it in the sidebar.
+
+## Validating on the research machine
+
+Stop the app first (the build replaces its executable), then from the repository root:
+
+```powershell
+git pull --ff-only
+powershell -ExecutionPolicy Bypass -File validate.ps1             # checks only, never retrains
+powershell -ExecutionPolicy Bypass -File validate.ps1 -Research   # also runs the research pipeline
+powershell -ExecutionPolicy Bypass -File validate.ps1 -Start      # then starts the app
+```
+
+`validate.ps1` installs the pinned packages, builds the web app, runs the engine tests and then `python -m fie doctor`, which:
+
+- checks package versions, database integrity and dataset/model inventory, and that the model caches load;
+- rehearses schema migrations on an empty copy of the schema and, only if something would change, backs up the database before migrating (`--no-migrate` skips this);
+- checks up to 20,000 stored predictions: 1X2 sums to 1, 1X2 matches the Dixon–Coles score matrix, stored markets agree, no data cutoff after the match date, no unflagged forward prediction too close to kick-off;
+- with `--research`, runs `research_full` (reusing caches), `final_test` (skipped if it has already run once), `train_inplay`, `predict_upcoming`, `evaluate_forward` and `build_report`, then re-checks the predictions;
+- writes `data/reports/validation-<time>.md` listing what passed, failed or was not validated.
+
+Browser checklist after `-Start`: Overview shows featured predictions; a match page shows the same home/draw/away figures in Fan and Analyst mode; a finished match shows the final-score comparison; Learning shows a champion, a drift status and promotion decisions; Model lab shows comparison cards; Performance and Prediction history list scored forecasts; the Live tracker can start a REPLAY; Jobs shows the update cycle succeeding.
+
 ## Tests
 
 ```bash

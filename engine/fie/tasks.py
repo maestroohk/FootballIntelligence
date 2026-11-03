@@ -329,8 +329,13 @@ def evaluate_forward(ctx):
 
 @handler("daily_cycle")
 def daily_cycle(ctx, trigger="manual"):
-    ctx.stage("ingesting current-season results")
-    res = ingest_fdco.ingest_history(ctx.con, seasons=[CURRENT_SEASON_PUBLISH], progress=lambda d, t, s: ctx.progress(d, t, s))
+    from .config import LIGHT
+    if LIGHT:
+        ctx.log("light profile: football-data.co.uk results download skipped", "info")
+        res = {}
+    else:
+        ctx.stage("ingesting current-season results")
+        res = ingest_fdco.ingest_history(ctx.con, seasons=[CURRENT_SEASON_PUBLISH], progress=lambda d, t, s: ctx.progress(d, t, s))
     ctx.stage("ingesting fixtures")
     try:
         fx = ingest_fdco.ingest_fixtures(ctx.con)

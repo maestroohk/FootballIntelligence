@@ -10,6 +10,8 @@ public class EngineOptions
     public string PythonPath { get; set; } = "../../.venv/Scripts/python.exe";
     public string EngineDirectory { get; set; } = "../../engine";
     public bool StartWorker { get; set; } = true;
+    public string Profile { get; set; } = Environment.GetEnvironmentVariable("FIE_PROFILE") ?? "full";
+    public bool Light => string.Equals(Profile, "light", StringComparison.OrdinalIgnoreCase);
 }
 
 public class Database

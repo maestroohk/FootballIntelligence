@@ -23,6 +23,9 @@ def main():
     enq.add_argument("kind")
     enq.add_argument("--args", default="{}")
     sub.add_parser("assets")
+    doc = sub.add_parser("doctor")
+    doc.add_argument("--research", action="store_true")
+    doc.add_argument("--no-migrate", action="store_true")
     ex = sub.add_parser("bundle-export")
     ex.add_argument("target")
     ver = sub.add_parser("bundle-verify")
@@ -42,6 +45,9 @@ def main():
     elif args.cmd == "worker":
         db.init()
         jobs.worker_loop(scheduler=scheduler.tick)
+    elif args.cmd == "doctor":
+        from . import doctor
+        sys.exit(doctor.run(research=args.research, migrate=not args.no_migrate))
     elif args.cmd in ("assets", "bundle-export", "bundle-verify", "bundle-import"):
         from . import bundle
         if args.cmd == "assets":

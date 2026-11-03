@@ -3,6 +3,7 @@
 @inject ChangeFeed Feed
 @inject OperationsQueries Ops
 @inject EngineSupervisor Supervisor
+@inject Database Db
 @inject ViewMode Mode
 @inject IJSRuntime JS
 
@@ -30,6 +31,7 @@
             <div class="row" style="gap:6px"><span class="dot @(worker.Alive ? "ok" : "bad")"></span>Engine worker @(worker.Alive ? "online" : "offline")</div>
             <div>Heartbeat: @(worker.LastHeartbeat is null ? "never" : Fmt.Ago(worker.LastHeartbeat.Value.ToString("o")))</div>
             @if (Supervisor.LastError is not null) { <div class="bad">@Supervisor.LastError</div> }
+            <div title="@(Db.Options.Light ? "Light development profile: no historical downloads or automatic research" : "Full research profile")">Profile: @(Db.Options.Light ? "light development" : "full research")</div>
             <div style="margin-top:6px">Data: football-data.co.uk, StatsBomb Open Data</div>
         </div>
     </aside>

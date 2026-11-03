@@ -74,6 +74,7 @@ public class EngineSupervisor(Database db, ILogger<EngineSupervisor> logger) : B
                 RedirectStandardError = true,
             };
             info.Environment["FIE_DB"] = db.DatabaseFile;
+            info.Environment["FIE_PROFILE"] = db.Options.Profile;
             info.Environment["PYTHONIOENCODING"] = "utf-8";
             worker = Process.Start(info);
             if (worker is null) return;

@@ -76,3 +76,29 @@ def test_invalid_database_is_rejected_before_anything_is_replaced(machine, tmp_p
     assert not (target / "cache" / "frame.pkl").exists()
     con = db.connect(target / "football.db")
     assert con.execute("SELECT COUNT(*) FROM matches").fetchone()[0] == 0
+
+
+def test_doctor_detects_pending_migrations_without_touching_data(machine, monkeypatch):
+    from fie import doctor
+    root = machine("home")
+    monkeypatch_target = root / "football.db"
+    _source_with_history(root)
+    monkeypatch.setattr(doctor, "DB_PATH", monkeypatch_target)
+    assert not doctor._schema_changes()
+    con = db.connect(monkeypatch_target)
+    con.execute("DROP TABLE notifications")
+    con.close()
+    assert doctor._schema_changes()
+    con = db.connect(monkeypatch_target)
+    assert con.execute("SELECT COUNT(*) FROM matches").fetchone()[0] == 1
+
+
+def test_light_profile_refuses_heavy_jobs_unless_allowed(machine, monkeypatch):
+    from fie import config, jobs
+    root = machine("laptop")
+    con = db.init(root / "football.db")
+    monkeypatch.setattr(config, "LIGHT", True)
+    job_id = jobs.enqueue(con, "research_full", {})
+    jobs.run_job(job_id)
+    row = con.execute("SELECT status, error FROM jobs WHERE job_id=?", (job_id,)).fetchone()
+    assert row["status"] == "failed" and "light profile" in row["error"]

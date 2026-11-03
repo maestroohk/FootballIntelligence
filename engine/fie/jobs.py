@@ -77,7 +77,12 @@ def run_job(job_id):
     ctx = JobContext(con, job_id)
     try:
         fn = HANDLERS[job["kind"]]
-        result = fn(ctx, **json.loads(job["args"] or "{}"))
+        args = json.loads(job["args"] or "{}")
+        from .config import HEAVY_JOBS, LIGHT
+        if LIGHT and job["kind"] in HEAVY_JOBS and not args.pop("allow_heavy", False):
+            raise RuntimeError(f"{job['kind']} is a full-research job and this machine runs the light profile (FIE_PROFILE=light); run it on the research machine or queue it with allow_heavy")
+        args.pop("allow_heavy", None)
+        result = fn(ctx, **args)
         status = "cancelled" if ctx.cancelled() else "succeeded"
         con.execute("UPDATE jobs SET status=?, finished_at=?, result=?, heartbeat_at=? WHERE job_id=?",
                     (status, db.now(), db.dumps(result)[:20000] if result is not None else None, db.now(), job_id))

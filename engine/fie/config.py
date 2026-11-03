@@ -6,8 +6,12 @@ DATA = ROOT / "data"
 RAW = DATA / "raw"
 DB_PATH = Path(os.environ.get("FIE_DB", DATA / "football.db"))
 
-THREADS = int(os.environ.get("FIE_THREADS", "4"))
-MAX_CONCURRENT_JOBS = int(os.environ.get("FIE_MAX_JOBS", "2"))
+PROFILE = os.environ.get("FIE_PROFILE", "full").strip().lower()
+LIGHT = PROFILE == "light"
+HEAVY_JOBS = {"ingest_history", "research_full", "expand_coverage", "final_test", "train_inplay", "experiments", "publish_predictions", "player_study"}
+
+THREADS = int(os.environ.get("FIE_THREADS", "2" if LIGHT else "4"))
+MAX_CONCURRENT_JOBS = int(os.environ.get("FIE_MAX_JOBS", "1" if LIGHT else "2"))
 RESEARCH_PROCESSES = int(os.environ.get("FIE_RESEARCH_PROCESSES", str(max(1, min(3, (os.cpu_count() or 4) // 4)))))
 
 FDCO_BASE = "https://www.football-data.co.uk/mmz4281"

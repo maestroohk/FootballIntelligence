@@ -2,9 +2,10 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from . import db, jobs
+from .config import LIGHT
 
-CYCLE_HOURS = float(os.environ.get("FIE_CYCLE_HOURS", "6"))
-RESEARCH_DAYS = float(os.environ.get("FIE_RESEARCH_DAYS", "7"))
+CYCLE_HOURS = float(os.environ.get("FIE_CYCLE_HOURS", "24" if LIGHT else "6"))
+RESEARCH_DAYS = float(os.environ.get("FIE_RESEARCH_DAYS", "0" if LIGHT else "7"))
 RESEARCH_MIN_NEW = int(os.environ.get("FIE_RESEARCH_MIN_NEW", "300"))
 
 
