@@ -28,6 +28,9 @@
             <button class="btn sm" @onclick="() => { day = DateTime.Today; Load(); }">Today</button>
         }
         <div class="tabs" style="border:none">
+            <button class="tab @(view == "today" ? "active" : "")" @onclick='() => SetView("today")'>Today</button>
+            <button class="tab @(view == "tomorrow" ? "active" : "")" @onclick='() => SetView("tomorrow")'>Tomorrow</button>
+            <button class="tab @(view == "week" ? "active" : "")" @onclick='() => SetView("week")'>This week</button>
             <button class="tab @(view == "upcoming" ? "active" : "")" @onclick='() => SetView("upcoming")'>Upcoming</button>
             <button class="tab @(view == "results" ? "active" : "")" @onclick='() => SetView("results")'>Results</button>
             <button class="tab @(view == "date" ? "active" : "")" @onclick='() => SetView("date")'>By date</button>
@@ -66,10 +69,10 @@
 
 <div class="card matches-list">
     <div class="card-head">
-        <h2>@(view == "upcoming" ? "Upcoming fixtures" : view == "date" ? day.ToString("dddd dd MMMM yyyy") : "Results")</h2>
-        <span class="sub">@rows.Count matches shown</span>
+        <h2>@Title</h2>
+        <span class="sub">@rows.Count@(rows.Count >= limit ? "+" : "") matches · dates and kick-off times are local to each league</span>
     </div>
-    @if (rows.Count == 0) { <div class="empty">No matches for these filters@(view == "date" ? " on this date" : ""). Try another league, date or team name.</div> }
+    @if (rows.Count == 0) { <div class="empty">@EmptyText</div> }
     @foreach (var day in rows.GroupBy(m => m.MatchDate))
     {
         <div class="day-head">@DateTime.Parse(day.Key, System.Globalization.CultureInfo.InvariantCulture).ToString("dddd dd MMM yyyy", System.Globalization.CultureInfo.InvariantCulture)</div>
@@ -78,6 +81,10 @@
             <div class="league-head"><LeagueChip Code="@league.Key" /><span class="small faint">@league.Count()</span></div>
             @foreach (var m in league) { <MatchLine Match="m" ShowDate="false" /> }
         }
+    }
+    @if (rows.Count >= limit)
+    {
+        <div style="margin-top:12px;text-align:center"><button class="btn" @onclick="ShowMore">Show more matches</button></div>
     }
 </div>
 
@@ -103,7 +110,9 @@
     {
         if (!string.IsNullOrWhiteSpace(TeamQuery)) team = TeamQuery;
         competitions = Football.Competitions().OrderBy(c => Array.IndexOf(["E0", "SP1", "D1", "I1", "F1"], c) is var i && i < 0 ? 99 : i).ToList();
-        Load();
+        SetView("today");
+        if (rows.Count == 0) SetView("week");
+        if (rows.Count == 0) SetView("upcoming");
         if (rows.Count == 0) SetView("results");
     }
 
@@ -113,28 +122,60 @@
         Load();
     }
 
+    private const int PageSize = 100;
+    private int limit = PageSize;
+
     private void SetView(string v)
     {
         view = v;
+        limit = PageSize;
         Load();
     }
+
+    private void ShowMore()
+    {
+        limit += PageSize;
+        Load();
+    }
+
+    private string Title => view switch
+    {
+        "today" => "Today · " + DateTime.Today.ToString("dddd d MMMM", System.Globalization.CultureInfo.InvariantCulture),
+        "tomorrow" => "Tomorrow · " + DateTime.Today.AddDays(1).ToString("dddd d MMMM", System.Globalization.CultureInfo.InvariantCulture),
+        "week" => "Next 7 days",
+        "upcoming" => "Upcoming fixtures",
+        "date" => day.ToString("dddd dd MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture),
+        _ => "Results"
+    };
+
+    private string EmptyText => view switch
+    {
+        "today" => "No matches today in the competitions covered. Try Tomorrow or This week.",
+        "tomorrow" => "No matches tomorrow in the competitions covered. Try This week.",
+        "week" => "No matches in the next 7 days for these filters.",
+        "date" => "No matches on this date for these filters.",
+        _ => "No matches for these filters. Try another league or team name."
+    };
 
     private void Load()
     {
         string? comp = string.IsNullOrEmpty(competition) ? null : competition;
         teams = team.Trim().Length >= 3 ? Football.FindTeams(team.Trim(), 8) : [];
-        if (view == "date")
+        string? t = string.IsNullOrWhiteSpace(team) ? null : team.Trim();
+        var today = DateTime.Today;
+        var (from, to) = view switch
         {
-            rows = Football.OnDate(day.ToString("yyyy-MM-dd")).Where(m => (string.IsNullOrEmpty(competition) || m.Competition == competition)
-                && (string.IsNullOrEmpty(team) || m.HomeName.Contains(team, StringComparison.OrdinalIgnoreCase) || m.AwayName.Contains(team, StringComparison.OrdinalIgnoreCase))).ToList();
-        }
+            "today" => (today, today),
+            "tomorrow" => (today.AddDays(1), today.AddDays(1)),
+            "week" => (today, today.AddDays(6)),
+            "date" => (day, day),
+            _ => (DateTime.MinValue, DateTime.MinValue)
+        };
+        if (from != DateTime.MinValue)
+            rows = Football.Between(from.ToString("yyyy-MM-dd"), to.ToString("yyyy-MM-dd"), comp, t, limit);
         else if (view == "upcoming")
-        {
-            rows = Football.Upcoming(150, comp, string.IsNullOrWhiteSpace(team) ? null : team.Trim());
-        }
+            rows = Football.Upcoming(limit, comp, t);
         else
-        {
-            rows = Football.Search(comp, long.TryParse(season, out var s) ? s : null, string.IsNullOrWhiteSpace(team) ? null : team, 150, "finished");
-        }
+            rows = Football.Search(comp, long.TryParse(season, out var s) ? s : null, t, limit, "finished");
     }
 }

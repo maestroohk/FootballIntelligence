@@ -28,6 +28,10 @@ public class FootballQueries(Database db)
         MatchSelect + $" WHERE m.status='scheduled' AND m.match_date >= @today AND (@competition IS NULL OR m.competition=@competition) AND {TeamFilter} ORDER BY m.match_date, m.kickoff LIMIT @limit",
         new { limit, competition, team, today = DateTime.Now.ToString("yyyy-MM-dd") }).ToList();
 
+    public List<MatchRow> Between(string from, string to, string? competition, string? team, int limit) => db.Query<MatchRow>(
+        MatchSelect + $" WHERE m.match_date BETWEEN @from AND @to AND (@competition IS NULL OR m.competition=@competition) AND {TeamFilter} ORDER BY m.match_date, m.kickoff, m.competition LIMIT @limit",
+        new { from, to, competition, team, limit }).ToList();
+
     public List<MatchRow> AwaitingResult(int limit) => db.Query<MatchRow>(
         MatchSelect + " WHERE m.status='scheduled' AND m.match_date < @today ORDER BY m.match_date DESC LIMIT @limit",
         new { limit, today = DateTime.Now.ToString("yyyy-MM-dd") }).ToList();
