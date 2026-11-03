@@ -16,6 +16,11 @@
     </div>
 </div>
 
+<ModelStatus @key="statusKey" />
+<div class="small faint" style="margin:-6px 0 12px">Next scheduled evaluation: @NextCycle().</div>
+
+@if (champion is not null)
+{
 <div class="card trend-banner @trend.Css">
     <div>
         <div class="fan-kicker">System status</div>
@@ -23,13 +28,7 @@
         <p>@trend.Text</p>
     </div>
 </div>
-
-<div class="grid g4">
-    <Kpi Label="Champion model" Value="@(champion is null ? "None" : Fmt.ModelLabel(champion))" Note="@(champion ?? "no trained champion on this computer")" />
-    <Kpi Label="Last evaluation" Value="@(weak is null ? "never" : Fmt.Ago(Str(weak.Value, "at")))" Note="@(weak is null ? "run Evaluate now" : $"{Num(weak.Value, "n"):N0} predictions scored")" />
-    <Kpi Label="Latest training" Value="@(trainedAt is null ? "never" : Fmt.Ago(trainedAt))" Note="@(postponed ?? "challenger research runs weekly when enough new results exist")" />
-    <Kpi Label="Next evaluation" Value="@NextCycle()" Note="results, scoring and drift checks run in each update cycle" />
-</div>
+}
 
 <div class="grid g2">
     <div class="card">
@@ -128,6 +127,7 @@
     private TrackRecord backtest = new();
     private long minN = 200;
     private (string Title, string Text, string Css) trend;
+    private int statusKey;
 
     protected override bool ShouldRefresh(FeedState previous, FeedState next) => previous.JobStatuses != next.JobStatuses;
 
@@ -148,6 +148,7 @@
         forward = Football.Record("forward");
         backtest = Football.Record("backtest");
         trend = Trend();
+        statusKey++;
     }
 
     private (string, string, string) Trend()

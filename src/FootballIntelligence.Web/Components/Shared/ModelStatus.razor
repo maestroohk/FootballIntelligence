@@ -1,0 +1,78 @@
+@inject OperationsQueries Ops
+@inject ResearchQueries Research
+@inject Database Db
+
+<div class="card model-status @state.Css">
+    <div class="ms-head">
+        <div>
+            <div class="fan-kicker">Prediction engine</div>
+            <h2>@state.Title</h2>
+            <p>@state.Text</p>
+        </div>
+        <span class="badge @state.Css">@state.Badge</span>
+    </div>
+    <div class="ms-grid">
+        <div><span class="label">Champion model</span><b>@(champion is null ? "none" : Fmt.ModelLabel(champion))</b><span class="small faint">@(champion ?? "not trained on this computer")</span></div>
+        <div><span class="label">Last training</span><b>@(trainedAt is null ? "never" : Fmt.Ago(trainedAt))</b><span class="small faint">@(lastResearch is { Status: "failed" } f ? $"last attempt failed {Fmt.Ago(f.FinishedAt)}" : "research_full")</span></div>
+        <div><span class="label">Last evaluation</span><b>@(evaluatedAt is null ? "never" : Fmt.Ago(evaluatedAt))</b><span class="small faint">@pending finished match@(pending == 1 ? "" : "es") awaiting scoring</span></div>
+        <div><span class="label">Next 7 days</span><b>@fresh.UpcomingWeekPredicted of @fresh.UpcomingWeek</b><span class="small faint">fixtures with a stored forecast · latest @(fresh.LastForward is null ? "never" : Fmt.Ago(fresh.LastForward))</span></div>
+    </div>
+    <div class="ms-caps">
+        @foreach (var (name, ok, need) in Capabilities())
+        {
+            <div class="ms-cap"><span class="dot @(ok ? "ok" : "warn")"></span><b>@name</b><span class="small dim">@(ok ? "available" : need)</span></div>
+        }
+    </div>
+    <div class="small faint" style="margin-top:8px">Profile: @(Db.Options.Light ? "light development (no historical downloads or automatic research on this computer)" : "full research")</div>
+</div>
+
+@code {
+    private string? champion;
+    private string? trainedAt;
+    private string? evaluatedAt;
+    private long pending;
+    private JobRow? lastResearch;
+    private (string? LastForward, long UpcomingWeek, long UpcomingWeekPredicted) fresh;
+    private bool cachesOk;
+    private bool history;
+    private bool inplay;
+    private bool players;
+    private (string Title, string Text, string Badge, string Css) state;
+
+    protected override void OnParametersSet()
+    {
+        champion = Research.Champion();
+        trainedAt = Research.KvJson("research_summary") is { } s && s.TryGetProperty("finished_at", out var f) ? f.GetString() : null;
+        evaluatedAt = Research.KvJson("weaknesses") is { } w && w.TryGetProperty("at", out var a) ? a.GetString() : null;
+        pending = Ops.PendingEvaluations(evaluatedAt);
+        lastResearch = Ops.LastJob("research_full");
+        fresh = Ops.ForwardFreshness();
+        var assets = Ops.Assets();
+        cachesOk = assets is { } x && !x.GetProperty("missing").EnumerateArray().Any(m => m.GetProperty("asset").GetString()!.StartsWith("model cache"));
+        history = assets is { } y && y.GetProperty("database").TryGetProperty("matches_history", out var h) && h.ValueKind == JsonValueKind.Number && h.GetInt64() > 0;
+        inplay = Ops.InPlayTrained();
+        players = assets is { } z && z.GetProperty("database").TryGetProperty("players", out var pl) && pl.ValueKind == JsonValueKind.Number && pl.GetInt64() > 0;
+        state = State();
+    }
+
+    private (string, string, string, string) State()
+    {
+        var active = Ops.ActiveJobs().Where(j => j.Status == "running").Select(j => j.Kind).ToHashSet();
+        if (active.Contains("research_full")) return ("Training in progress", "Challenger models are being trained and compared. The current champion keeps serving predictions until a decision is recorded.", "training", "info");
+        if (active.Overlaps(["evaluate_forward", "daily_cycle"])) return ("Evaluation in progress", "Completed matches are being scored against the stored forecasts.", "evaluating", "info");
+        if (champion is null && lastResearch is { Status: "failed" }) return ("Model failed", $"The last training run failed: {lastResearch.Error}", "failed", "bad");
+        if (champion is null) return ("Model unavailable", history ? "Historical data is present but no model has been trained here. Run research on the research machine or queue research_full." : "No trained model and no historical results on this computer, so no new forecasts can be made. Stored forecasts can still be browsed.", "unavailable", "warn");
+        if (!cachesOk) return ("Model available but not loaded", "A champion is registered, but its model files are missing or have not been checked on this computer. Run the asset check or import a data bundle.", "not loaded", "warn");
+        if (fresh.UpcomingWeek > 0 && fresh.UpcomingWeekPredicted == 0) return ("Model ready, forecasts stale", "The model is ready but no upcoming fixture in the next week has a stored forecast. The next update cycle will create them.", "stale", "warn");
+        return ("Model ready", "The champion model is loaded and producing forecasts for upcoming fixtures.", "ready", "ok");
+    }
+
+    private IEnumerable<(string, bool, string)> Capabilities()
+    {
+        yield return ("Pre-match forecasts", champion is not null && cachesOk, "needs a trained champion model and historical results");
+        yield return ("Scorelines and goal markets", champion is not null && cachesOk, "derived from the same pre-match forecast");
+        yield return ("In-play forecasts and replays", inplay && history, "needs the in-play model (train_inplay) and linked historical matches");
+        yield return ("Live matches", Ops.Providers().Any(p => p.Provider.Contains("live") && p.Status == "ok"), "needs a licensed live feed (FOOTBALL_DATA_API_KEY)");
+        yield return ("Player profiles", players, "needs StatsBomb Open Data (ingest_statsbomb)");
+    }
+}

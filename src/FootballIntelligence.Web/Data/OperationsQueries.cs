@@ -94,6 +94,21 @@ public class OperationsQueries(Database db)
         ORDER BY s.match_date DESC LIMIT @limit
         """, new { search, limit }).ToList();
 
+    public JobRow? LastJob(string kind, string? status = null) => db.Single<JobRow>(
+        "SELECT * FROM jobs WHERE kind=@kind AND (@status IS NULL OR status=@status) ORDER BY job_id DESC LIMIT 1", new { kind, status });
+
+    public long PendingEvaluations(string? since) => db.Single<long>("""
+        SELECT COUNT(DISTINCT p.match_id) FROM predictions p JOIN matches m ON m.match_id=p.match_id
+        WHERE p.purpose='forward' AND m.status='finished' AND (@since IS NULL OR m.updated_at > @since)
+        """, new { since });
+
+    public (string? LastForward, long UpcomingWeek, long UpcomingWeekPredicted) ForwardFreshness() => db.Single<(string?, long, long)>("""
+        SELECT (SELECT MAX(created_at) FROM predictions WHERE purpose='forward'),
+               (SELECT COUNT(*) FROM matches WHERE status='scheduled' AND match_date BETWEEN @today AND @week),
+               (SELECT COUNT(DISTINCT m.match_id) FROM matches m JOIN predictions p ON p.match_id=m.match_id AND p.purpose='forward'
+                WHERE m.status='scheduled' AND m.match_date BETWEEN @today AND @week)
+        """, new { today = DateTime.Now.ToString("yyyy-MM-dd"), week = DateTime.Now.AddDays(7).ToString("yyyy-MM-dd") });
+
     public bool InPlayTrained() => db.Single<long>("SELECT COUNT(*) FROM live_model WHERE status='champion'") > 0;
 
     public JsonElement? Assets() => db.Kv("assets_status") is { } v ? JsonDocument.Parse(v).RootElement.Clone() : null;

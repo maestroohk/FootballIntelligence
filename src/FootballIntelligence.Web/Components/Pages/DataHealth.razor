@@ -15,6 +15,40 @@
     </div>
 </div>
 
+<ModelStatus @key="statusKey" />
+
+<div class="card">
+    <div class="card-head"><h2>Operations</h2><a href="jobs" class="small">All jobs →</a></div>
+    <div class="ops-grid">
+        @foreach (var (kind, label) in OpKinds)
+        {
+            var ok = Ops.LastJob(kind, "succeeded");
+            var last = Ops.LastJob(kind);
+            <div class="ops-item">
+                <b>@label</b>
+                <span class="small dim">last success @(ok is null ? "never" : Fmt.Ago(ok.FinishedAt))</span>
+                @if (last is { Status: "failed" })
+                {
+                    <span class="small bad" title="@last.Error">failed @Fmt.Ago(last.FinishedAt): @(last.Error?.Length > 90 ? last.Error[..90] + "…" : last.Error)</span>
+                    <button class="btn sm" @onclick="() => Ops.Retry(last.JobId)">Retry</button>
+                }
+                else if (last is { Status: "queued" or "running" } && last.State(workerAlive) is "stalled" or "waiting")
+                {
+                    <a class="small warn" href="jobs/@last.JobId" title="@last.StateNote(workerAlive)">@(last.State(workerAlive) == "stalled" ? "stalled" : "waiting for worker")</a>
+                }
+                else if (last is { Status: "queued" or "running" })
+                {
+                    <a class="small" href="jobs/@last.JobId">@last.Status @(last.Progress is null ? "" : Fmt.Pct(last.Progress))</a>
+                }
+                else
+                {
+                    <button class="btn sm" @onclick="() => Ops.Enqueue(kind)">Run now</button>
+                }
+            </div>
+        }
+    </div>
+</div>
+
 <div class="card">
     <div class="card-head">
         <h2>Prediction engine assets</h2>
@@ -154,6 +188,9 @@
     private List<SourceRow> sources = [];
     private List<LiveSessionRow> live = [];
     private JsonElement? assets;
+    private int statusKey;
+    private bool workerAlive;
+    private static readonly (string, string)[] OpKinds = [("daily_cycle", "Update cycle"), ("ingest_fixtures", "Fixture refresh"), ("evaluate_forward", "Prediction evaluation"), ("check_assets", "Asset check"), ("ingest_statsbomb", "StatsBomb data")];
 
     private static string Count(JsonElement e, string key) => e.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt64().ToString("N0") : "0";
 
@@ -167,5 +204,7 @@
         sources = Ops.Sources();
         live = Ops.LiveSessions(10);
         assets = Ops.Assets();
+        statusKey++;
+        workerAlive = Ops.WorkerStatus().Alive;
     }
 }
