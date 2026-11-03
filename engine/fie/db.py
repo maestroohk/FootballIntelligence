@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS team_aliases (
     method TEXT NOT NULL,
     PRIMARY KEY(alias, source, country)
 );
+CREATE INDEX IF NOT EXISTS ix_team_aliases_team ON team_aliases(team_id, source);
 
 CREATE TABLE IF NOT EXISTS matches (
     match_id INTEGER PRIMARY KEY,
@@ -172,6 +173,7 @@ CREATE TABLE IF NOT EXISTS predictions (
     UNIQUE(match_id, model_version, purpose)
 );
 CREATE INDEX IF NOT EXISTS ix_predictions_model ON predictions(model_version, purpose);
+CREATE INDEX IF NOT EXISTS ix_predictions_purpose_match ON predictions(purpose, match_id, prediction_id);
 
 CREATE TRIGGER IF NOT EXISTS predictions_immutable
 BEFORE UPDATE ON predictions

@@ -167,7 +167,7 @@ First evaluated at 2026-11-02T21:00:25.845885Z.
 | Season | dixon_coles | dc_xg25 | elo_k15 | gbm_features | scale | ρ |
 |---|---:|---:|---:|---:|---:|---:|
 | 2012 | 0.00 | 0.42 | 0.25 | 0.33 | +0.020 | -0.074 |
-| 2013 | 0.00 | 0.37 | 0.26 | 0.37 | +0.019 | -0.069 |
+| 2013 | 0.00 | 0.37 | 0.25 | 0.37 | +0.019 | -0.069 |
 | 2014 | 0.12 | 0.21 | 0.21 | 0.45 | +0.012 | -0.053 |
 | 2015 | 0.18 | 0.16 | 0.15 | 0.51 | +0.008 | -0.042 |
 | 2016 | 0.37 | 0.00 | 0.13 | 0.50 | +0.001 | -0.049 |
@@ -184,52 +184,52 @@ First evaluated at 2026-11-02T21:00:25.845885Z.
 
 ## In-play model
 
-Model `inplay-2026-11-02T19:25:29`; training/test split at 2016-02-01 (915 / 636 StatsBomb matches); average half ends 46.3' and 93.8'; second-half scale by tier {'1': 1.04, '2+': 1.0}.
+Model `inplay-2026-11-03T15:00:46`; training/test split at 2016-02-01 (915 / 636 StatsBomb matches); average half ends 46.3' and 93.8'; second-half scale by tier {'1': 1.04, '2+': 1.04}.
 
 Checkpoint evaluation on held-out matches (final-result log loss / 'another goal' log loss / 'another goal' ECE):
 
 | Model | 1H 15' | 1H 30' | 2H 45' | 2H 60' | 2H 75' | 2H 85' |
 |---|---:|---:|---:|---:|---:|---:|
-| constant_rate | 0.920 / 0.305 / 0.023 | 0.890 / 0.411 / 0.029 | 0.766 / 0.517 / 0.056 | 0.665 / 0.647 / 0.047 | 0.513 / 0.698 / 0.063 | 0.291 / 0.551 / 0.028 |
-| extrapolation | 1.620 / 0.756 / 0.373 | 1.438 / 0.755 / 0.289 | 1.073 / 0.718 / 0.222 | 0.877 / 0.813 / 0.200 | 0.625 / 0.782 / 0.166 | 0.334 / 0.578 / 0.075 |
-| hazard | 0.919 / 0.304 / 0.024 | 0.887 / 0.410 / 0.030 | 0.760 / 0.511 / 0.048 | 0.652 / 0.640 / 0.017 | 0.503 / 0.690 / 0.033 | 0.286 / 0.549 / 0.005 |
-| hazard_evidence | 0.923 / 0.305 / 0.021 | 0.889 / 0.410 / 0.024 | 0.759 / 0.506 / 0.033 | 0.652 / 0.638 / 0.019 | 0.503 / 0.692 / 0.035 | 0.287 / 0.550 / 0.009 |
+| constant_rate | 0.920 / 0.305 / 0.023 | 0.890 / 0.411 / 0.030 | 0.766 / 0.517 / 0.056 | 0.665 / 0.647 / 0.047 | 0.513 / 0.698 / 0.063 | 0.291 / 0.551 / 0.028 |
+| extrapolation | 1.620 / 0.756 / 0.373 | 1.438 / 0.754 / 0.289 | 1.072 / 0.718 / 0.222 | 0.877 / 0.813 / 0.200 | 0.625 / 0.782 / 0.166 | 0.334 / 0.578 / 0.075 |
+| hazard | 0.919 / 0.304 / 0.024 | 0.887 / 0.411 / 0.030 | 0.760 / 0.511 / 0.048 | 0.652 / 0.640 / 0.017 | 0.503 / 0.690 / 0.033 | 0.286 / 0.549 / 0.005 |
+| hazard_evidence | 0.923 / 0.305 / 0.021 | 0.889 / 0.410 / 0.024 | 0.759 / 0.506 / 0.033 | 0.652 / 0.638 / 0.019 | 0.503 / 0.692 / 0.031 | 0.287 / 0.550 / 0.009 |
 
 Half-time forecasts on football-data.co.uk HT scores (2016/17–2022/23, all 11 divisions):
 
 | Model | Matches | 1X2 log loss | P(2nd-half goal) predicted | observed | ECE |
 |---|---:|---:|---:|---:|---:|
-| constant_rate | 30,950 | 0.8407 | 0.734 | 0.777 | 0.042 |
-| extrapolation | 30,950 | 1.2112 | 0.623 | 0.777 | 0.236 |
-| hazard | 30,950 | 0.8383 | 0.754 | 0.777 | 0.022 |
+| constant_rate | 43,759 | 0.8266 | 0.737 | 0.779 | 0.042 |
+| extrapolation | 43,759 | 1.1899 | 0.628 | 0.779 | 0.233 |
+| hazard | 43,759 | 0.8244 | 0.757 | 0.779 | 0.022 |
 
 | Comparison (A vs B) | Metric | n | Mean A − B | 95% CI | Verdict |
 |---|---|---:|---:|---|---|
 | hazard vs hazard_evidence | 1X2 log loss, held-out SB | 3,816 | -0.0007 | -0.0029 .. +0.0015 | inconclusive |
-| constant_rate vs hazard | 1X2 log loss, held-out SB | 3,816 | +0.0061 | +0.0002 .. +0.0123 | B better |
-| extrapolation vs hazard | 1X2 log loss, held-out SB | 3,816 | +0.3268 | +0.2724 .. +0.3817 | B better |
-| constant_rate vs hazard | 1X2 log loss, half-time | 30,950 | +0.0024 | +0.0020 .. +0.0029 | B better |
-| extrapolation vs hazard | 1X2 log loss, half-time | 30,950 | +0.3730 | +0.3606 .. +0.3850 | B better |
+| constant_rate vs hazard | 1X2 log loss, held-out SB | 3,816 | +0.0060 | +0.0002 .. +0.0123 | B better |
+| extrapolation vs hazard | 1X2 log loss, held-out SB | 3,816 | +0.3265 | +0.2722 .. +0.3814 | B better |
+| constant_rate vs hazard | 1X2 log loss, half-time | 43,759 | +0.0022 | +0.0018 .. +0.0026 | B better |
+| extrapolation vs hazard | 1X2 log loss, half-time | 43,759 | +0.3655 | +0.3556 .. +0.3758 | B better |
 
 Learned multipliers (hazard model):
 
 | Term | Multiplier | s.e. of log |
 |---|---:|---:|
-| t0 | ×0.759 | 0.059 |
-| t1 | ×0.973 | 0.055 |
-| t2 | ×0.904 | 0.059 |
-| t3 | ×0.933 | 0.174 |
-| t4 | ×0.938 | 0.061 |
-| t5 | ×1.003 | 0.059 |
-| t6 | ×1.031 | 0.074 |
-| t7 | ×1.106 | 0.109 |
+| t0 | ×0.758 | 0.059 |
+| t1 | ×0.972 | 0.055 |
+| t2 | ×0.903 | 0.059 |
+| t3 | ×0.932 | 0.174 |
+| t4 | ×0.937 | 0.061 |
+| t5 | ×1.002 | 0.059 |
+| t6 | ×1.030 | 0.074 |
+| t7 | ×1.105 | 0.109 |
 | lead1 | ×1.069 | 0.063 |
-| lead2 | ×1.024 | 0.082 |
+| lead2 | ×1.025 | 0.082 |
 | trail1 | ×1.068 | 0.067 |
 | trail2 | ×1.123 | 0.093 |
 | lead_late | ×0.929 | 0.099 |
 | trail_late | ×1.088 | 0.105 |
-| man_up | ×1.759 | 0.081 |
+| man_up | ×1.758 | 0.081 |
 | man_down | ×0.587 | 0.137 |
 
 ## Experiment log
@@ -306,12 +306,6 @@ Learned multipliers (hazard model):
 - Result: Log loss 0.9954; logistic vs DC -0.0030 (95% CI -0.0046..-0.0014) (negative = logistic better).
 - Decision: keep as research baseline only (no score distribution)
 
-### Second-half rate recalibration from half-time data
-
-- Hypothesis: The hazard model (fitted on StatsBomb 2015/16 top-flight matches) mis-states second-half scoring at half-time; a second-half rate scale per tier group, fitted on 2012-2015 football-data HT/FT results, will improve calibration on 2016-2022.
-- Result: tier 1: scale x1.04 (train n=5000), test n=8000: P(2nd-half goal) 0.773 -> 0.786 vs observed 0.800, ECE 0.028 -> 0.015, another-goal LL +0.0016 (CI +0.0009..+0.0022), 1X2 LL +0.0009 (CI +0.0006..+0.0013) adopted; tier 2+: scale x1.08 (train n=5000), test n=8000: P(2nd-half goal) 0.742 -> 0.768 vs observed 0.760, ECE 0.018 -> 0.011, another-goal LL +0.0007 (CI -0.0007..+0.0020), 1X2 LL +0.0005 (CI -0.0002..+0.0012) not adopted
-- Decision: adopt per-tier scales where credible: tier 1 x1.04, tier 2+ x1.00
-
 ### Second-half goals before and after the 2023 stoppage-time change (analysis only)
 
 - Hypothesis: Longer added time since 2023/24 should raise second-half goals relative to a model fitted on 2015/16 half lengths. This uses final-test seasons for diagnosis only, not for tuning.
@@ -377,3 +371,27 @@ Learned multipliers (hazard model):
 - Hypothesis: An isolated run (separate database copy and cache directory) that recomputes every walk-forward model from the raw match table should reproduce the production validation results exactly.
 - Result: Recomputed 17 models from scratch (about 50 minutes at the 4-thread budget). Champion ensemble: identical predictions on all 26,057 validation and 6,912 completed final-test matches (max rate difference 0.0). 15 of 17 models identical; Elo K=20/K=30 differed by up to 5e-4 log loss because their cached predictions dated from the first run and Elo outcome mappings were fitted with an order-sensitive Nelder-Mead. After switching those fits to sorted inputs with tight L-BFGS (order-independent, verified by shuffling) all 17 models agree within 2e-8.
 - Decision: adopt order-independent fitting; pipeline reproducible from raw data
+
+### Rolling league home-advantage feature
+
+- Hypothesis: Home advantage is not constant (it collapsed in the 2020/21 empty-stadium season); giving LightGBM the league's rolling home/away goal ratio and goal level over its previous 380 matches should let it adapt within seasons.
+- Result: Validation n=26,057: LightGBM log loss 0.9953 -> 0.9953 (diff -0.0000, CI -0.0003..+0.0003), score NLL diff +0.0001 (CI -0.0004..+0.0005). 2020/21 season: log loss 1.0087 -> 1.0083; mean predicted home win 0.437 -> 0.436 vs observed 0.402.
+- Decision: reject: no credible gain
+
+### Second-half rate recalibration from half-time data
+
+- Hypothesis: The hazard model (fitted on StatsBomb 2015/16 top-flight matches) mis-states second-half scoring at half-time; a second-half rate scale per tier group, fitted on 2012-2015 football-data HT/FT results, will improve calibration on 2016-2022.
+- Result: tier 1: scale x1.04 (train n=5000), test n=8000: P(2nd-half goal) 0.769 -> 0.782 vs observed 0.788, ECE 0.021 -> 0.008, another-goal LL +0.0011 (CI +0.0004..+0.0017), 1X2 LL +0.0007 (CI +0.0003..+0.0011) adopted; tier 2+: scale x1.04 (train n=5000), test n=8000: P(2nd-half goal) 0.742 -> 0.755 vs observed 0.759, ECE 0.019 -> 0.006, another-goal LL +0.0007 (CI +0.0000..+0.0014), 1X2 LL +0.0006 (CI +0.0002..+0.0010) adopted
+- Decision: adopt per-tier scales where credible: tier 1 x1.04, tier 2+ x1.04
+
+### Favourite under-confidence: global spread challenger (re-test on all leagues)
+
+- Hypothesis: The Learning weakness report flags under-confident favourites (home favourites at 70-100%: 77.8% predicted vs 81.5% observed, z=6.4) and slightly under-predicted draws. A learned spread on the home-away log-rate difference, fitted each season on the previous three, should correct it.
+- Result: Validation, six primary leagues: 1X2 log loss +0.0002 (CI +0.0001..+0.0004), RPS +0.00005 (CI +0.00001..+0.00009), scoreline NLL +0.00001 (CI -0.00017..+0.00019); all 18 divisions similar; no primary league significantly worse. Favourites at 70%+: predicted 77.2% -> 77.5% vs observed 81.2%; class-wise ECE 0.0088 -> 0.0083.
+- Decision: not promoted: the gain is tiny, the scoreline criterion is not met and the favourite gap remains
+
+### Favourite under-confidence: gap-dependent sharpening challenger
+
+- Hypothesis: If lopsided matches are under-confident because large expected-goal gaps are understated, sharpening that grows with the gap (half-difference x (a + b|half-difference|), fitted each season on the previous three) should close the favourite gap.
+- Result: Fitted b is negative in every recent season (e.g. 2025: a=1.067, b=-0.139): the goal likelihood prefers less sharpening for lopsided matches. Validation log loss +0.00007 (CI -0.00009..+0.00025), scoreline NLL -0.00017 (CI -0.00041..+0.00006); favourites at 70%+ still 77.6% predicted vs 81.2% observed.
+- Decision: rejected: the favourite under-confidence comes from the shape of the score distribution (outcome given expected goals), not from the expected-goal gap; a fix needs a different score model (e.g. dispersion or dependence that varies with strength) and is recorded as future work

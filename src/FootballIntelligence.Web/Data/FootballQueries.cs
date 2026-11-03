@@ -157,11 +157,12 @@ public class FootballQueries(Database db)
         """, new { purpose }) ?? new TrackRecord();
 
     private const string SettledFrom = """
-        FROM predictions p JOIN matches m ON m.match_id=p.match_id
+        FROM (SELECT MAX(prediction_id) pid FROM predictions
+              WHERE purpose=@purpose AND model_version NOT LIKE 'bookmaker%' AND prediction_id NOT IN (SELECT prediction_id FROM prediction_flags)
+              GROUP BY match_id) latest
+        JOIN predictions p ON p.prediction_id=latest.pid JOIN matches m ON m.match_id=p.match_id
         JOIN teams th ON th.team_id=m.home_team_id JOIN teams ta ON ta.team_id=m.away_team_id
-        WHERE m.status='finished' AND m.fthg IS NOT NULL AND p.purpose=@purpose
-          AND p.prediction_id = (SELECT MAX(p2.prediction_id) FROM predictions p2 WHERE p2.match_id=p.match_id AND p2.purpose=@purpose
-                                 AND p2.model_version NOT LIKE 'bookmaker%' AND p2.prediction_id NOT IN (SELECT prediction_id FROM prediction_flags))
+        WHERE m.status='finished' AND m.fthg IS NOT NULL
           AND (@competition IS NULL OR m.competition=@competition)
           AND (@team IS NULL OR th.name LIKE '%'||@team||'%' OR ta.name LIKE '%'||@team||'%'
                OR EXISTS (SELECT 1 FROM team_aliases a WHERE a.team_id IN (m.home_team_id, m.away_team_id) AND a.alias LIKE '%'||@team||'%'))

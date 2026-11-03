@@ -395,7 +395,10 @@ def train_inplay(ctx):
     con.execute("INSERT INTO live_model(version, created_at, params, metrics, status) VALUES(?,?,?,?,?)",
                 (version, db.now(), db.dumps({"model": res["final_model"], "half_end": res["half_end"], "minutes_per_match": res["minutes_per_match"],
                                                  "prematch_model": version_name(champ)}), db.dumps({k: v for k, v in res.items() if k != "final_model"}), "champion"))
-    return {"version": version, "selected": res["selected"], "paired": res["paired"], "halftime_paired": ht["paired"]}
+    ctx.stage("re-validating the second-half recalibration for the new model")
+    recal = experiments.halftime_recalibration(con)
+    return {"version": version, "selected": res["selected"], "paired": res["paired"], "halftime_paired": ht["paired"],
+            "second_half_scale_by_tier": {k: v["selected"] if v["adopted"] else 1.0 for k, v in recal.items()}}
 
 
 def version_name(champ):
