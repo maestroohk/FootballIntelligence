@@ -75,13 +75,16 @@ The top-bar switch changes how predictions are presented, not where they come fr
 
 ## Learning loop
 
-- Forward predictions are stored at least 3 hours before kick-off (using each league's latest UTC offset) and can never be edited.
+- Forward predictions are stored at least 3 hours before kick-off (using each league's latest UTC offset) and can never be edited. Each fixture is forecast once per model version when it comes within 10 days of kick-off; every prediction run records which fixtures in that window lack a forecast and why (shown on Data health and the overview).
+- Each update cycle (every 6 hours by default) refreshes results and fixtures, merges new spellings of existing teams, marks fixture rows superseded by a match played on a different date as `duplicate` (flagging, never editing, any forecast attached to them), records market prices, stores new forecasts and updates the paper portfolio.
 - Each update cycle refreshes results, scores stored forecasts against verified final scores (one forecast per match, the pre-match one when it exists), checks for drift and looks for systematic weaknesses (outcome rates, over-confident favourites, goal totals, promoted teams, post-break matches). A weakness is flagged only with at least 200 matches and a deviation beyond 2.5 standard errors.
 - Weekly challenger research runs only when at least `FIE_RESEARCH_MIN_NEW` (default 300) new results have arrived. A challenger replaces the champion only if it is significantly better overall and not significantly worse in any primary league; every decision is logged, the previous champion can be restored with `rollback`, and a failed run leaves the champion's inputs untouched.
 
 ## Current limitations
 
 - No live event feed is connected; live tracking needs `FOOTBALL_DATA_API_KEY` and is untested against the real API.
+- Fixture lists come from OpenFootball (whole season for the eight main leagues) and football-data.co.uk (a few days ahead for every covered division). The Champions League and Europa League are not covered: no configured source provides their fixtures and the model has no common strength scale across countries.
+- Kick-off times from football-data.co.uk are UK time and those from OpenFootball are local to the league; the app converts both to the time zone chosen in the top bar (this computer's by default).
 - Player, lineup and event data cover StatsBomb 2015/16 only; no injury, weather or travel data.
 - The model does not beat bookmaker closing odds, and is also less accurate than Pinnacle's opening prices; no selection rule showed a positive out-of-sample return. See `docs/REPORT.md` and the Value research page.
 - Historical prices are one pre-closing and one closing snapshot per match from football-data.co.uk; exact collection times are not published. Double chance, BTTS and correct-score prices are not available.

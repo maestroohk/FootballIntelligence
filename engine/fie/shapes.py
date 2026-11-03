@@ -189,3 +189,75 @@ def shape_study(ctx, families=None):
     res = study(ctx.con, **({"families": families} if families else {}))
     return {f: {"passed": e["passed_validation"], "log_loss_diff": e["validation_primary"]["log_loss_vs_base"]["mean_diff"],
                 "score_diff": e["validation_primary"]["score_vs_base"]["mean_diff"]} for f, e in res["candidates"].items()}
+
+
+def solve_rates(target, rho, lh0, la0, total=None, iters=30):
+    a, b = np.log(lh0), np.log(la0)
+    h = 1e-4
+    for _ in range(iters):
+        if total is None:
+            def f(x, y):
+                p = outcome(dixon_coles(np.exp(x), np.exp(y), rho))
+                return np.stack([p[:, 0] - target[:, 0], p[:, 2] - target[:, 2]], axis=1)
+            r = f(a, b)
+            ja, jb = (f(a + h, b) - r) / h, (f(a, b + h) - r) / h
+            det = ja[:, 0] * jb[:, 1] - jb[:, 0] * ja[:, 1]
+            det = np.where(np.abs(det) < 1e-9, 1e-9, det)
+            da = (r[:, 0] * jb[:, 1] - jb[:, 0] * r[:, 1]) / det
+            db = (ja[:, 0] * r[:, 1] - r[:, 0] * ja[:, 1]) / det
+            a, b = a - np.clip(da, -0.5, 0.5), b - np.clip(db, -0.5, 0.5)
+        else:
+            def g(x):
+                lh = total / (1 + np.exp(-x))
+                p = outcome(dixon_coles(lh, total - lh, rho))
+                return (p[:, 0] - p[:, 2]) - (target[:, 0] - target[:, 2])
+            x = a - np.log(total - np.exp(a)) if _ == 0 else x
+            r = g(x)
+            x = x - np.clip(r / ((g(x + h) - r) / h), -0.5, 0.5)
+            a = np.log(total / (1 + np.exp(-x)))
+            b = np.log(total - np.exp(a))
+    return np.exp(a), np.exp(b)
+
+
+def distilled_scorelines(con):
+    oos = research.load_cached("oos_ensemble").set_index("match_id")
+    dist = research.load_cached("oos_distilled").set_index("match_id")
+    ids = dist.index.intersection(oos.index[(oos["status"] == "finished") & oos["lh"].notna()])
+    o, t = oos.loc[ids], dist.loc[ids, ["p_home", "p_draw", "p_away"]].to_numpy()
+    lh0, la0, rho = o["lh"].to_numpy(), o["la"].to_numpy(), o["rho"].to_numpy()
+    hg, ag = o["hg"].to_numpy(), o["ag"].to_numpy()
+    variants = {"champion": (lh0, la0), "full_reconstruction": solve_rates(t, rho, lh0, la0), "hybrid_total_kept": solve_rates(t, rho, lh0, la0, total=lh0 + la0)}
+    y = metrics.outcome_index(hg, ag)
+    over = (hg + ag) > 2.5
+    frame = o[["competition", "season"]].copy()
+    losses = {}
+    for name, (lh, la) in variants.items():
+        m = dixon_coles(lh, la, rho)
+        p = outcome(m)
+        tot = np.add.outer(GOALS, GOALS)
+        p_over = (m * (tot > 2.5)).sum(axis=(1, 2))
+        losses[name] = {"score": score_nll(m, hg, ag), "outcome": metrics.log_loss_rows(p, y),
+                        "over25": -np.log(np.where(over, p_over, 1 - p_over)), "fit_error": np.abs(p - t).max(axis=1)}
+    block = (frame["competition"] + frame["season"].astype(str)).to_numpy()
+    out = {"periods": {}}
+    for period, seasons in (("validation_2014_2022", list(range(2014, 2023))), ("confirmation_2023_on", [2023, 2024, 2025, 2026])):
+        res = {}
+        for scope, comps in (("primary", PRIMARY_COMPETITIONS), ("all", None)):
+            k = frame["season"].isin(seasons).to_numpy() & (np.ones(len(frame), bool) if comps is None else frame["competition"].isin(comps).to_numpy())
+            r = {"n": int(k.sum())}
+            for name, l in losses.items():
+                r[name] = {m: float(v[k].mean()) for m, v in l.items()}
+                if name != "champion":
+                    r[name]["vs_champion"] = {m: metrics.paired_bootstrap(losses["champion"][m][k], l[m][k], block=block[k]) for m in ("score", "outcome", "over25")}
+            res[scope] = r
+        out["periods"][period] = res
+    out["data_version"] = research.data_version(con, ("oos_ensemble", "oos_distilled"))
+    db.set_kv(con, "distilled_scorelines", out)
+    return out
+
+
+@handler("distilled_scorelines")
+def distilled_scorelines_job(ctx):
+    ctx.stage("reconstructing expected goals from the market-trained probabilities")
+    res = distilled_scorelines(ctx.con)
+    return {p: {s: {n: {k: v for k, v in x.items() if k != "vs_champion"} for n, x in r.items() if n != "n"} for s, r in v.items()} for p, v in res["periods"].items()}

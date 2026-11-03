@@ -4,7 +4,7 @@ namespace FootballIntelligence.Web.Data;
 
 public class OperationsQueries(Database db)
 {
-    public static readonly string[] JobKinds = ["daily_cycle", "check_assets", "ingest_fixtures", "ingest_history", "ingest_statsbomb", "research_full", "predict_upcoming", "train_inplay", "evaluate_forward", "final_test", "player_study", "experiments", "rollback", "live_replay", "poll_live", "ingest_market_odds", "strategy_research", "paper_cycle", "market_efficiency", "shape_study", "market_model_study", "stakes_study", "distillation_study"];
+    public static readonly string[] JobKinds = ["daily_cycle", "check_assets", "ingest_fixtures", "ingest_history", "ingest_statsbomb", "research_full", "predict_upcoming", "train_inplay", "evaluate_forward", "final_test", "player_study", "experiments", "rollback", "live_replay", "poll_live", "ingest_market_odds", "strategy_research", "paper_cycle", "market_efficiency", "shape_study", "market_model_study", "stakes_study", "distillation_study", "distilled_scorelines"];
 
     public List<JobRow> Jobs(int limit = 100) => db.Query<JobRow>("SELECT * FROM jobs ORDER BY job_id DESC LIMIT @limit", new { limit }).ToList();
 
