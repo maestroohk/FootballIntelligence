@@ -15,6 +15,9 @@ public class ResearchQueries(Database db)
 
     public List<ModelVersionRow> Versions() => db.Query<ModelVersionRow>("SELECT * FROM model_versions ORDER BY CASE status WHEN 'champion' THEN 0 WHEN 'benchmark' THEN 2 ELSE 1 END, version").ToList();
 
+    public string? MostPredictedModel(string purpose) => db.Single<string>(
+        "SELECT model_version FROM predictions WHERE purpose=@purpose AND model_version NOT LIKE 'bookmaker%' GROUP BY model_version ORDER BY COUNT(*) DESC LIMIT 1", new { purpose });
+
     public string? Champion() => db.Single<string>("SELECT version FROM model_versions WHERE status='champion' LIMIT 1");
 
     public JsonElement? KvJson(string key)

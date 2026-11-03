@@ -9,6 +9,17 @@
         <p>@Summary(fav, favP)</p>
     </div>
 
+    @if (Match.Fthg is { } hg && Match.Ftag is { } ag)
+    {
+        var actualP = hg > ag ? mk.PHome : hg == ag ? mk.PDraw : mk.PAway;
+        var favoured = actualP >= Math.Max(mk.PHome, Math.Max(mk.PDraw, mk.PAway));
+        var rank = ScoreRank((int)hg, (int)ag);
+        <div class="fan-result @(favoured ? "ok" : "")">
+            <div><span class="fan-kicker">Final score</span><b>@Match.HomeName @hg–@ag @Match.AwayName</b></div>
+            <div class="small dim">The model gave this result (@(hg > ag ? $"{Match.HomeName} win" : hg == ag ? "a draw" : $"{Match.AwayName} win")) @Fmt.Pct(actualP), @(favoured ? "its most likely outcome." : "so it was not the expected outcome.")
+                The exact score @hg–@ag @(rank is null ? "was outside the model's listed scorelines." : $"was its #{rank} most likely scoreline ({Fmt.Pct(Cell((int)hg, (int)ag), 1)}).")</div>
+        </div>
+    }
     <div class="fan-outcomes">
         @foreach (var (label, p, cls, team) in new[] { (Match.HomeName + " win", mk.PHome, "h", (long?)Match.HomeTeamId), ("Draw", mk.PDraw, "d", null), (Match.AwayName + " win", mk.PAway, "a", Match.AwayTeamId) })
         {
@@ -97,6 +108,13 @@
     [Parameter] public (double Attack, double Defence, int Rank, int Of)? StrengthAway { get; set; }
 
     private static string W(double f) => (Math.Clamp(f, 0, 1) * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+    private int? ScoreRank(int h, int a)
+    {
+        if (mk.Matrix.Length <= h || mk.Matrix[h].Length <= a) return null;
+        var p = mk.Matrix[h][a];
+        return 1 + mk.Matrix.Sum(r => r.Count(x => x > p));
+    }
 
     private double Cell(int h, int a) => mk.Matrix.Length > h && mk.Matrix[h].Length > a ? mk.Matrix[h][a] : double.NaN;
 

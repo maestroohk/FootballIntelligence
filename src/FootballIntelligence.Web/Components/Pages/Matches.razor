@@ -12,14 +12,13 @@
 
 <div class="card">
     <div class="row">
-        <select class="input" @bind="competition" @bind:after="Load">
-            <option value="">All competitions</option>
-            @foreach (var c in competitions) { <option value="@c">@Fmt.CompetitionName(c)</option> }
-        </select>
+        @if (view == "results")
+        {
         <select class="input" @bind="season" @bind:after="Load">
             <option value="">All seasons</option>
             @for (var s = 2026; s >= 2005; s--) { <option value="@s">@s/@((s + 1) % 100)</option> }
         </select>
+        }
         <input class="input" placeholder="Search team (e.g. Manchester)" @bind="team" @bind:event="oninput" @bind:after="Load" />
         @if (view == "date")
         {

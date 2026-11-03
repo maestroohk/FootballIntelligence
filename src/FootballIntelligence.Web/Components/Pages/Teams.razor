@@ -40,7 +40,7 @@
                 @foreach (var t in Sorted())
                 {
                     <tr>
-                        <td><b>@t.Team</b></td><td class="small dim">@Fmt.CompetitionName(t.Competition)</td><td class="num">@t.Matches</td>
+                        <td><span class="row" style="gap:8px;flex-wrap:nowrap"><Crest Name="@t.Team" /><b>@t.Team</b></span></td><td class="small dim"><LeagueChip Code="@t.Competition" /></td><td class="num">@t.Matches</td>
                         <td class="num">@($"{t.GoalsFor:0}-{t.GoalsAgainst:0}")</td>
                         <td class="num">@t.PerMatch(t.XgFor).ToString("F2")</td><td class="num">@t.PerMatch(t.XgAgainst).ToString("F2")</td>
                         <td class="num">@Fmt.Pct(t.Possession)</td><td class="num">@Fmt.Pct(t.FieldTilt)</td>

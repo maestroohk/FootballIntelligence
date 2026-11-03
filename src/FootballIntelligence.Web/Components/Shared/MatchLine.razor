@@ -1,3 +1,5 @@
+@inject ViewMode Mode
+@implements IDisposable
 <a class="fixture" href="matches/@Match.MatchId">
     <div class="fx-status">
         @if (Match.Status == "finished") { <span class="fx-ft">FT</span> }
@@ -13,13 +15,13 @@
         @if (Match.PHome is not null)
         {
             <div class="fx-odds">
-                <span class="@(Top == 0 ? "top" : "")"><small>1</small>@Fmt.Pct(Match.PHome)</span>
-                <span class="@(Top == 1 ? "top" : "")"><small>X</small>@Fmt.Pct(Match.PDraw)</span>
-                <span class="@(Top == 2 ? "top" : "")"><small>2</small>@Fmt.Pct(Match.PAway)</span>
+                <span class="@(Top == 0 ? "top" : "")"><small>@(Mode.Analyst ? "1" : "Home")</small>@Fmt.Pct(Match.PHome)</span>
+                <span class="@(Top == 1 ? "top" : "")"><small>@(Mode.Analyst ? "X" : "Draw")</small>@Fmt.Pct(Match.PDraw)</span>
+                <span class="@(Top == 2 ? "top" : "")"><small>@(Mode.Analyst ? "2" : "Away")</small>@Fmt.Pct(Match.PAway)</span>
             </div>
             <ProbBar Home="Match.PHome.Value" Draw="Match.PDraw!.Value" Away="Match.PAway!.Value" Slim="true" />
             <div class="fx-meta">
-                <span>xG @Fmt.Num(Match.LambdaHome, 1)–@Fmt.Num(Match.LambdaAway, 1)</span>
+                <span>@(Mode.Analyst ? "xG" : "Goals expected") @Fmt.Num(Match.LambdaHome, 1)–@Fmt.Num(Match.LambdaAway, 1)</span>
                 <span title="@Match.PredictionFlag">@(Match.PredictionFlag is not null ? "late · not evaluated" : Match.Purpose == "forward" ? "pre-match forecast" : "backtest")</span>
             </div>
         }
@@ -33,6 +35,12 @@
 @code {
     [Parameter, EditorRequired] public MatchRow Match { get; set; } = default!;
     [Parameter] public bool ShowDate { get; set; } = true;
+
+    protected override void OnInitialized() => Mode.Changed += OnMode;
+
+    private void OnMode() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Mode.Changed -= OnMode;
 
     private int Top => Match.PHome is null ? -1 : Match.PHome >= Match.PDraw && Match.PHome >= Match.PAway ? 0 : Match.PDraw >= Match.PAway ? 1 : 2;
     private string ShortDate => ShowDate && DateTime.TryParse(Match.MatchDate, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d) ? d.ToString("dd MMM", System.Globalization.CultureInfo.InvariantCulture) : "";

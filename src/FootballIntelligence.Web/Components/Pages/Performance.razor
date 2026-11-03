@@ -15,6 +15,11 @@
     </div>
 </div>
 
+@if (champion is not null && !isChampion)
+{
+    <div class="callout warn">No champion model on this computer. Showing <b>@champion</b>, the model with the most stored @(purpose == "forward" ? "pre-match" : "walk-forward") predictions here.</div>
+}
+
 <div class="grid g4">
     <Kpi Label="Predictions evaluated" Value="@points.Sum(p => p.N).ToString("N0")" Note="@Fmt.ModelLabel(champion)" />
     <Kpi Label="Log loss" Value="@Fmt.Num(Weighted(p => p.LogLoss), 4)" Note="@($"bookmaker close {Fmt.Num(bookLogLoss, 4)} on the same months")" />
@@ -29,7 +34,14 @@
 
 <div class="card">
     <div class="card-head"><h2>Performance over time</h2><span class="sub">monthly log loss, 3-month rolling · model vs de-vigged bookmaker closing odds</span></div>
-    <LineChart Series="series" XTicks="ticks" YMin="@ymin" YMax="@ymax" Height="260" YFormat="@(v => v.ToString("0.000"))" />
+    @if (points.Count < 2)
+    {
+        <div class="empty">Not enough settled predictions to draw a trend (needs at least two months in the six primary leagues).</div>
+    }
+    else
+    {
+        <LineChart Series="series" XTicks="ticks" YMin="@ymin" YMax="@ymax" Height="260" YFormat="@(v => v.ToString("0.000"))" />
+    }
 </div>
 
 @if (goalBins.Count > 0)
@@ -98,6 +110,7 @@
 @code {
     private string purpose = "backtest";
     private string? champion;
+    private bool isChampion;
     private List<PerformancePoint> points = [];
     private List<PerformancePoint> bookPoints = [];
     private double? bookLogLoss;
@@ -125,6 +138,8 @@
     protected override void Load()
     {
         champion = Research.Champion();
+        isChampion = champion is not null;
+        champion ??= Research.MostPredictedModel(purpose);
         points = champion is null ? [] : Research.RollingPerformance(champion, purpose);
         var months = points.Select(p => p.Period).ToHashSet();
         bookPoints = Research.RollingPerformance("bookmaker_close@v1", "backtest").Where(p => months.Contains(p.Period)).ToList();
