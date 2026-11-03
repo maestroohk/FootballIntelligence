@@ -307,3 +307,13 @@ def test_new_team_spelling_is_merged_into_the_established_team(con):
     assert con.execute("SELECT status FROM matches WHERE match_id = 11").fetchone()[0] == "scheduled"
     assert repair_new_teams(con) == []
     assert get_or_create_team(con, "Sheffield Utd", "ENG", "football-data.co.uk", 2026) == 1
+
+
+def test_challenger_forecasts_have_their_own_provenance(con):
+    con.execute("INSERT INTO competitions VALUES('E0','PL','ENG',1)")
+    con.execute("INSERT INTO teams(team_id, name, country) VALUES(1,'A','ENG'),(2,'B','ENG')")
+    con.execute("INSERT INTO matches(match_id, competition, season, match_date, home_team_id, away_team_id, status, source, first_seen, updated_at) VALUES(1,'E0',2099,'2099-01-10',1,2,'scheduled','t',?,?)", (db.now(), db.now()))
+    for version, purpose in (("m", "forward"), ("market_hybrid@v2", "challenger")):
+        con.execute("INSERT INTO predictions(match_id, model_version, purpose, created_at, data_cutoff, p_home, p_draw, p_away) VALUES(1,?,?,?,'2099-01-01',.5,.3,.2)", (version, purpose, db.now()))
+    cats = dict(con.execute("SELECT purpose, category FROM prediction_provenance").fetchall())
+    assert cats == {"forward": "pre_match", "challenger": "challenger"}

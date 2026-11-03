@@ -196,10 +196,12 @@ CREATE TABLE IF NOT EXISTS prediction_flags (
     PRIMARY KEY(prediction_id, flag)
 );
 
-CREATE VIEW IF NOT EXISTS prediction_provenance AS
+DROP VIEW IF EXISTS prediction_provenance;
+CREATE VIEW prediction_provenance AS
 SELECT p.prediction_id, p.match_id, p.model_version, p.purpose,
        CASE WHEN p.model_version LIKE 'bookmaker%' THEN 'market_benchmark'
             WHEN EXISTS (SELECT 1 FROM prediction_flags f WHERE f.prediction_id = p.prediction_id) THEN 'not_eligible'
+            WHEN p.purpose = 'challenger' THEN 'challenger'
             WHEN p.purpose = 'forward' THEN 'pre_match'
             WHEN p.model_version = (SELECT version FROM model_versions WHERE status = 'champion' LIMIT 1) THEN 'walk_forward'
             ELSE 'exploratory' END AS category

@@ -267,6 +267,22 @@ else
     </div>
 }
 
+@if (Mode.Analyst && challenger is not null && mk is not null)
+{
+    var cm = Markets.FromJson(challenger.Markets);
+    <div class="card">
+        <div class="card-head"><h2>Market-trained challenger</h2><span class="sub">@challenger.ModelVersion · separate research model · stored @Fmt.Local(challenger.CreatedAt)</span></div>
+        <div class="small dim" style="margin-bottom:8px">A football-only model trained to imitate past de-vigged bookmaker probabilities, combined with the champion's total goals. It beat the champion out of sample by about 0.001 log loss but is still well short of the market. It is shown for comparison only and never replaces the champion's forecast above.</div>
+        <table class="data compact">
+            <thead><tr><th></th><th class="num">Home</th><th class="num">Draw</th><th class="num">Away</th><th class="num">Expected goals</th><th>Most likely score</th></tr></thead>
+            <tbody>
+                <tr><td>Champion</td><td class="num">@Fmt.Pct(mk.PHome, 1)</td><td class="num">@Fmt.Pct(mk.PDraw, 1)</td><td class="num">@Fmt.Pct(mk.PAway, 1)</td><td class="num">@Fmt.Num(mk.ExpHome) – @Fmt.Num(mk.ExpAway)</td><td>@(mk.TopScores.Count > 0 ? $"{mk.TopScores[0].Home}–{mk.TopScores[0].Away}" : "—")</td></tr>
+                <tr><td>Challenger</td><td class="num">@Fmt.Pct(challenger.PHome, 1)</td><td class="num">@Fmt.Pct(challenger.PDraw, 1)</td><td class="num">@Fmt.Pct(challenger.PAway, 1)</td><td class="num">@Fmt.Num(challenger.LambdaHome) – @Fmt.Num(challenger.LambdaAway)</td><td>@(cm?.TopScores.Count > 0 ? $"{cm.TopScores[0].Home}–{cm.TopScores[0].Away}" : "—")</td></tr>
+            </tbody>
+        </table>
+    </div>
+}
+
 @if (forecasts.Count > 0)
 {
     <div class="card">
@@ -282,7 +298,7 @@ else
                         var top = f.PHome >= f.PDraw && f.PHome >= f.PAway ? "H" : f.PDraw >= f.PAway ? "D" : "A";
                         <tr class="@(f.Flag is null ? "" : "dim")">
                             <td class="small">@Fmt.Local(f.CreatedAt)</td>
-                            <td class="small">@(f.Flag is not null ? "not eligible" : f.Purpose == "forward" ? "pre-match" : "re-forecast")<div class="faint">@(f.Flag ?? $"results before {f.DataCutoff}")</div></td>
+                            <td class="small">@(f.Flag is not null ? "not eligible" : f.Purpose == "forward" ? "pre-match" : f.Purpose == "challenger" ? "challenger" : "re-forecast")<div class="faint">@(f.Flag ?? $"results before {f.DataCutoff}")</div></td>
                             <td class="small">@f.ModelVersion</td>
                             <td class="num">@Fmt.Pct(f.PHome, 1)</td><td class="num">@Fmt.Pct(f.PDraw, 1)</td><td class="num">@Fmt.Pct(f.PAway, 1)</td>
                             @if (match.Status == "finished")
@@ -324,6 +340,7 @@ else
 
     private MatchRow? match;
     private List<StoredForecast> forecasts = [];
+    private StoredForecast? challenger;
     private Markets? mk;
     private List<OddsRow> odds = [];
     private List<OddsRow> recorded = [];
@@ -359,6 +376,7 @@ else
     {
         match = Football.Match(Id);
         forecasts = Football.Forecasts(Id);
+        challenger = Football.Challenger(Id);
         if (match is null) return;
         mk = Markets.FromJson(match.Markets);
         if (mk is null && match.LambdaHome is not null)

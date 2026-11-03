@@ -12,6 +12,7 @@ public class StoredForecast
     public double PAway { get; set; }
     public double? LambdaHome { get; set; }
     public double? LambdaAway { get; set; }
+    public string? Markets { get; set; }
     public string? Flag { get; set; }
 }
 

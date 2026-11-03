@@ -15,7 +15,7 @@ public class FootballQueries(Database db)
         JOIN teams ta ON ta.team_id = m.away_team_id
         LEFT JOIN predictions p ON p.prediction_id = (
             SELECT p2.prediction_id FROM predictions p2
-            WHERE p2.match_id = m.match_id
+            WHERE p2.match_id = m.match_id AND p2.purpose IN ('forward', 'backtest')
             ORDER BY CASE WHEN p2.model_version LIKE 'bookmaker%' THEN 3
                           WHEN p2.purpose = 'forward' AND NOT EXISTS (SELECT 1 FROM prediction_flags f2 WHERE f2.prediction_id = p2.prediction_id) THEN 0
                           WHEN p2.purpose = 'forward' THEN 2 ELSE 1 END, p2.prediction_id DESC LIMIT 1)
@@ -59,6 +59,11 @@ public class FootballQueries(Database db)
         FROM predictions p WHERE p.match_id = @id AND p.model_version NOT LIKE 'bookmaker%'
         ORDER BY p.purpose = 'forward' DESC, p.prediction_id DESC
         """, new { id }).ToList();
+
+    public StoredForecast? Challenger(long id) => db.Single<StoredForecast>("""
+        SELECT p.prediction_id, p.model_version, p.purpose, p.created_at, p.data_cutoff, p.p_home, p.p_draw, p.p_away, p.lambda_home, p.lambda_away, p.markets, NULL flag
+        FROM predictions p WHERE p.match_id = @id AND p.purpose = 'challenger' ORDER BY p.prediction_id DESC LIMIT 1
+        """, new { id });
 
     public MatchRow? Match(long id) => db.Single<MatchRow>(MatchSelect + " WHERE m.match_id=@id", new { id });
 

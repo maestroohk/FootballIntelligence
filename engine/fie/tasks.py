@@ -383,6 +383,13 @@ def daily_cycle(ctx, trigger="manual"):
     else:
         ctx.log("no champion model on this machine; forward predictions skipped", "warning")
         out["prediction"] = "skipped: no champion model"
+    if not LIGHT and db.get_kv(ctx.con, "research_summary"):
+        try:
+            from . import marketmodel
+            ctx.stage("forecasting with the market-trained challenger")
+            out["challenger"] = marketmodel.challenger_forecasts(ctx.con)
+        except Exception as exc:
+            ctx.log(f"challenger forecasts failed: {exc}", "warning")
     try:
         from . import paper
         out["paper"] = paper.paper_cycle(ctx)

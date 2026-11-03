@@ -8,18 +8,21 @@ from .jobs import handler
 FOOTBALL = ["elo_diff", "h_rest", "a_rest", "h_m28", "a_m28", "h_promoted", "a_promoted", "h_xf", "h_xa", "a_xf", "a_xa", "h_n", "a_n"]
 
 
-def market_probs(con, book="pinnacle"):
-    q = pd.read_sql_query("""SELECT match_id, selection, odds FROM market_odds
-                             WHERE market = '1x2' AND timing = 'pre_close' AND bookmaker = ? AND observed_at NOT LIKE '20%'""", con, params=(book,))
-    w = q.pivot_table(index="match_id", columns="selection", values="odds").dropna()[["home", "draw", "away"]]
-    p = metrics.devig(w["home"], w["draw"], w["away"])
-    return pd.DataFrame({"match_id": w.index, "m_home": p[:, 0], "m_draw": p[:, 1], "m_away": p[:, 2]})
+def market_probs(con, books=("pinnacle",)):
+    out = []
+    for book in books:
+        q = pd.read_sql_query("""SELECT match_id, selection, odds FROM market_odds
+                                 WHERE market = '1x2' AND timing = 'pre_close' AND bookmaker = ? AND observed_at NOT LIKE '20%'""", con, params=(book,))
+        w = q.pivot_table(index="match_id", columns="selection", values="odds").dropna()[["home", "draw", "away"]]
+        p = metrics.devig(w["home"], w["draw"], w["away"])
+        out.append(pd.DataFrame({"match_id": w.index, "m_home": p[:, 0], "m_draw": p[:, 1], "m_away": p[:, 2], "label_book": book}))
+    return pd.concat(out).drop_duplicates("match_id")
 
 
-def dataset(con):
+def dataset(con, books=("pinnacle",)):
     oos = research.load_cached("oos_ensemble")
     feats = research.load_cached("features")[["match_id"] + FOOTBALL]
-    d = oos[oos["status"] == "finished"].merge(market_probs(con), on="match_id").merge(feats, on="match_id", how="left")
+    d = oos[oos["status"] == "finished"].merge(market_probs(con, books), on="match_id").merge(feats, on="match_id", how="left")
     d = d.sort_values(["date", "match_id"]).reset_index(drop=True)
     eps = 1e-6
     d["mk_hd"] = np.log((d["m_home"] + eps) / (d["m_away"] + eps))
@@ -142,9 +145,9 @@ def _gbm(train_x, labels, weights, test_x):
     return booster.predict(test_x)
 
 
-def distillation_study(con, first_season=2014, lookback=4):
+def distillation_study(con, first_season=2014, lookback=4, books=("pinnacle",)):
     from .features import FEATURE_COLUMNS
-    d = dataset(con)
+    d = dataset(con, books)
     feats = research.load_cached("features")
     d = d.merge(feats[["match_id"] + [c for c in FEATURE_COLUMNS + ["dc_log_lh", "dc_log_la"] if c not in d.columns]], on="match_id", how="left")
     cols = list(dict.fromkeys(FEATURE_COLUMNS + ["dc_log_lh", "dc_log_la", "ch_hd", "ch_dd"]))
@@ -160,7 +163,7 @@ def distillation_study(con, first_season=2014, lookback=4):
         n = tr.sum()
         soft_p[te] = _gbm(np.vstack([x_tr] * 3), np.repeat([0, 1, 2], n), soft[tr].T.reshape(-1), x_te)
     keep = ~np.isnan(soft_p).any(axis=1)
-    research.save_cached("oos_distilled", pd.DataFrame({"match_id": d.loc[keep, "match_id"].to_numpy(), "p_home": soft_p[keep, 0],
+    research.save_cached("oos_distilled" if books == ("pinnacle",) else "oos_distilled_" + "_".join(books), pd.DataFrame({"match_id": d.loc[keep, "match_id"].to_numpy(), "p_home": soft_p[keep, 0],
                                                         "p_draw": soft_p[keep, 1], "p_away": soft_p[keep, 2]}))
     block = (d["competition"] + d["season"].astype(str)).to_numpy()
     champ = d[["p_home", "p_draw", "p_away"]].to_numpy()
@@ -177,12 +180,73 @@ def distillation_study(con, first_season=2014, lookback=4):
         out["periods"][period] = res
     out["passed_validation"] = out["periods"]["validation_2014_2022"]["primary"]["market_labels_vs_champion"]["ci_low"] > 0
     out["data_version"] = research.data_version(con, ("oos_ensemble", "features"))
-    db.set_kv(con, "distillation_study", out)
+    out["label_books"] = list(books)
+    db.set_kv(con, "distillation_study" if books == ("pinnacle",) else "distillation_study_" + "_".join(books), out)
     return out
 
 
 @handler("distillation_study")
-def distillation_study_job(ctx):
+def distillation_study_job(ctx, books=None):
     ctx.stage("training football-only models on outcome labels and on market labels")
-    res = distillation_study(ctx.con)
+    res = distillation_study(ctx.con, books=tuple(books) if books else ("pinnacle",))
     return {p: {s: r["log_loss"] | {"vs_champion": r["market_labels_vs_champion"]} for s, r in v.items()} for p, v in res["periods"].items()}
+
+
+CHALLENGER = "market_hybrid@v2"
+TEACHERS = ("pinnacle", "market_avg")
+
+
+def challenger_forecasts(con, lookback=4):
+    import json
+    from datetime import date, timedelta
+    from .features import FEATURE_COLUMNS
+    from .forward import FORWARD_HORIZON_DAYS, safely_before_kickoff
+    from .shapes import dixon_coles, solve_rates
+    from .scoreline import markets
+    d = dataset(con, TEACHERS)
+    feats = research.load_cached("features")
+    extra = [c for c in FEATURE_COLUMNS + ["dc_log_lh", "dc_log_la"] if c not in d.columns]
+    d = d.merge(feats[["match_id"] + extra], on="match_id", how="left")
+    cols = list(dict.fromkeys(FEATURE_COLUMNS + ["dc_log_lh", "dc_log_la", "ch_hd", "ch_dd"]))
+    latest = int(d["season"].max())
+    tr = d[d["season"] > latest - lookback]
+    until = (date.today() + timedelta(days=FORWARD_HORIZON_DAYS)).isoformat()
+    rows = con.execute("""SELECT p.prediction_id, p.match_id, p.data_cutoff, p.p_home, p.p_draw, p.p_away, p.lambda_home, p.lambda_away, p.markets,
+                                 m.match_date, m.kickoff, m.competition
+                          FROM predictions p JOIN matches m ON m.match_id = p.match_id
+                          WHERE p.purpose = 'forward' AND m.status = 'scheduled' AND m.match_date BETWEEN date('now') AND ? AND p.lambda_home IS NOT NULL
+                            AND p.prediction_id NOT IN (SELECT prediction_id FROM prediction_flags)
+                            AND p.prediction_id = (SELECT MAX(p2.prediction_id) FROM predictions p2 WHERE p2.match_id = p.match_id AND p2.purpose = 'forward')
+                            AND NOT EXISTS (SELECT 1 FROM predictions c WHERE c.match_id = p.match_id AND c.purpose = 'challenger' AND c.model_version = ?)""",
+                       (until, CHALLENGER)).fetchall()
+    rows = [r for r in rows if safely_before_kickoff(r["match_date"], r["kickoff"], r["competition"])]
+    if not rows or tr.empty:
+        return {"stored": 0, "training_rows": int(len(tr))}
+    up = pd.DataFrame([dict(r) for r in rows]).merge(feats[["match_id"] + [c for c in cols if c in feats.columns]], on="match_id", how="left")
+    eps = 1e-6
+    up["ch_hd"] = np.log((up["p_home"] + eps) / (up["p_away"] + eps))
+    up["ch_dd"] = np.log((up["p_draw"] + eps) / (up["p_away"] + eps))
+    soft = tr[["m_home", "m_draw", "m_away"]].to_numpy()
+    x_tr = tr[cols].to_numpy(float)
+    n = len(tr)
+    probs = _gbm(np.vstack([x_tr] * 3), np.repeat([0, 1, 2], n), soft.T.reshape(-1), up[cols].to_numpy(float))
+    rho = np.array([json.loads(r["markets"] or "{}").get("rho", 0.0) or 0.0 for r in rows])
+    lh0, la0 = up["lambda_home"].to_numpy(), up["lambda_away"].to_numpy()
+    lh, la = solve_rates(probs, rho, lh0, la0, total=lh0 + la0)
+    mats = dixon_coles(lh, la, rho)
+    stored = 0
+    with db.transaction(con):
+        for i, r in enumerate(rows):
+            mk = markets(mats[i])
+            mk.update({"rho": float(rho[i]), "base_prediction_id": r["prediction_id"], "market_trained_1x2": [float(v) for v in probs[i]]})
+            con.execute("""INSERT OR IGNORE INTO predictions(match_id, model_version, purpose, created_at, data_cutoff, p_home, p_draw, p_away, lambda_home, lambda_away, markets)
+                           VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                        (r["match_id"], CHALLENGER, "challenger", db.now(), r["data_cutoff"], mk["p_home"], mk["p_draw"], mk["p_away"], float(lh[i]), float(la[i]), db.dumps(mk)))
+            stored += 1
+    return {"stored": stored, "training_rows": int(n), "training_seasons": sorted(int(s) for s in tr["season"].unique())}
+
+
+@handler("challenger_forecasts")
+def challenger_forecasts_job(ctx):
+    ctx.stage("forecasting upcoming fixtures with the market-trained challenger")
+    return challenger_forecasts(ctx.con)

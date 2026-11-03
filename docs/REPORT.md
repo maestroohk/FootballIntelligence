@@ -122,6 +122,13 @@ Each study fitted its parameters walk-forward from earlier seasons only, was jud
 
 No new model or rule demonstrates a statistically defensible, executable out-of-sample advantage. The champion is unchanged.
 
+## 6c. Current fixtures and the market-trained challenger
+
+- **Fixture pipeline defects fixed.** OpenFootball publishes planned matchday dates; when football-data.co.uk recorded the result on a different day, the planned row stayed "scheduled" as a phantom (17 rows). New spellings in the football-data.co.uk fixtures file (Sheffield Utd, Oxford Utd, KV Mechelen) created teams without history, so their fixtures were forecast as if by unknown teams and Preston v Sheffield United appeared twice. Both are now prevented at ingestion and repaired automatically each cycle; affected forecasts are flagged, never edited, and corrected fixtures receive fresh forecasts.
+- **Coverage.** Every prediction run records the fixtures in its 10-day window without a forecast and why. On 3 November 2026: 94 of 94 fixtures in the window forecast (10 leagues), 2,028 later fixtures to be forecast as they come within 10 days. The Champions League and Europa League are not covered (no configured fixture source, no cross-country strength scale).
+- **Scorelines for the market-trained model.** Solving Dixon–Coles expected goals that reproduce its match-result probabilities exactly makes scorelines (−0.0031 [−0.0052, −0.0010]) and goal totals worse, because the draw rate then sets the total. Keeping the champion's total goals and fitting only the home/away split keeps most of the gain (1X2 +0.00089 [+0.00015, +0.00168], all divisions from 2023 +0.00116 [+0.00051, +0.00180]) with scorelines no worse. This hybrid is stored for upcoming fixtures as a separate challenger (`market_hybrid@v2`, purpose `challenger`) and shown beside the champion in Analyst mode; it never replaces the champion's forecast.
+- **Pinnacle prices are no longer published.** football-data.co.uk has Pinnacle prices for only 2,491 of 6,183 matches in 2025/26 and none in 2026/27. Market-average prices are an equally good teacher (+0.00097 [+0.00019, +0.00177] vs +0.00100 for Pinnacle), so the challenger falls back to them; closing-line value falls back to the market-average close.
+
 ## 7. Incomplete or partial features
 
 - Live tracking of real matches is untested end to end (no API key); replay mode is fully working.
