@@ -152,6 +152,40 @@ public class FootballQueries(Database db)
         FROM scored
         """, new { purpose }) ?? new TrackRecord();
 
+    private const string SettledFrom = """
+        FROM predictions p JOIN matches m ON m.match_id=p.match_id
+        JOIN teams th ON th.team_id=m.home_team_id JOIN teams ta ON ta.team_id=m.away_team_id
+        WHERE m.status='finished' AND m.fthg IS NOT NULL AND p.purpose=@purpose
+          AND p.prediction_id = (SELECT MAX(p2.prediction_id) FROM predictions p2 WHERE p2.match_id=p.match_id AND p2.purpose=@purpose
+                                 AND p2.model_version NOT LIKE 'bookmaker%' AND p2.prediction_id NOT IN (SELECT prediction_id FROM prediction_flags))
+          AND (@competition IS NULL OR m.competition=@competition)
+          AND (@team IS NULL OR th.name LIKE '%'||@team||'%' OR ta.name LIKE '%'||@team||'%'
+               OR EXISTS (SELECT 1 FROM team_aliases a WHERE a.team_id IN (m.home_team_id, m.away_team_id) AND a.alias LIKE '%'||@team||'%'))
+          AND (@hit IS NULL OR @hit = (CASE WHEN (m.fthg>m.ftag AND p.p_home>=p.p_draw AND p.p_home>=p.p_away)
+                                             OR (m.fthg=m.ftag AND p.p_draw>p.p_home AND p.p_draw>=p.p_away)
+                                             OR (m.fthg<m.ftag AND p.p_away>p.p_home AND p.p_away>p.p_draw) THEN 1 ELSE 0 END))
+        """;
+
+    public (long Total, long Hits, double? MeanActual, double? LogLoss) SettledSummary(string purpose, string? competition, string? team, int? hit)
+    {
+        var r = db.Single<(long, long, double?, double?)>($"""
+            SELECT COUNT(*),
+                   COALESCE(SUM(CASE WHEN (m.fthg>m.ftag AND p.p_home>=p.p_draw AND p.p_home>=p.p_away) OR (m.fthg=m.ftag AND p.p_draw>p.p_home AND p.p_draw>=p.p_away) OR (m.fthg<m.ftag AND p.p_away>p.p_home AND p.p_away>p.p_draw) THEN 1 ELSE 0 END), 0),
+                   AVG(CASE WHEN m.fthg>m.ftag THEN p.p_home WHEN m.fthg=m.ftag THEN p.p_draw ELSE p.p_away END),
+                   AVG(-ln(CASE WHEN m.fthg>m.ftag THEN p.p_home WHEN m.fthg=m.ftag THEN p.p_draw ELSE p.p_away END))
+            {SettledFrom}
+            """, new { purpose, competition, team, hit });
+        return r;
+    }
+
+    public List<MatchRow> Settled(string purpose, string? competition, string? team, int? hit, int limit, int offset) => db.Query<MatchRow>($"""
+        SELECT m.match_id, m.competition, m.season, m.match_date, m.kickoff, m.status, m.home_team_id, m.away_team_id,
+               {Database.DisplayName("th.team_id", "th.name")} home_name, {Database.DisplayName("ta.team_id", "ta.name")} away_name, m.fthg, m.ftag,
+               p.p_home, p.p_draw, p.p_away, p.lambda_home, p.lambda_away, p.model_version, p.purpose, p.created_at prediction_created, p.data_cutoff, p.markets
+        {SettledFrom}
+        ORDER BY m.match_date DESC, m.match_id DESC LIMIT @limit OFFSET @offset
+        """, new { purpose, competition, team, hit, limit, offset }).ToList();
+
     public List<string> Competitions() => db.Query<string>("SELECT code FROM competitions ORDER BY tier, code").ToList();
 
     public List<PlayerSummary> Players(string? search, string? team, string? position, int limit) => db.Query<PlayerSummary>("""

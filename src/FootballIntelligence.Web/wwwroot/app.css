@@ -334,6 +334,15 @@ details.card[open] > summary h2::after { content: " ▾"; }
 .fan-result { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; margin-bottom: 14px; border-radius: var(--radius); background: var(--bg-elev); border-left: 3px solid var(--warn); }
 .fan-result.ok { border-left-color: var(--ok); }
 .fan-result b { display: block; font-size: 18px; margin-top: 2px; }
+.hist-row { display: grid; grid-template-columns: 96px minmax(0, 1.2fr) minmax(0, 1.3fr) 110px 96px; grid-template-areas: "date teams pred actual hit" "date teams meta meta meta"; gap: 4px 14px; align-items: center; padding: 10px 6px; border-bottom: 1px solid var(--border-soft); color: var(--text); }
+.hist-row:hover { background: rgba(255,255,255,.025); text-decoration: none; }
+.hist-date { grid-area: date; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); }
+.hist-teams { grid-area: teams; display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: 13px; min-width: 0; }
+.hist-pred { grid-area: pred; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.hist-actual { grid-area: actual; display: flex; flex-direction: column; }
+.hist-actual b { font-size: 18px; }
+.hist-hit { grid-area: hit; text-align: right; }
+.hist-meta { grid-area: meta; }
 @media (max-width: 1400px) {
     .g-main-side { grid-template-columns: minmax(0, 1fr) 320px; }
 }
@@ -344,6 +353,7 @@ details.card[open] > summary h2::after { content: " ▾"; }
     .match-line .pbar { grid-column: 1 / -1; }
 }
 @media (max-width: 760px) {
+    .hist-row { grid-template-columns: 70px minmax(0, 1fr) 70px; grid-template-areas: "date teams actual" "pred pred hit" "meta meta meta"; }
     .nav-section { display: none; }
     .league-filter { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
     .featured { grid-template-columns: minmax(0, 1fr); }

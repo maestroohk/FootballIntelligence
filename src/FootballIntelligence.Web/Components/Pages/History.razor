@@ -1,0 +1,128 @@
+@page "/history"
+@inject FootballQueries Football
+
+<PageTitle>Prediction history · Football Intelligence</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>Prediction history</h1>
+        <p>What the model said before each match, and what actually happened. Forecasts are stored before kick-off and never changed afterwards.</p>
+    </div>
+    <div class="tabs" style="border:none">
+        <button class="tab @(purpose == "forward" ? "active" : "")" @onclick='() => Set(() => purpose = "forward")'>Pre-match forecasts</button>
+        <button class="tab @(purpose == "backtest" ? "active" : "")" @onclick='() => Set(() => purpose = "backtest")'>Historical re-forecasts</button>
+    </div>
+</div>
+
+<div class="grid g4">
+    <Kpi Label="Matches scored" Value="@summary.Total.ToString("N0")" Note="@(purpose == "forward" ? "stored before kick-off" : "made with only earlier results")" />
+    <Kpi Label="Most likely result happened" Value="@(summary.Total == 0 ? "—" : Fmt.Pct((double)summary.Hits / summary.Total, 1))" Note="@($"{summary.Hits:N0} of {summary.Total:N0}")" />
+    <Kpi Label="Average chance given to the actual result" Value="@Fmt.Pct(summary.MeanActual, 1)" Note="a coin-flip between three outcomes would give 33%" />
+    <Kpi Label="Log loss" Value="@Fmt.Num(summary.LogLoss, 4)" Note="lower is better; 1.0986 = always a third each" />
+</div>
+
+<div class="callout">A single wrong pick does not mean the model was poor: if it gives a team 60%, that team should still fail to win about 4 times in 10. Judge it on many matches, using the average chance it gave to what happened and the log loss.</div>
+
+<div class="card">
+    <div class="row">
+        <input class="input" placeholder="Search team" @bind="team" @bind:event="oninput" @bind:after="() => Set(() => { })" />
+        <select class="input" @bind="competition" @bind:after="() => Set(() => { })">
+            <option value="">All competitions</option>
+            @foreach (var c in competitions) { <option value="@c">@Fmt.CompetitionName(c)</option> }
+        </select>
+        <select class="input" @bind="hitFilter" @bind:after="() => Set(() => { })">
+            <option value="">All outcomes</option>
+            <option value="1">Most likely result happened</option>
+            <option value="0">Most likely result did not happen</option>
+        </select>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head"><h2>Matches</h2><span class="sub">@(summary.Total == 0 ? "none" : $"{page * PageSize + 1}–{Math.Min(summary.Total, (page + 1) * PageSize)} of {summary.Total:N0}")</span></div>
+    @if (rows.Count == 0)
+    {
+        <div class="empty">@(purpose == "forward" ? "No pre-match forecast has been scored yet. They are scored automatically once the final result arrives." : "No historical re-forecasts match these filters.")</div>
+    }
+    @foreach (var m in rows)
+    {
+        var hasGoals = m.LambdaHome is not null && m.LambdaAway is not null;
+        var best = hasGoals ? ScoreModel.Compute(ScoreModel.DixonColes(m.LambdaHome!.Value, m.LambdaAway!.Value, Rho(m))).TopScores.First() : default;
+        var actualP = m.Fthg > m.Ftag ? m.PHome : m.Fthg == m.Ftag ? m.PDraw : m.PAway;
+        var hit = actualP >= Math.Max(m.PHome!.Value, Math.Max(m.PDraw!.Value, m.PAway!.Value));
+        <a class="hist-row" href="matches/@m.MatchId">
+            <div class="hist-date"><span>@m.MatchDate</span><LeagueChip Code="@m.Competition" Short="true" ShowCountry="false" /></div>
+            <div class="hist-teams">
+                <span class="row" style="gap:6px;min-width:0"><Crest Name="@m.HomeName" TeamId="@m.HomeTeamId" /><span class="ellipsis">@m.HomeName</span></span>
+                <span class="row" style="gap:6px;min-width:0"><Crest Name="@m.AwayName" TeamId="@m.AwayTeamId" /><span class="ellipsis">@m.AwayName</span></span>
+            </div>
+            <div class="hist-pred">
+                <ProbBar Home="m.PHome!.Value" Draw="m.PDraw!.Value" Away="m.PAway!.Value" Slim="true" />
+                <span class="small dim">@Fmt.Pct(m.PHome) · @Fmt.Pct(m.PDraw) · @Fmt.Pct(m.PAway)@(hasGoals ? $" · likeliest score {best.Home}–{best.Away}" : "")</span>
+            </div>
+            <div class="hist-actual"><b>@m.Fthg–@m.Ftag</b><span class="small dim">@Fmt.Pct(actualP) for this result</span></div>
+            <div class="hist-hit"><span class="badge @(hit ? "ok" : "")">@(hit ? "as expected" : "upset")</span></div>
+            <div class="hist-meta small faint">@m.ModelVersion · @Fmt.Local(m.PredictionCreated)</div>
+        </a>
+    }
+    @if (summary.Total > PageSize)
+    {
+        <div class="spread" style="margin-top:12px">
+            <button class="btn sm" disabled="@(page == 0)" @onclick="() => Go(page - 1)">‹ Newer</button>
+            <span class="small dim">Page @(page + 1) of @((summary.Total + PageSize - 1) / PageSize)</span>
+            <button class="btn sm" disabled="@((page + 1) * PageSize >= summary.Total)" @onclick="() => Go(page + 1)">Older ›</button>
+        </div>
+    }
+</div>
+
+@code {
+    private const int PageSize = 40;
+    private string purpose = "forward";
+    private string team = "";
+    private string competition = "";
+    private string hitFilter = "";
+    private int page;
+    private List<string> competitions = [];
+    private List<MatchRow> rows = [];
+    private (long Total, long Hits, double? MeanActual, double? LogLoss) summary;
+
+    protected override void OnInitialized()
+    {
+        competitions = Football.Competitions();
+        Load();
+        if (summary.Total == 0)
+        {
+            purpose = "backtest";
+            Load();
+        }
+    }
+
+    private void Set(Action change)
+    {
+        change();
+        page = 0;
+        Load();
+    }
+
+    private void Go(int p)
+    {
+        page = p;
+        Load();
+    }
+
+    private void Load()
+    {
+        string? comp = string.IsNullOrEmpty(competition) ? null : competition;
+        string? t = string.IsNullOrWhiteSpace(team) ? null : team.Trim();
+        int? hit = hitFilter == "" ? null : int.Parse(hitFilter);
+        summary = Football.SettledSummary(purpose, comp, t, hit);
+        rows = Football.Settled(purpose, comp, t, hit, PageSize, page * PageSize);
+    }
+
+    private static double Rho(MatchRow m)
+    {
+        if (string.IsNullOrEmpty(m.Markets)) return 0;
+        var root = JsonDocument.Parse(m.Markets).RootElement;
+        return root.TryGetProperty("rho", out var r) && r.ValueKind == JsonValueKind.Number ? r.GetDouble() : 0;
+    }
+}
