@@ -1,6 +1,7 @@
 @page "/team/{Id:long}"
 @inherits FeedComponent
 @inject FootballQueries Football
+@inject IJSRuntime JS
 
 <PageTitle>@(team?.Name ?? "Team") · Football Intelligence</PageTitle>
 
@@ -14,7 +15,7 @@
 <div class="card team-hero" style="--team:@primary;--team2:@secondary">
     <Crest Name="@team.Name" TeamId="@team.TeamId" Large="true" />
     <div class="stack" style="gap:6px">
-        <h1>@team.Name</h1>
+        <div class="row" style="gap:12px"><h1>@team.Name</h1><button class="btn sm @(following ? "primary" : "")" @onclick="ToggleFollow">@(following ? "★ Following" : "☆ Follow")</button></div>
         <div class="row">
             @if (team.Competition is not null) { <LeagueChip Code="@team.Competition" /> }
             @if (team.Season is not null) { <span class="small faint">@team.Season/@((team.Season + 1) % 100)</span> }
@@ -108,6 +109,32 @@
     private List<MatchRow> season = [];
     private List<StandingRow> table = [];
     private StandingRow? me;
+    private bool following;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        following = (await Followed()).Contains(Id);
+        StateHasChanged();
+    }
+
+    private async Task<List<long>> Followed()
+    {
+        try
+        {
+            var raw = await JS.InvokeAsync<string?>("localStorage.getItem", "fi-follow");
+            return string.IsNullOrEmpty(raw) ? [] : JsonSerializer.Deserialize<List<long>>(raw) ?? [];
+        }
+        catch (Exception ex) when (ex is JSException or JsonException) { return []; }
+    }
+
+    private async Task ToggleFollow()
+    {
+        var ids = await Followed();
+        if (!ids.Remove(Id)) ids.Add(Id);
+        following = ids.Contains(Id);
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "fi-follow", JsonSerializer.Serialize(ids)); } catch (JSException) { }
+    }
 
     private bool Stale => team?.LastPlayed is null || DateTime.Parse(team.LastPlayed, System.Globalization.CultureInfo.InvariantCulture) < DateTime.Today.AddDays(-120);
 

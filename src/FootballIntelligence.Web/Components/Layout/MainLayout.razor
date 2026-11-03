@@ -3,6 +3,8 @@
 @inject ChangeFeed Feed
 @inject OperationsQueries Ops
 @inject EngineSupervisor Supervisor
+@inject ViewMode Mode
+@inject IJSRuntime JS
 
 <div class="shell">
     <aside class="sidebar">
@@ -36,7 +38,7 @@
                 {
                     var stalled = active.Count(j => j.State(worker.Alive) is "stalled" or "waiting");
                     <span class="dot @(stalled > 0 ? "bad" : "ok")"></span>
-                    <span>@(stalled > 0 ? $"{stalled} job{(stalled == 1 ? "" : "s")} need attention" : $"{active.Count} background job{(active.Count == 1 ? "" : "s")} running"):</span>
+                    <span>@(stalled > 0 ? $"{stalled} job{(stalled == 1 ? " needs" : "s need")} attention" : $"{active.Count} background job{(active.Count == 1 ? "" : "s")} running"):</span>
                     @foreach (var j in active.Take(3))
                     {
                         var st = j.State(worker.Alive);
@@ -49,6 +51,10 @@
                 }
             </div>
             <div class="row small">
+                <div class="mode-switch" role="group" aria-label="Experience">
+                    <button class="@(Mode.Analyst ? "" : "active")" @onclick="() => SetMode(false)">Fan</button>
+                    <button class="@(Mode.Analyst ? "active" : "")" @onclick="() => SetMode(true)">Analyst</button>
+                </div>
                 <a href="jobs" class="badge @(unseen > 0 ? "warn" : "")">@unseen unread notification@(unseen == 1 ? "" : "s")</a>
             </div>
         </div>
@@ -74,7 +80,22 @@
     {
         Refresh();
         Feed.Changed += OnChanged;
+        Mode.Changed += OnMode;
     }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try { Mode.Set(await JS.InvokeAsync<string?>("localStorage.getItem", "fi-mode") == "analyst"); } catch (JSException) { }
+    }
+
+    private async Task SetMode(bool analyst)
+    {
+        Mode.Set(analyst);
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "fi-mode", analyst ? "analyst" : "fan"); } catch (JSException) { }
+    }
+
+    private void OnMode() => _ = InvokeAsync(StateHasChanged);
 
     private void Refresh()
     {
@@ -86,5 +107,9 @@
 
     private void OnChanged(FeedState a, FeedState b) => _ = InvokeAsync(() => { Refresh(); StateHasChanged(); });
 
-    public void Dispose() => Feed.Changed -= OnChanged;
+    public void Dispose()
+    {
+        Feed.Changed -= OnChanged;
+        Mode.Changed -= OnMode;
+    }
 }

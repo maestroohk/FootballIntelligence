@@ -134,6 +134,19 @@ public class FootballQueries(Database db)
         GROUP BY r.team_id ORDER BY points DESC, SUM(r.gf)-SUM(r.ga) DESC, SUM(r.gf) DESC, name
         """, new { competition, season }).ToList();
 
+    public TrackRecord Record(string purpose) => db.Single<TrackRecord>("""
+        WITH scored AS (
+            SELECT p.p_home, p.p_draw, p.p_away, CASE WHEN m.fthg>m.ftag THEN 0 WHEN m.fthg=m.ftag THEN 1 ELSE 2 END y
+            FROM predictions p JOIN matches m ON m.match_id=p.match_id
+            WHERE p.purpose=@purpose AND m.status='finished' AND m.fthg IS NOT NULL
+              AND p.prediction_id NOT IN (SELECT prediction_id FROM prediction_flags)
+              AND p.prediction_id = (SELECT MAX(p2.prediction_id) FROM predictions p2 WHERE p2.match_id=p.match_id AND p2.purpose=@purpose AND p2.model_version NOT LIKE 'bookmaker%'))
+        SELECT COUNT(*) n,
+               COALESCE(SUM(CASE WHEN (y=0 AND p_home>=p_draw AND p_home>=p_away) OR (y=1 AND p_draw>p_home AND p_draw>=p_away) OR (y=2 AND p_away>p_home AND p_away>p_draw) THEN 1 ELSE 0 END), 0) top_pick_hits,
+               AVG(-ln(CASE y WHEN 0 THEN p_home WHEN 1 THEN p_draw ELSE p_away END)) log_loss
+        FROM scored
+        """, new { purpose }) ?? new TrackRecord();
+
     public List<string> Competitions() => db.Query<string>("SELECT code FROM competitions ORDER BY tier, code").ToList();
 
     public List<PlayerSummary> Players(string? search, string? team, string? position, int limit) => db.Query<PlayerSummary>("""

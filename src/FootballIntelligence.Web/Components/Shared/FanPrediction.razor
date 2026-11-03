@@ -1,0 +1,192 @@
+@{
+    var (fav, favP, other, otherP) = mk.PHome >= mk.PAway ? (Match.HomeName, mk.PHome, Match.AwayName, mk.PAway) : (Match.AwayName, mk.PAway, Match.HomeName, mk.PHome);
+    var top = mk.TopScores.Take(5).ToList();
+}
+<div class="card fan">
+    <div class="fan-verdict">
+        <div class="fan-kicker">@(Match.Status == "finished" ? "What the model expected before kick-off" : "Prediction")</div>
+        <h2>@Verdict(fav, favP, otherP)</h2>
+        <p>@Summary(fav, favP)</p>
+    </div>
+
+    <div class="fan-outcomes">
+        @foreach (var (label, p, cls, team) in new[] { (Match.HomeName + " win", mk.PHome, "h", (long?)Match.HomeTeamId), ("Draw", mk.PDraw, "d", null), (Match.AwayName + " win", mk.PAway, "a", Match.AwayTeamId) })
+        {
+            <div class="fan-outcome @cls @(p == Math.Max(mk.PHome, Math.Max(mk.PDraw, mk.PAway)) ? "top" : "")">
+                @if (team is not null) { <Crest Name="@(cls == "h" ? Match.HomeName : Match.AwayName)" TeamId="@team" /> } else { <span class="fan-draw-ico">=</span> }
+                <span class="fan-pct">@Fmt.Pct(p)</span>
+                <span class="fan-label">@label</span>
+            </div>
+        }
+    </div>
+    <ProbBar Home="mk.PHome" Draw="mk.PDraw" Away="mk.PAway" Slim="true" />
+
+    <div class="grid g2" style="margin-top:20px">
+        <div>
+            <h3>Most likely final scores</h3>
+            @foreach (var s in top)
+            {
+                <div class="fan-score">
+                    <span class="fan-score-line">@Match.HomeName <b>@s.Home–@s.Away</b> @Match.AwayName</span>
+                    <span class="fan-score-bar"><span style="width:@W(s.P / top[0].P)"></span></span>
+                    <span class="fan-score-p">@Fmt.Pct(s.P, 1)</span>
+                </div>
+            }
+            <div class="small faint" style="margin-top:6px">Even the most likely score happens only about @Fmt.Pct(top[0].P) of the time; these five together cover @Fmt.Pct(top.Sum(s => s.P)). Many other scores remain possible.</div>
+        </div>
+        <div>
+            <h3>Goals</h3>
+            <div class="fan-facts">
+                <div><span class="value">@Fmt.Num(mk.ExpHome, 1) – @Fmt.Num(mk.ExpAway, 1)</span><span class="label">Goals expected for each side</span></div>
+                <div><span class="value">@Fmt.Pct(mk.Over.GetValueOrDefault("2.5"))</span><span class="label">Chance of at least 3 goals</span></div>
+                <div><span class="value">@Fmt.Pct(mk.Btts)</span><span class="label">Chance both teams score</span></div>
+                <div><span class="value">@Fmt.Pct(Cell(0, 0))</span><span class="label">Chance of 0–0</span></div>
+                <div><span class="value">@Fmt.Pct(OneGoalOrLess)</span><span class="label">Decided by one goal or a draw</span></div>
+                <div><span class="value">@Fmt.Pct(mk.HomeCleanSheet) / @Fmt.Pct(mk.AwayCleanSheet)</span><span class="label">Clean sheet: @Match.HomeName / @Match.AwayName</span></div>
+            </div>
+            <div class="small dim" style="margin-top:8px">@GoalsSentence()</div>
+        </div>
+    </div>
+</div>
+
+<div class="grid g2">
+    <div class="card">
+        <div class="card-head"><h2>Why the model thinks this</h2><span class="sub">from the data it actually uses</span></div>
+        <ul class="fan-reasons">
+            @foreach (var (kind, text) in Reasons())
+            {
+                <li class="@kind">@text</li>
+            }
+        </ul>
+    </div>
+    <div class="stack" style="gap:16px">
+        <div class="card">
+            <div class="card-head"><h2>Form</h2><span class="sub">last @Math.Max(HomeForm.Count, AwayForm.Count) matches before this game</span></div>
+            @foreach (var (name, id, rows) in new[] { (Match.HomeName, Match.HomeTeamId, HomeForm), (Match.AwayName, Match.AwayTeamId, AwayForm) })
+            {
+                <div class="fan-form">
+                    <span class="row" style="gap:8px;min-width:0"><Crest Name="@name" TeamId="@id" /><span class="ellipsis">@name</span></span>
+                    <span class="row" style="gap:3px">@foreach (var r in rows.AsEnumerable().Reverse()) { <a href="matches/@r.MatchId" class="form-pill @r.Outcome" title="@r.MatchDate @r.Venue v @r.Opponent @r.GoalsFor–@r.GoalsAgainst">@r.Outcome</a> }</span>
+                    <b>@Points(rows) pts</b>
+                </div>
+            }
+        </div>
+        <div class="card">
+            <div class="card-head"><h2>How reliable is this?</h2></div>
+            <ul class="fan-reasons">
+                @foreach (var (kind, text) in Reliability())
+                {
+                    <li class="@kind">@text</li>
+                }
+            </ul>
+        </div>
+        <div class="card">
+            <div class="card-head"><h2>Match rules</h2></div>
+            <div class="small dim">@Rules()</div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MatchRow Match { get; set; } = default!;
+    [Parameter, EditorRequired] public Markets mk { get; set; } = default!;
+    [Parameter] public List<FormRow> HomeForm { get; set; } = [];
+    [Parameter] public List<FormRow> AwayForm { get; set; } = [];
+    [Parameter] public (long Home, long Away) History { get; set; }
+    [Parameter] public (double Attack, double Defence, int Rank, int Of)? StrengthHome { get; set; }
+    [Parameter] public (double Attack, double Defence, int Rank, int Of)? StrengthAway { get; set; }
+
+    private static string W(double f) => (Math.Clamp(f, 0, 1) * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+    private double Cell(int h, int a) => mk.Matrix.Length > h && mk.Matrix[h].Length > a ? mk.Matrix[h][a] : double.NaN;
+
+    private double OneGoalOrLess
+    {
+        get
+        {
+            var p = 0.0;
+            for (var h = 0; h < mk.Matrix.Length; h++)
+                for (var a = 0; a < mk.Matrix[h].Length; a++)
+                    if (Math.Abs(h - a) <= 1) p += mk.Matrix[h][a];
+            return p;
+        }
+    }
+
+    private static int Points(List<FormRow> rows) => rows.Sum(r => r.Outcome == "W" ? 3 : r.Outcome == "D" ? 1 : 0);
+
+    private string Verdict(string fav, double favP, double otherP)
+    {
+        var gap = favP - otherP;
+        if (gap < 0.07) return mk.PDraw >= Math.Max(mk.PHome, mk.PAway) ? "A draw is the single most likely result" : "Too close to call";
+        if (favP >= 0.6) return $"{fav} are strong favourites";
+        if (favP >= 0.45 && gap >= 0.15) return $"{fav} are favourites";
+        return $"{fav} are slight favourites";
+    }
+
+    private string Summary(string fav, double favP)
+    {
+        var top = mk.TopScores.First();
+        var draw = mk.PDraw >= 0.28 ? $"a draw is a serious possibility ({Fmt.Pct(mk.PDraw)})" : mk.PDraw < 0.22 ? $"a draw is less likely than usual ({Fmt.Pct(mk.PDraw)})" : $"a draw has a typical chance ({Fmt.Pct(mk.PDraw)})";
+        return $"The model gives {fav} a {Fmt.Pct(favP)} chance of winning, and {draw}. The most likely score is {Match.HomeName} {top.Home}–{top.Away} {Match.AwayName}, though several other results are almost as likely.";
+    }
+
+    private string GoalsSentence()
+    {
+        var total = mk.ExpTotal;
+        var tone = total >= 3.0 ? "Plenty of goals are expected" : total <= 2.3 ? "A low-scoring game is expected" : "A typical number of goals is expected";
+        return $"{tone}: about {total.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} in total on average.";
+    }
+
+    private IEnumerable<(string, string)> Reasons()
+    {
+        var diff = mk.ExpHome - mk.ExpAway;
+        var stronger = diff >= 0 ? Match.HomeName : Match.AwayName;
+        yield return ("info", Math.Abs(diff) < 0.2
+            ? $"The two sides are rated closely: the model expects similar numbers of goals ({Fmt.Num(mk.ExpHome, 1)} v {Fmt.Num(mk.ExpAway, 1)})."
+            : $"{stronger} are expected to create more: {Fmt.Num(Math.Max(mk.ExpHome, mk.ExpAway), 1)} goals against {Fmt.Num(Math.Min(mk.ExpHome, mk.ExpAway), 1)}.");
+        yield return ("info", $"{Match.HomeName} play at home. The model includes a home-advantage effect estimated from past matches in this league.");
+        if (StrengthHome is { } sh && StrengthAway is { } sa)
+        {
+            yield return ("info", $"In the model's current team ratings {Match.HomeName} rank {sh.Rank} and {Match.AwayName} {sa.Rank} of {sh.Of} teams in the country{(sh.Attack > sa.Attack ? $"; {Match.HomeName} have the stronger attack" : $"; {Match.AwayName} have the stronger attack")}{(sh.Defence > sa.Defence ? $" and {Match.HomeName} the stronger defence." : $" and {Match.AwayName} the stronger defence.")}");
+        }
+        foreach (var (name, rows) in new[] { (Match.HomeName, HomeForm), (Match.AwayName, AwayForm) })
+        {
+            if (rows.Count == 0) continue;
+            var gf = rows.Average(r => (double)r.GoalsFor);
+            var ga = rows.Average(r => (double)r.GoalsAgainst);
+            yield return ("info", $"{name}: {Points(rows)} points from the last {rows.Count}, scoring {gf:F1} and conceding {ga:F1} a game.");
+        }
+        foreach (var (name, rows) in new[] { (Match.HomeName, HomeForm), (Match.AwayName, AwayForm) })
+        {
+            if (rows.Count == 0 || !DateTime.TryParse(rows[0].MatchDate, out var last) || !DateTime.TryParse(Match.MatchDate, out var day)) continue;
+            var rest = (day - last).Days;
+            if (rest <= 3) yield return ("warn", $"{name} played only {rest} days earlier.");
+            else if (rest >= 13 && rest <= 21) yield return ("info", $"{name} have had {rest} days since their last match.");
+            else if (rest > 21 && Match.Status == "scheduled") yield return ("warn", $"{name}'s latest result in the database is from {rows[0].MatchDate}; more recent matches are missing, so current form may differ.");
+        }
+        yield return ("warn", "Team news is not included: no licensed injury or confirmed-lineup feed is connected, so the model does not know who will play.");
+    }
+
+    private IEnumerable<(string, string)> Reliability()
+    {
+        var max = Math.Max(mk.PHome, Math.Max(mk.PDraw, mk.PAway));
+        yield return (max >= 0.6 ? "ok" : "info", max >= 0.6
+            ? $"A clear favourite, but a {Fmt.Pct(max)} chance still means the favourite fails to win roughly {Math.Round((1 - max) * 10)} times in 10."
+            : "No result is strongly favoured, so an upset would not be surprising.");
+        if (History.Home < 20 || History.Away < 20)
+            yield return ("warn", $"Limited recent data: {Match.HomeName} have {History.Home} and {Match.AwayName} {History.Away} matches in the past year, so ratings lean on league averages.");
+        else
+            yield return ("ok", $"Both teams have a full year of recent results ({History.Home} and {History.Away} matches).");
+        yield return (Match.Purpose == "forward" ? "ok" : "info", Match.Purpose == "forward"
+            ? $"Stored before kick-off on {Fmt.Local(Match.PredictionCreated)} using results up to {Match.DataCutoff}, and never changed afterwards."
+            : "A historical re-forecast: produced with only the results available before this match, as if it had been made at the time.");
+        if (Match.ModelVersion?.Contains("uitest") == true)
+            yield return ("warn", "Made by a test model fitted on a small public dataset, not the validated champion model.");
+        else if (Match.PredictionFlag is not null)
+            yield return ("warn", "This forecast was stored close to kick-off, so it is excluded from performance tracking.");
+    }
+
+    private string Rules() => Fmt.IsLeague(Match.Competition)
+        ? $"{Fmt.CompetitionName(Match.Competition)} is a league competition: the result stands after 90 minutes plus stoppage time. There is no extra time or penalty shoot-out, and all probabilities here are for that result."
+        : "Knockout rules for this competition are not modelled, so no extra-time or penalty probabilities are shown. The probabilities above cover 90 minutes plus stoppage time only.";
+}

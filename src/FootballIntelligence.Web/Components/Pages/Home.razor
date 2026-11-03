@@ -3,80 +3,123 @@
 @inject FootballQueries Football
 @inject ResearchQueries Research
 @inject OperationsQueries Ops
+@inject ViewMode Mode
+@inject IJSRuntime JS
 
 <PageTitle>Overview · Football Intelligence</PageTitle>
 
 <div class="page-head">
     <div>
-        <h1>Overview</h1>
-        <p>Pre-match forecasts from the promoted champion model, live tracking status, evaluated performance and data health.</p>
+        <h1>@(today.Count > 0 ? "Today's football" : "Football")</h1>
+        <p>@DateTime.Today.ToString("dddd d MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture) · predictions are made before kick-off and never changed afterwards.</p>
     </div>
     <div class="row">
-        <button class="btn" @onclick='() => Enqueue("daily_cycle")'>Run update cycle</button>
-        <a class="btn" href="lab">Model lab →</a>
+        <a class="btn" href="matches">All matches →</a>
     </div>
 </div>
 
-<div class="grid g4">
-    <Kpi Label="Champion model" Value="@Fmt.ModelLabel(champion)" Note="@championNote" />
-    <Kpi Label="Validation log loss" Value="@Fmt.Num(championVal?.GetProperty("log_loss").GetDouble(), 4)" Note="@($"vs bookmaker close {Fmt.Num(bookVal?.GetProperty("log_loss").GetDouble(), 4)} · n={championVal?.GetProperty("n").GetInt64()}")" />
-    <Kpi Label="Forward predictions" Value="@upcoming.Count(u => u.PHome is not null && u.Purpose == "forward" && u.PredictionFlag is null).ToString()" Note="@($"stored ≥3 h before kick-off, next 10 days · {upcoming.Count} future fixtures known")" />
-    <Kpi Label="Live feeds" Value="@(liveProvider?.Status == "ok" ? "Connected" : "Unavailable")" Color="@(liveProvider?.Status == "ok" ? "var(--ok)" : "var(--warn)")"
-         Note="@(liveProvider?.LastError ?? "Historical replay available in Live tracker")" />
-</div>
+@if (!engineReady)
+{
+    <div class="callout warn">The prediction engine is not fully restored on this computer, so some matches have no forecast. Those matches say so; nothing is estimated in its place. <a href="data">Details</a></div>
+}
 
 <div class="grid g-main-side">
-    <div class="card">
-        <div class="card-head">
-            <h2>Upcoming fixtures</h2>
-            <span class="sub">Forward predictions are stored before kick-off and never overwritten</span>
-        </div>
-        @if (upcoming.Count == 0)
-        {
-            <div class="empty">No scheduled fixtures. Run the update cycle to fetch the latest fixture list.</div>
-        }
-        @foreach (var day in upcoming.Take(24).GroupBy(m => m.MatchDate))
-        {
-            <div class="day-head">@DayLabel(day.Key)</div>
-            @foreach (var league in day.GroupBy(m => m.Competition))
-            {
-                <div class="league-head"><LeagueChip Code="@league.Key" /><span class="small faint">@league.Count() match@(league.Count() == 1 ? "" : "es")</span></div>
-                @foreach (var m in league) { <MatchLine Match="m" ShowDate="false" /> }
-            }
-        }
-        <div class="row" style="margin-top:8px"><a href="matches" class="small">All upcoming fixtures →</a></div>
-    </div>
     <div class="stack" style="gap:16px">
         <div class="card">
-            <div class="card-head"><h2>Model performance</h2><a href="lab" class="small">Details →</a></div>
-            <table class="data">
-                <thead><tr><th></th><th class="num">n</th><th class="num">Log loss</th><th class="num">ECE</th></tr></thead>
-                <tbody>
-                    @foreach (var (label, el) in perfRows)
+            <div class="card-head">
+                <h2>@(today.Count > 0 ? "Today" : nextDay is null ? "Upcoming" : $"Next matches · {DayLabel(nextDay)}")</h2>
+                <span class="sub">@((today.Count > 0 ? today : nextMatches).Count) matches</span>
+            </div>
+            @if (today.Count == 0 && nextMatches.Count == 0)
+            {
+                <div class="empty">No upcoming fixtures are known yet. The fixture list refreshes with each update cycle.</div>
+            }
+            @foreach (var league in (today.Count > 0 ? today : nextMatches).GroupBy(m => m.Competition).OrderBy(g => LeagueOrder(g.Key)))
+            {
+                <div class="league-head"><LeagueChip Code="@league.Key" /><span class="small faint">@league.Count()</span></div>
+                @foreach (var m in league.Take(8)) { <MatchLine Match="m" ShowDate="false" /> }
+            }
+        </div>
+
+        @if (featured.Count > 0)
+        {
+            <div class="card">
+                <div class="card-head"><h2>Featured predictions</h2><span class="sub">top-division fixtures in the next week</span></div>
+                <div class="featured">
+                    @foreach (var (m, tag) in featured)
                     {
-                        <tr><td class="small">@label.Split('|')[0]<div class="faint">@label.Split('|')[1]</div></td><td class="num small">@el.GetProperty("n").GetInt64().ToString("N0")</td><td class="num">@el.GetProperty("log_loss").GetDouble().ToString("F4")</td><td class="num small">@el.GetProperty("ece").GetDouble().ToString("F4")</td></tr>
+                        var homeFav = m.PHome >= m.PAway;
+                        <a class="feat" href="matches/@m.MatchId">
+                            <div class="spread small"><LeagueChip Code="@m.Competition" /><span class="faint">@DayLabel(m.MatchDate) @m.Kickoff</span></div>
+                            <div class="feat-teams">
+                                <span class="feat-team"><Crest Name="@m.HomeName" TeamId="@m.HomeTeamId" /><span>@m.HomeName</span></span>
+                                <span class="feat-vs">vs</span>
+                                <span class="feat-team"><Crest Name="@m.AwayName" TeamId="@m.AwayTeamId" /><span>@m.AwayName</span></span>
+                            </div>
+                            <div class="feat-odds"><span>@Fmt.Pct(m.PHome)</span><span>Draw @Fmt.Pct(m.PDraw)</span><span>@Fmt.Pct(m.PAway)</span></div>
+                            <ProbBar Home="m.PHome!.Value" Draw="m.PDraw!.Value" Away="m.PAway!.Value" Slim="true" />
+                            <div class="feat-tag">@tag · @(tag == "Closest contest" ? $"favourite only {Fmt.Pct(Math.Max(m.PHome!.Value, m.PAway!.Value))}" : $"{(homeFav ? m.HomeName : m.AwayName)} {Fmt.Pct(Math.Max(m.PHome!.Value, m.PAway!.Value))}")</div>
+                        </a>
                     }
-                </tbody>
-            </table>
-            <div class="small faint" style="margin-top:6px">Six primary leagues. Lower is better. Bookmaker closing odds are an external benchmark.</div>
+                </div>
+            </div>
+        }
+
+        <div class="card">
+            <div class="card-head"><h2>Recent results</h2><span class="sub">with the prediction stored for each match</span></div>
+            @if (recent.Count == 0) { <div class="empty">No results in the database yet.</div> }
+            @foreach (var m in recent.Take(8)) { <MatchLine Match="m" /> }
+        </div>
+    </div>
+
+    <div class="stack" style="gap:16px">
+        <div class="card">
+            <div class="card-head"><h2>Your teams</h2><span class="sub">follow a team from its page</span></div>
+            @if (followed.Count == 0)
+            {
+                <div class="small dim">You are not following any teams yet. Open a team and choose Follow to see its next match here.</div>
+            }
+            @foreach (var (t, next) in followed)
+            {
+                <a class="spread follow-row" href="@(next is null ? $"team/{t.TeamId}" : $"matches/{next.MatchId}")">
+                    <span class="row" style="gap:8px;min-width:0"><Crest Name="@t.Name" TeamId="@t.TeamId" /><span class="ellipsis">@t.Name</span></span>
+                    <span class="small dim">@(next is null ? "no fixture known" : $"{(next.HomeTeamId == t.TeamId ? "v " + next.AwayName : "at " + next.HomeName)} · {DayLabel(next.MatchDate)}")</span>
+                </a>
+            }
         </div>
         <div class="card">
-            <div class="card-head"><h2>Strongest model confidence</h2><span class="sub">highest single-outcome probability</span></div>
-            @foreach (var m in upcoming.Where(u => u.PHome is not null).OrderByDescending(u => Math.Max(u.PHome!.Value, Math.Max(u.PDraw!.Value, u.PAway!.Value))).Take(6))
+            <div class="card-head"><h2>How the predictions are doing</h2><a href="learning" class="small">Learning →</a></div>
+            @if (forwardRecord.N == 0)
             {
-                var top = new[] { (m.HomeName + " win", m.PHome!.Value), ("Draw", m.PDraw!.Value), (m.AwayName + " win", m.PAway!.Value) }.MaxBy(x => x.Item2);
-                <div class="spread" style="padding:6px 0;border-bottom:1px solid var(--border-soft)">
-                    <a href="matches/@m.MatchId">@m.HomeName – @m.AwayName</a>
-                    <span class="row"><span class="small dim">@top.Item1</span><b>@Fmt.Pct(top.Item2)</b></span>
+                <div class="small dim">No pre-match forecast has been scored against a final result on this computer yet.@(backtestRecord.N > 0 ? $" Historical re-forecasts: the most likely result happened in {Fmt.Pct((double)backtestRecord.TopPickHits / backtestRecord.N)} of {backtestRecord.N:N0} matches." : "")</div>
+            }
+            else
+            {
+                <div class="fan-facts">
+                    <div><span class="value">@forwardRecord.N.ToString("N0")</span><span class="label">pre-match forecasts scored</span></div>
+                    <div><span class="value">@Fmt.Pct((double)forwardRecord.TopPickHits / forwardRecord.N)</span><span class="label">most likely result happened</span></div>
+                </div>
+                <div class="small faint" style="margin-top:8px">Hit rate alone does not show whether probabilities are well judged; the Learning page tracks calibration and log loss against baselines.</div>
+            }
+        </div>
+        <div class="card">
+            <div class="card-head"><h2>Data freshness</h2><a href="data" class="small">Data health →</a></div>
+            <div class="spread small" style="padding:4px 0"><span class="dim">Latest result</span><span>@(latestResult ?? "none")</span></div>
+            <div class="spread small" style="padding:4px 0"><span class="dim">Future fixtures known</span><span>@upcoming.Count</span></div>
+            <div class="spread small" style="padding:4px 0"><span class="dim">Prediction engine</span><span class="@(engineReady ? "" : "warn")">@(engineReady ? "ready" : "not restored")</span></div>
+            @foreach (var p in providers)
+            {
+                <div class="spread small" style="padding:4px 0">
+                    <span class="row"><span class="dot @(p.Status == "ok" ? "ok" : p.Status == "not_configured" ? "warn" : "bad")"></span>@p.Provider</span>
+                    <span class="dim">@(p.LastSuccess is null ? p.Status : Fmt.Ago(p.LastSuccess))</span>
                 </div>
             }
-            <div class="small faint" style="margin-top:8px">In validation, matches whose top outcome exceeded 60% hit at the rate shown on the Performance page; confidence is not certainty.</div>
         </div>
         <div class="card">
             <div class="card-head"><h2>Live matches</h2><a href="live" class="small">Live tracker →</a></div>
             @if (live.Count == 0)
             {
-                <div class="callout warn">No live provider is connected (no FOOTBALL_DATA_API_KEY). Live tracking is available as clearly labelled historical replay.</div>
+                <div class="small dim">No live score feed is connected. Past matches can be replayed minute by minute in the Live tracker, always labelled REPLAY.</div>
             }
             @foreach (var l in live.Take(5))
             {
@@ -86,29 +129,47 @@
                 </div>
             }
         </div>
-        <div class="card">
-            <div class="card-head"><h2>Data sources</h2><a href="data" class="small">Data health →</a></div>
-            @foreach (var p in providers)
-            {
-                <div class="spread small" style="padding:4px 0">
-                    <span class="row"><span class="dot @(p.Status == "ok" ? "ok" : p.Status == "not_configured" ? "warn" : "bad")"></span>@p.Provider</span>
-                    <span class="dim">@(p.LastSuccess is null ? p.Status : Fmt.Ago(p.LastSuccess))</span>
-                </div>
-            }
-        </div>
     </div>
 </div>
 
-<div class="card">
-    <div class="card-head"><h2>Recent results vs stored predictions</h2><a href="performance" class="small">Performance →</a></div>
-    @foreach (var m in recent.Take(10))
-    {
-        <MatchLine Match="m" />
-    }
-</div>
+@if (Mode.Analyst)
+{
+    <div class="grid g4">
+        <Kpi Label="Champion model" Value="@Fmt.ModelLabel(champion)" Note="@championNote" />
+        <Kpi Label="Validation log loss" Value="@Fmt.Num(championVal?.GetProperty("log_loss").GetDouble(), 4)" Note="@($"vs bookmaker close {Fmt.Num(bookVal?.GetProperty("log_loss").GetDouble(), 4)} · n={championVal?.GetProperty("n").GetInt64()}")" />
+        <Kpi Label="Forward predictions" Value="@upcoming.Count(u => u.PHome is not null && u.Purpose == "forward" && u.PredictionFlag is null).ToString()" Note="@($"stored ≥3 h before kick-off · {upcoming.Count} future fixtures known")" />
+        <Kpi Label="Forward log loss" Value="@Fmt.Num(forwardRecord.LogLoss, 4)" Note="@($"{forwardRecord.N} scored pre-match forecasts")" />
+    </div>
+    <div class="card">
+        <div class="card-head"><h2>Model performance</h2><a href="lab" class="small">Model lab →</a></div>
+        @if (perfRows.Count == 0) { <div class="empty">No backtest has been run on this computer.</div> }
+        else
+        {
+            <table class="data">
+                <thead><tr><th></th><th class="num">n</th><th class="num">Log loss</th><th class="num">ECE</th></tr></thead>
+                <tbody>
+                    @foreach (var (label, el) in perfRows)
+                    {
+                        <tr><td class="small">@label.Split('|')[0]<div class="faint">@label.Split('|')[1]</div></td><td class="num small">@el.GetProperty("n").GetInt64().ToString("N0")</td><td class="num">@el.GetProperty("log_loss").GetDouble().ToString("F4")</td><td class="num small">@el.GetProperty("ece").GetDouble().ToString("F4")</td></tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+}
 
 @code {
     private List<MatchRow> upcoming = [];
+    private List<MatchRow> today = [];
+    private List<MatchRow> nextMatches = [];
+    private string? nextDay;
+    private List<(MatchRow, string)> featured = [];
+    private List<(TeamInfo, MatchRow?)> followed = [];
+    private List<long> followIds = [];
+    private TrackRecord forwardRecord = new();
+    private TrackRecord backtestRecord = new();
+    private string? latestResult;
+    private bool engineReady;
     private List<MatchRow> recent = [];
     private List<LiveSessionRow> live = [];
     private List<ProviderRow> providers = [];
@@ -124,6 +185,19 @@
     protected override void Load()
     {
         upcoming = Football.Upcoming(500);
+        today = Football.OnDate(DateTime.Today.ToString("yyyy-MM-dd"));
+        nextDay = upcoming.FirstOrDefault()?.MatchDate;
+        nextMatches = nextDay is null ? [] : upcoming.Where(m => m.MatchDate == nextDay).ToList();
+        var week = DateTime.Today.AddDays(8).ToString("yyyy-MM-dd");
+        var candidates = upcoming.Where(m => m.PHome is not null && string.CompareOrdinal(m.MatchDate, week) < 0 && LeagueOrder(m.Competition) < 5).ToList();
+        featured = [];
+        foreach (var m in candidates.OrderByDescending(m => Math.Max(m.PHome!.Value, m.PAway!.Value)).Take(2)) featured.Add((m, "Clearest favourite"));
+        foreach (var m in candidates.Where(c => featured.All(f => f.Item1.MatchId != c.MatchId)).OrderBy(m => Math.Abs(m.PHome!.Value - m.PAway!.Value)).Take(2)) featured.Add((m, "Closest contest"));
+        forwardRecord = Football.Record("forward");
+        backtestRecord = Football.Record("backtest");
+        latestResult = Football.Recent(1).FirstOrDefault()?.MatchDate;
+        engineReady = Ops.Assets() is { } assets && assets.GetProperty("operational").GetBoolean();
+        LoadFollowed();
         recent = Football.Recent(10);
         live = Ops.LiveSessions(10).Where(l => l.Status == "running").ToList();
         providers = Ops.Providers();
@@ -145,10 +219,42 @@
         }
     }
 
-    private void Enqueue(string kind) => Ops.Enqueue(kind);
-
-    private static string DayLabel(string date)
+    protected override void OnInitialized()
     {
+        base.OnInitialized();
+        Mode.Changed += OnMode;
+    }
+
+    private void OnMode() => InvokeAsync(StateHasChanged);
+
+    public override void Dispose()
+    {
+        Mode.Changed -= OnMode;
+        base.Dispose();
+    }
+
+    private void LoadFollowed() => followed = followIds.Select(id => Football.Team(id)).OfType<TeamInfo>()
+        .Select(t => (t, Football.TeamMatches(t.TeamId, "scheduled", 5).FirstOrDefault(m => string.CompareOrdinal(m.MatchDate, DateTime.Today.ToString("yyyy-MM-dd")) >= 0))).ToList();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var raw = await JS.InvokeAsync<string?>("localStorage.getItem", "fi-follow");
+            followIds = string.IsNullOrEmpty(raw) ? [] : JsonSerializer.Deserialize<List<long>>(raw) ?? [];
+        }
+        catch (Exception ex) when (ex is JSException or JsonException) { followIds = []; }
+        if (followIds.Count == 0) return;
+        LoadFollowed();
+        StateHasChanged();
+    }
+
+    private static int LeagueOrder(string code) => Array.IndexOf(["E0", "SP1", "D1", "I1", "F1"], code) is var i && i >= 0 ? i : 9;
+
+    private static string DayLabel(string? date)
+    {
+        if (date is null) return "";
         var d = DateTime.Parse(date, System.Globalization.CultureInfo.InvariantCulture);
         var today = DateTime.Today;
         var name = d == today ? "Today" : d == today.AddDays(1) ? "Tomorrow" : d.ToString("dddd", System.Globalization.CultureInfo.InvariantCulture);

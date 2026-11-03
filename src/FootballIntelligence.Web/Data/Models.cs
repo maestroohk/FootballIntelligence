@@ -407,3 +407,10 @@ public class StandingRow
     public long GoalsAgainst { get; set; }
     public long Points { get; set; }
 }
+
+public class TrackRecord
+{
+    public long N { get; set; }
+    public long TopPickHits { get; set; }
+    public double? LogLoss { get; set; }
+}

@@ -59,6 +59,8 @@ public static class Fmt
         "T1" => "Süper Lig", "G1" => "Super League Greece", _ => code
     };
 
+    public static bool IsLeague(string code) => CompetitionName(code) != code;
+
     public static string Country(string code) => code switch
     {
         "E0" or "E1" or "E2" => "ENG", "SP1" or "SP2" => "ESP", "D1" or "D2" => "GER", "I1" or "I2" => "ITA", "F1" or "F2" => "FRA",

@@ -1,6 +1,8 @@
 @page "/matches/{Id:long}"
 @inject FootballQueries Football
 @inject ResearchQueries Research
+@inject ViewMode Mode
+@implements IDisposable
 
 <PageTitle>@(match is null ? "Match" : $"{match.HomeName} v {match.AwayName}") · Football Intelligence</PageTitle>
 
@@ -26,6 +28,36 @@
     <div class="side"><Crest Name="@match.AwayName" TeamId="@match.AwayTeamId" Large="true" /><div class="name"><a href="team/@match.AwayTeamId">@match.AwayName</a></div><div class="small dim">Away</div></div>
 </div>
 
+@if (!Mode.Analyst)
+{
+    @if (mk is null)
+    {
+        <div class="callout warn">There is no stored prediction for this match yet, so no forecast is shown. Forecasts are stored before kick-off once the prediction engine has the data it needs.</div>
+    }
+    else
+    {
+        <FanPrediction Match="match" mk="mk" HomeForm="homeForm" AwayForm="awayForm" History="history" StrengthHome="strengthHome" StrengthAway="strengthAway" />
+    }
+    <div class="grid g2">
+        <div class="card">
+            <div class="card-head"><h2>Head to head</h2><span class="sub">last @h2h.Count meetings</span></div>
+            @if (h2h.Count == 0) { <div class="empty">No previous meetings in the database.</div> }
+            @foreach (var m in h2h)
+            {
+                <a class="spread small" href="matches/@m.MatchId" style="padding:6px 0;border-bottom:1px solid var(--border-soft);color:var(--text)">
+                    <span class="faint">@m.MatchDate</span><span>@m.HomeName <b>@m.Score</b> @m.AwayName</span>
+                </a>
+            }
+        </div>
+        <div class="card">
+            <div class="card-head"><h2>Want the detail?</h2></div>
+            <p class="small dim">Analyst view shows the full scoreline matrix, every goal line, model components, team ratings, style profiles and bookmaker comparison for this same prediction.</p>
+            <button class="btn" @onclick="() => Mode.Set(true)">Switch to analyst view</button>
+        </div>
+    </div>
+}
+else
+{
 @if (mk is null)
 {
     <div class="callout warn">No stored prediction for this match. Predictions are generated for scheduled fixtures by the update cycle and for historical matches by the walk-forward backtest (2012/13 onwards).</div>
@@ -242,6 +274,7 @@ else
         </table>
     </div>
 }
+}
 
 @code {
     [Parameter] public long Id { get; set; }
@@ -259,6 +292,12 @@ else
     private StyleProfile? styleAway;
     private (double Attack, double Defence, int Rank, int Of)? strengthHome;
     private (double Attack, double Defence, int Rank, int Of)? strengthAway;
+
+    protected override void OnInitialized() => Mode.Changed += OnMode;
+
+    private void OnMode() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Mode.Changed -= OnMode;
 
     protected override void OnParametersSet()
     {
