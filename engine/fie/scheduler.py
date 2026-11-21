@@ -25,6 +25,20 @@ def poll_live(con):
         db.provider_event(con, "football-data.org live", False, str(exc)[:300])
 
 
+def on_battery():
+    import ctypes
+    import sys
+    if sys.platform != "win32":
+        return False
+
+    class PowerStatus(ctypes.Structure):
+        _fields_ = [("ac", ctypes.c_byte), ("flag", ctypes.c_byte), ("percent", ctypes.c_byte), ("saver", ctypes.c_byte),
+                    ("life", ctypes.c_ulong), ("full", ctypes.c_ulong)]
+
+    status = PowerStatus()
+    return bool(ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(status))) and status.ac == 0
+
+
 def tick(con):
     poll_live(con)
     if CYCLE_HOURS <= 0:
@@ -38,6 +52,8 @@ def tick(con):
         jobs.enqueue(con, "daily_cycle", {"trigger": "scheduler"})
     db.set_kv(con, "scheduler_last_cycle", now.isoformat())
     last_research = db.get_kv(con, "scheduler_last_research")
+    if on_battery():
+        return
     if RESEARCH_DAYS > 0 and (last_research is None or now - datetime.fromisoformat(last_research) >= timedelta(days=RESEARCH_DAYS)):
         if last_research is not None:
             new = con.execute("SELECT COUNT(*) FROM matches WHERE status='finished' AND updated_at > ?", (last_research,)).fetchone()[0]

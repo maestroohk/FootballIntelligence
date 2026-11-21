@@ -1,4 +1,4 @@
-param([switch]$Remove, [int]$Port = 5281, [int]$Threads = 2)
+param([switch]$Remove, [switch]$MainsOnly, [int]$Port = 5281, [int]$Threads = 2)
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
@@ -37,11 +37,11 @@ $atBoot = New-ScheduledTaskTrigger -AtStartup
 $retry = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 15)
 $settings = New-ScheduledTaskSettingsSet -RunOnlyIfNetworkAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) `
     -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 5) -StartWhenAvailable
-$settings.DisallowStartIfOnBatteries = $true
-$settings.StopIfGoingOnBatteries = $true
+$settings.DisallowStartIfOnBatteries = [bool]$MainsOnly
+$settings.StopIfGoingOnBatteries = [bool]$MainsOnly
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 Register-ScheduledTask -TaskName $task -Action $action -Trigger @($atBoot, $retry) -Settings $settings -Principal $principal `
-    -Description "Football Intelligence web app and prediction engine (http://localhost:$Port). Runs on mains power with a network connection; no sign-in needed." | Out-Null
+    -Description "Football Intelligence web app and prediction engine (http://localhost:$Port). Starts with a network connection; no sign-in needed." | Out-Null
 Start-ScheduledTask -TaskName $task
-Write-Host "Installed. Football Intelligence will run at http://localhost:$Port whenever the laptop is on mains power with a network connection."
+Write-Host "Installed. Football Intelligence will run at http://localhost:$Port whenever the laptop is on$(if ($MainsOnly) { ' mains power' }) with a network connection."
 Write-Host "Log: $service\service.log. Remove with: .\install-service.ps1 -Remove"

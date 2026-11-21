@@ -56,7 +56,7 @@ From an administrator PowerShell window in the repository folder:
 powershell -ExecutionPolicy Bypass -File .\install-service.ps1
 ```
 
-This publishes a release copy of the app to `.service\app` (not committed) and registers a Windows scheduled task, `FootballIntelligence`, that runs it as SYSTEM at http://localhost:5281. It starts at boot without anyone signing in, only on mains power with a network connection, stops on battery, retries every 15 minutes until those conditions hold, and never runs twice. Background research uses 2 threads (`-Threads` to change). Output goes to `.service\service.log`. Run the script again after pulling new code; remove the task with `.\install-service.ps1 -Remove`. While the task runs, port 5281 is taken, so stop it before running the app from Visual Studio or `dotnet run`.
+This publishes a release copy of the app to `.service\app` (not committed) and registers a Windows scheduled task, `FootballIntelligence`, that runs it as SYSTEM at http://localhost:5281. It starts at boot without anyone signing in once a network connection is available, retries every 15 minutes if it is not running, and never runs twice. It keeps running on battery so forecasts and results are always recorded, but the weekly challenger research waits until the laptop is plugged in; install with `-MainsOnly` to stop the whole service on battery instead. Background research uses 2 threads (`-Threads` to change). Output goes to `.service\service.log`. Run the script again after pulling new code; remove the task with `.\install-service.ps1 -Remove`. While the task runs, port 5281 is taken, so stop it before running the app from Visual Studio or `dotnet run`.
 
 ## Run the application
 
