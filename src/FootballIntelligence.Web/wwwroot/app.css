@@ -448,3 +448,4 @@ details.card[open] > summary h2::after { content: " ▾"; }
 .ts-results { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .ts-row { border-top: 1px solid var(--border-soft); padding-top: 8px; }
 .ts-team { color: var(--text); padding: 2px 6px; }
+img.crest { filter: drop-shadow(0 0 0.6px rgba(255,255,255,.85)) drop-shadow(0 0 1.5px rgba(255,255,255,.25)); }
