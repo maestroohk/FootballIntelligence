@@ -1,0 +1,42 @@
+@inject FootballQueries Football
+
+<div class="card team-search">
+    <div class="card-head"><h2>Find a team</h2><span class="sub">today's and upcoming matches with predictions</span></div>
+    <input class="input" placeholder="Type a club, e.g. Arsenal" @bind="query" @bind:event="oninput" @bind:after="Search" aria-label="Search teams" />
+    @if (results.Count > 0)
+    {
+        <div class="ts-results">
+            @foreach (var (t, next) in results)
+            {
+                <div class="ts-row">
+                    <a class="row ts-team" href="team/@t.TeamId" style="gap:8px;flex-wrap:nowrap"><Crest Name="@t.Name" TeamId="@t.TeamId" /><b>@t.Name</b><span class="small faint">@(t.Competition is null ? "" : Fmt.CompetitionName(t.Competition))</span></a>
+                    @if (next is null)
+                    {
+                        <span class="small dim">No upcoming fixture known</span>
+                    }
+                    else
+                    {
+                        <MatchLine Match="next" />
+                    }
+                </div>
+            }
+        </div>
+    }
+    else if (query.Trim().Length >= 3)
+    {
+        <div class="small dim" style="margin-top:8px">No team matches “@query”.</div>
+    }
+</div>
+
+@code {
+    private string query = "";
+    private List<(TeamInfo Team, MatchRow? Next)> results = [];
+
+    private void Search()
+    {
+        var q = query.Trim();
+        results = q.Length < 3 ? [] : Football.FindTeams(q, 4)
+            .Select(t => (t, Football.TeamMatches(t.TeamId, "scheduled", 1).FirstOrDefault()))
+            .ToList();
+    }
+}

@@ -24,6 +24,7 @@
             @if (match.Purpose == "forward" && match.PredictionFlag is not null) { <span class="badge warn" title="@match.PredictionFlag">forward prediction stored close to kick-off · excluded from evaluation</span> }
             else if (match.Purpose == "forward") { <span class="badge ok">@(Mode.Analyst ? "forward prediction · stored before kick-off" : "prediction made before kick-off")</span> }
             else if (match.Purpose == "backtest") { <span class="badge" title="Made with only the results available before this match">@(Mode.Analyst ? "walk-forward backtest prediction" : "historical re-forecast")</span> }
+            else if (match.Purpose == "estimate") { <span class="badge info" title="Computed from the latest team ratings; it changes as results come in and is not part of the scored record">early estimate · updates with each result</span> }
         </div>
     </div>
     <div class="side"><Crest Name="@match.AwayName" TeamId="@match.AwayTeamId" Large="true" /><div class="name"><a href="team/@match.AwayTeamId">@match.AwayName</a></div><div class="small dim">Away</div></div>

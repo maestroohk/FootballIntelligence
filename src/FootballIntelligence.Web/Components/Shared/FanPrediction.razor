@@ -229,9 +229,12 @@
             yield return ("warn", $"Limited recent data: {Match.HomeName} have {History.Home} and {Match.AwayName} {History.Away} matches in the past year, so ratings lean on league averages.");
         else
             yield return ("ok", $"Both teams have a full year of recent results ({History.Home} and {History.Away} matches).");
-        yield return (Match.Purpose == "forward" ? "ok" : "info", Match.Purpose == "forward"
-            ? $"Stored before kick-off on {Fmt.Local(Match.PredictionCreated)} using results up to {Match.DataCutoff}, and never changed afterwards."
-            : "A historical re-forecast: produced with only the results available before this match, as if it had been made at the time.");
+        yield return (Match.Purpose == "forward" ? "ok" : "info", Match.Purpose switch
+        {
+            "forward" => $"Stored before kick-off on {Fmt.Local(Match.PredictionCreated)} using results up to {Match.DataCutoff}, and never changed afterwards.",
+            "estimate" => $"An early estimate from the current team ratings (results up to {Match.DataCutoff}). It is refreshed after every update and is not part of the scored record; a fixed pre-match forecast is stored 10 days before kick-off.",
+            _ => "A historical re-forecast: produced with only the results available before this match, as if it had been made at the time.",
+        });
         if (Match.ModelVersion?.Contains("uitest") == true)
             yield return ("warn", "Made by a test model fitted on a small public dataset, not the validated champion model.");
         else if (Match.PredictionFlag is not null)

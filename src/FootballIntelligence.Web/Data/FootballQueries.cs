@@ -6,8 +6,10 @@ public class FootballQueries(Database db)
         SELECT m.match_id, m.competition, c.name competition_name, m.season, m.match_date, m.kickoff, m.status, m.source,
                m.home_team_id, m.away_team_id, {Database.DisplayName("th.team_id", "th.name")} home_name, {Database.DisplayName("ta.team_id", "ta.name")} away_name,
                m.fthg, m.ftag, m.hthg, m.htag, m.hs, m.aws, m.hst, m.ast, m.hc, m.ac, m.hf, m.af, m.hy, m.ay, m.hr, m.ar, m.referee,
-               p.p_home, p.p_draw, p.p_away, p.lambda_home, p.lambda_away, p.model_version, p.purpose,
-               p.created_at prediction_created, p.data_cutoff, p.markets,
+               COALESCE(p.p_home, pv.p_home) p_home, COALESCE(p.p_draw, pv.p_draw) p_draw, COALESCE(p.p_away, pv.p_away) p_away,
+               COALESCE(p.lambda_home, pv.lambda_home) lambda_home, COALESCE(p.lambda_away, pv.lambda_away) lambda_away,
+               COALESCE(p.model_version, pv.model_version) model_version, COALESCE(p.purpose, CASE WHEN pv.match_id IS NOT NULL THEN 'estimate' END) purpose,
+               COALESCE(p.created_at, pv.computed_at) prediction_created, COALESCE(p.data_cutoff, pv.data_cutoff) data_cutoff, COALESCE(p.markets, pv.markets) markets,
                (SELECT f.reason FROM prediction_flags f WHERE f.prediction_id=p.prediction_id LIMIT 1) prediction_flag
         FROM matches m
         JOIN competitions c ON c.code = m.competition
@@ -19,6 +21,7 @@ public class FootballQueries(Database db)
             ORDER BY CASE WHEN p2.model_version LIKE 'bookmaker%' THEN 3
                           WHEN p2.purpose = 'forward' AND NOT EXISTS (SELECT 1 FROM prediction_flags f2 WHERE f2.prediction_id = p2.prediction_id) THEN 0
                           WHEN p2.purpose = 'forward' THEN 2 ELSE 1 END, p2.prediction_id DESC LIMIT 1)
+        LEFT JOIN provisional_forecasts pv ON pv.match_id = m.match_id AND m.status = 'scheduled' AND p.prediction_id IS NULL
         """;
 
     private const string TeamFilter = """

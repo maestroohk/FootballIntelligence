@@ -63,10 +63,12 @@
 
     private string ProvenanceLabel => Match.PredictionFlag is not null ? "not a pre-match forecast"
         : Match.Purpose == "forward" ? $"forecast {Fmt.Ago(Match.PredictionCreated)}"
+        : Match.Purpose == "estimate" ? "early estimate"
         : "re-forecast after the match";
 
     private string ProvenanceTitle => Match.PredictionFlag is not null ? Match.PredictionFlag
         : Match.Purpose == "forward" ? $"Stored before kick-off at {Fmt.Local(Match.PredictionCreated)} · {Match.ModelVersion}"
+        : Match.Purpose == "estimate" ? $"From the latest team ratings (results up to {Match.DataCutoff}); refreshed after each update and not scored"
         : $"Rebuilt later using only results before {Match.DataCutoff}; not stored in advance";
 
     private string NoPredictionReason

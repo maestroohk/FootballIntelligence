@@ -427,6 +427,8 @@ def init(path=None) -> sqlite3.Connection:
     from .odds import SCHEMA as ODDS_SCHEMA
     from .paper import ensure as ensure_paper
     con.executescript(ODDS_SCHEMA)
+    from .forward import ESTIMATES_SCHEMA
+    con.executescript(ESTIMATES_SCHEMA)
     ensure_paper(con)
     return con
 

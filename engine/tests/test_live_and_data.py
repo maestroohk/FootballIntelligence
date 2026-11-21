@@ -349,3 +349,18 @@ def test_forward_evaluation_scores_clean_forecasts_and_challengers(con):
     out = forward.evaluate_forward(con)
     assert out["n"] == 1 and "m@v1" in out and "market_hybrid@v2" in out and "m@v0" not in out
     assert out["market_hybrid@v2"]["log_loss"] < out["m@v1"]["log_loss"]
+
+
+def test_early_estimates_cover_scheduled_fixtures_only_and_are_replaced(con):
+    from fie import forward
+    con.execute("INSERT INTO competitions VALUES('E0','PL','ENG',1)")
+    con.execute("INSERT INTO teams(team_id, name, country) VALUES(1,'A','ENG'),(2,'B','ENG')")
+    for mid, status in ((1, "scheduled"), (2, "finished")):
+        con.execute("INSERT INTO matches(match_id, competition, season, match_date, home_team_id, away_team_id, status, source, first_seen, updated_at) VALUES(?,'E0',2099,'2099-03-01',1,2,?,'t',?,?)", (mid, status, db.now(), db.now()))
+    oos = pd.DataFrame({"match_id": [1, 2], "status": ["scheduled", "scheduled"], "date": pd.to_datetime(["2099-03-01"] * 2),
+                        "lh": [1.6, 1.2], "la": [1.0, 1.1], "rho": [-0.05, -0.05], "fit_cutoff": pd.to_datetime(["2099-02-20"] * 2)})
+    assert forward.publish_estimates(con, oos, "m@v1") == 1
+    assert forward.publish_estimates(con, oos, "m@v2") == 1
+    row = con.execute("SELECT match_id, model_version, p_home + p_draw + p_away FROM provisional_forecasts").fetchall()
+    assert len(row) == 1 and row[0][0] == 1 and row[0][1] == "m@v2" and abs(row[0][2] - 1) < 1e-9
+    assert con.execute("SELECT COUNT(*) FROM predictions").fetchone()[0] == 0

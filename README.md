@@ -48,6 +48,16 @@ The full run executes these jobs in order (each can also be run alone with `cd e
 
 Measured on this project's development laptop (i7-13650HX, 4-thread budget): about 15 minutes of downloads, 50 minutes for `research_full`, and 1.5–2 hours in total; about 2 GB of disk under `data/`. No GPU is needed. `research_full` and the shared models train on the original 11 divisions; `expand_coverage` adds the seven further divisions without retraining the champion. `final_test` refuses to run twice unless forced. The pipeline is deterministic: an isolated from-scratch rerun reproduced every model's validation results within 2e-8.
 
+## Run in the background (no sign-in needed)
+
+From an administrator PowerShell window in the repository folder:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-service.ps1
+```
+
+This publishes a release copy of the app to `.servicepp` (not committed) and registers a Windows scheduled task, `FootballIntelligence`, that runs it as SYSTEM at http://localhost:5281. It starts at boot without anyone signing in, only on mains power with a network connection, stops on battery, retries every 15 minutes until those conditions hold, and never runs twice. Background research uses 2 threads (`-Threads` to change). Output goes to `.service\service.log`. Run the script again after pulling new code; remove the task with `.\install-service.ps1 -Remove`. While the task runs, port 5281 is taken, so stop it before running the app from Visual Studio or `dotnet run`.
+
 ## Run the application
 
 ```bash
@@ -75,6 +85,7 @@ The top-bar switch changes how predictions are presented, not where they come fr
 
 ## Learning loop
 
+- Every scheduled fixture also gets an early estimate from the current team ratings, refreshed after each prediction run and kept out of the scored record (table `provisional_forecasts`), so any upcoming match can be looked up.
 - Forward predictions are stored at least 3 hours before kick-off (using each league's latest UTC offset) and can never be edited. Each fixture is forecast once per model version when it comes within 10 days of kick-off; every prediction run records which fixtures in that window lack a forecast and why (shown on Data health and the overview).
 - Each update cycle (every 6 hours by default) refreshes results and fixtures, merges new spellings of existing teams, marks fixture rows superseded by a match played on a different date as `duplicate` (flagging, never editing, any forecast attached to them), records market prices, stores new forecasts and updates the paper portfolio.
 - Each update cycle refreshes results, scores stored forecasts against verified final scores (one forecast per match, the pre-match one when it exists), checks for drift and looks for systematic weaknesses (outcome rates, over-confident favourites, goal totals, promoted teams, post-break matches). A weakness is flagged only with at least 200 matches and a deviation beyond 2.5 standard errors.

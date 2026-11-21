@@ -99,6 +99,22 @@ public static class TeamIdentity
     private static readonly HashSet<string> Suffixes = new(StringComparer.OrdinalIgnoreCase)
         { "united", "utd", "city", "town", "county", "rovers", "wanderers", "athletic", "albion", "hotspur", "calcio", "club" };
 
+    private static readonly Dictionary<string, string> Patterns = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["newcastle"] = "stripes", ["newcastle united"] = "stripes", ["brentford"] = "stripes", ["southampton"] = "stripes", ["stoke"] = "stripes",
+        ["stoke city"] = "stripes", ["sunderland"] = "stripes", ["sheffield united"] = "stripes", ["sheffield utd"] = "stripes",
+        ["sheffield weds"] = "stripes", ["sheffield wednesday"] = "stripes", ["west brom"] = "stripes", ["west bromwich albion"] = "stripes",
+        ["brighton"] = "stripes", ["brighton and hove albion"] = "stripes", ["crystal palace"] = "stripes", ["barcelona"] = "stripes",
+        ["juventus"] = "stripes", ["inter"] = "stripes", ["inter milan"] = "stripes", ["internazionale"] = "stripes", ["atletico madrid"] = "stripes",
+        ["ath madrid"] = "stripes", ["ath bilbao"] = "stripes", ["athletic club"] = "stripes", ["porto"] = "stripes", ["besiktas"] = "stripes",
+        ["fenerbahce"] = "stripes", ["psv eindhoven"] = "stripes", ["psv"] = "stripes", ["genoa"] = "halves", ["blackburn"] = "halves",
+        ["blackburn rovers"] = "halves", ["galatasaray"] = "halves", ["feyenoord"] = "halves", ["bristol rovers"] = "halves",
+        ["celtic"] = "hoops", ["qpr"] = "hoops", ["queens park rangers"] = "hoops", ["sp lisbon"] = "hoops", ["sporting cp"] = "hoops",
+        ["reading"] = "hoops", ["ajax"] = "band", ["rayo vallecano"] = "sash", ["vallecano"] = "sash", ["river plate"] = "sash",
+    };
+
+    public static string Pattern(string name) => Patterns.GetValueOrDefault(name.Trim(), "plain");
+
     private static readonly Dictionary<string, string> Codes = new(StringComparer.OrdinalIgnoreCase)
     {
         ["manchester united"] = "MUN", ["man united"] = "MUN", ["manchester city"] = "MCI", ["man city"] = "MCI",

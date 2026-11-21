@@ -1,0 +1,22 @@
+<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">@((MarkupString)(Shapes.GetValueOrDefault(Name) ?? ""))</svg>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+
+    private static readonly Dictionary<string, string> Shapes = new()
+    {
+        ["overview"] = """<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>""",
+        ["matches"] = """<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>""",
+        ["live"] = """<circle cx="12" cy="12" r="2.5"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/>""",
+        ["players"] = """<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/>""",
+        ["tactics"] = """<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M12 4v16M3 9h3v6H3M21 9h-3v6h3"/><circle cx="12" cy="12" r="2.5"/>""",
+        ["history"] = """<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.6 2.5L16 9.5"/>""",
+        ["value"] = """<path d="M12 3v18M6 21h12M5 7h14M5 7l-3 6a3 3 0 0 0 6 0zM19 7l-3 6a3 3 0 0 0 6 0z"/>""",
+        ["learning"] = """<path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5"/>""",
+        ["lab"] = """<path d="M9 3h6M10 3v6l-5.5 9.2A2 2 0 0 0 6.2 21h11.6a2 2 0 0 0 1.7-2.8L14 9V3M7.5 15h9"/>""",
+        ["performance"] = """<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>""",
+        ["jobs"] = """<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>""",
+        ["data"] = """<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>""",
+        ["search"] = """<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>""",
+    };
+}

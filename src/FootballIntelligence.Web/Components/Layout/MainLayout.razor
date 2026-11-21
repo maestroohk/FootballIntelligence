@@ -17,19 +17,19 @@
                 <div class="brand-sub">Predictive analytics engine</div>
             </div>
         </div>
-        <NavLink class="nav-link" href="" Match="NavLinkMatch.All"><span class="nav-ico">◎</span>Overview</NavLink>
-        <NavLink class="nav-link" href="matches"><span class="nav-ico">▤</span>Matches</NavLink>
-        <NavLink class="nav-link" href="live"><span class="nav-ico">◉</span>Live tracker</NavLink>
-        <NavLink class="nav-link" href="players"><span class="nav-ico">♟</span>Players</NavLink>
-        <NavLink class="nav-link" href="teams"><span class="nav-ico">⬡</span>Team tactics</NavLink>
-        <NavLink class="nav-link" href="history"><span class="nav-ico">✓</span>Prediction history</NavLink>
-        <NavLink class="nav-link" href="value"><span class="nav-ico">⚖</span>Value research</NavLink>
+        <NavLink class="nav-link" href="" Match="NavLinkMatch.All"><span class="nav-ico"><Icon Name="overview" /></span>Overview</NavLink>
+        <NavLink class="nav-link" href="matches"><span class="nav-ico"><Icon Name="matches" /></span>Matches</NavLink>
+        <NavLink class="nav-link" href="live"><span class="nav-ico"><Icon Name="live" /></span>Live tracker</NavLink>
+        <NavLink class="nav-link" href="players"><span class="nav-ico"><Icon Name="players" /></span>Players</NavLink>
+        <NavLink class="nav-link" href="teams"><span class="nav-ico"><Icon Name="tactics" /></span>Team tactics</NavLink>
+        <NavLink class="nav-link" href="history"><span class="nav-ico"><Icon Name="history" /></span>Prediction history</NavLink>
+        <NavLink class="nav-link" href="value"><span class="nav-ico"><Icon Name="value" /></span>Value research</NavLink>
         <div class="nav-section">Analyst</div>
-        <NavLink class="nav-link" href="learning"><span class="nav-ico">↻</span>Learning</NavLink>
-        <NavLink class="nav-link" href="lab"><span class="nav-ico">⚗</span>Model lab</NavLink>
-        <NavLink class="nav-link" href="performance"><span class="nav-ico">↗</span>Performance</NavLink>
-        <NavLink class="nav-link" href="jobs"><span class="nav-ico">⚙</span>Jobs</NavLink>
-        <NavLink class="nav-link" href="data"><span class="nav-ico">⛁</span>Data health</NavLink>
+        <NavLink class="nav-link" href="learning"><span class="nav-ico"><Icon Name="learning" /></span>Learning</NavLink>
+        <NavLink class="nav-link" href="lab"><span class="nav-ico"><Icon Name="lab" /></span>Model lab</NavLink>
+        <NavLink class="nav-link" href="performance"><span class="nav-ico"><Icon Name="performance" /></span>Performance</NavLink>
+        <NavLink class="nav-link" href="jobs"><span class="nav-ico"><Icon Name="jobs" /></span>Jobs</NavLink>
+        <NavLink class="nav-link" href="data"><span class="nav-ico"><Icon Name="data" /></span>Data health</NavLink>
         <div class="sidebar-foot">
             <div class="row" style="gap:6px"><span class="dot @(worker.Alive ? "ok" : "bad")"></span>Engine worker @(worker.Alive ? "online" : "offline")</div>
             <div>Heartbeat: @(worker.LastHeartbeat is null ? "never" : Fmt.Ago(worker.LastHeartbeat.Value.ToString("o")))</div>

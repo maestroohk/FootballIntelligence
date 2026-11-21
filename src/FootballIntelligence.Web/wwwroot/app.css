@@ -53,7 +53,8 @@ h3 { font-size: 14px; color: var(--text-dim); text-transform: uppercase; letter-
 .nav-link { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--text-dim); font-weight: 500; }
 .nav-link:hover { background: var(--panel); color: var(--text); text-decoration: none; }
 .nav-link.active { background: var(--accent-dim); color: var(--accent); }
-.nav-ico { width: 18px; text-align: center; opacity: .9; }
+.nav-ico { width: 18px; display: inline-flex; align-items: center; justify-content: center; opacity: .9; }
+.icon { width: 18px; height: 18px; flex: none; }
 .sidebar-foot { margin-top: auto; padding: 10px; font-size: 11px; color: var(--text-faint); border-top: 1px solid var(--border-soft); }
 
 .main { min-width: 0; }
@@ -442,3 +443,8 @@ details.card[open] > summary h2::after { content: " ▾"; }
     .fixture { grid-template-columns: 50px minmax(0, 1fr); }
     .fx-pred { grid-column: 1 / -1; }
 }
+
+.team-search .input { width: 100%; font-size: 15px; padding: 10px 12px; }
+.ts-results { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.ts-row { border-top: 1px solid var(--border-soft); padding-top: 8px; }
+.ts-team { color: var(--text); padding: 2px 6px; }

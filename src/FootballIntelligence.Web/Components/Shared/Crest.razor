@@ -7,11 +7,39 @@ else
 {
     var (primary, secondary) = Fmt.TeamColors(Name);
     var abbr = TeamIdentity.Code(Name);
+    var pattern = TeamIdentity.Pattern(Name);
+    var clip = $"c{Guid.NewGuid():N}";
     <svg class="crest @(Large ? "lg" : "")" viewBox="0 0 40 46" role="img" aria-label="@Name">
         <title>@Name</title>
-        <path d="M20 1 L38 7 V22 C38 34 30 41 20 45 C10 41 2 34 2 22 V7 Z" fill="@primary" stroke="@secondary" stroke-width="2" />
-        <path d="M20 1 L38 7 V14 H2 V7 Z" fill="@secondary" opacity=".55" />
-        <text x="20" y="30" text-anchor="middle" font-size="@(abbr.Length > 2 ? 10.5 : 13)" font-weight="800" letter-spacing=".02em" fill="@(Fmt.IsLight(primary) ? "#111" : "#fff")" font-family="Inter, sans-serif">@abbr</text>
+        <defs><clipPath id="@clip"><path d="@Shield" /></clipPath></defs>
+        <path d="@Shield" fill="@primary" />
+        <g clip-path="url(#@clip)" fill="@secondary">
+            @switch (pattern)
+            {
+                case "stripes":
+                    @for (var i = 0; i < 5; i++) { <rect x="@(5 + i * 8)" y="0" width="4" height="46" /> }
+                    break;
+                case "hoops":
+                    @for (var i = 0; i < 5; i++) { <rect x="0" y="@(4 + i * 9)" width="40" height="4.5" /> }
+                    break;
+                case "halves":
+                    <rect x="20" y="0" width="20" height="46" />
+                    break;
+                case "band":
+                    <rect x="14" y="0" width="12" height="46" />
+                    break;
+                case "sash":
+                    <path d="M-4 10 L12 -4 L46 34 L30 48 Z" />
+                    break;
+                default:
+                    <path d="M0 0 H40 V13 H0 Z" opacity=".6" />
+                    break;
+            }
+        </g>
+        <path d="@Shield" fill="none" stroke="@(Fmt.IsLight(primary) ? secondary : primary)" stroke-width="2" />
+        <path d="@Shield" fill="none" stroke="rgba(255,255,255,.35)" stroke-width=".8" />
+        <rect x="6" y="22" width="28" height="12" rx="3" fill="rgba(10,14,20,.72)" />
+        <text x="20" y="31.2" text-anchor="middle" font-size="@(abbr.Length > 2 ? 9.5 : 11)" font-weight="800" letter-spacing=".04em" fill="#fff" font-family="Inter, sans-serif">@abbr</text>
     </svg>
 }
 
@@ -22,6 +50,8 @@ else
     private static Dictionary<string, CrestFile> byName = [];
 
     public record CrestFile(string File, string Licence);
+
+    private const string Shield = "M20 1.5 L37.5 7 V22 C37.5 33.5 30 40.5 20 44.5 C10 40.5 2.5 33.5 2.5 22 V7 Z";
 
     [Parameter, EditorRequired] public string Name { get; set; } = "";
     [Parameter] public long? TeamId { get; set; }

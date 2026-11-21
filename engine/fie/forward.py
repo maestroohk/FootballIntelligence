@@ -366,3 +366,36 @@ def coverage_report(con, oos_champion, version, horizon_days=FORWARD_HORIZON_DAY
            "predicted": sum(1 for r in rows if r["predicted"]), "missing": missing, "leagues": leagues, "later_fixtures": later}
     db.set_kv(con, "prediction_coverage", out)
     return out
+
+
+ESTIMATES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS provisional_forecasts (
+    match_id INTEGER PRIMARY KEY REFERENCES matches(match_id),
+    model_version TEXT NOT NULL,
+    computed_at TEXT NOT NULL,
+    data_cutoff TEXT NOT NULL,
+    p_home REAL NOT NULL, p_draw REAL NOT NULL, p_away REAL NOT NULL,
+    lambda_home REAL NOT NULL, lambda_away REAL NOT NULL,
+    markets TEXT NOT NULL
+);
+"""
+
+
+def publish_estimates(con, oos_champion, version):
+    con.executescript(ESTIMATES_SCHEMA)
+    today = pd.Timestamp(date.today())
+    sched = oos_champion[(oos_champion["status"] == "scheduled") & (oos_champion["date"] >= today) & oos_champion["lh"].notna()]
+    live = {r[0] for r in con.execute("SELECT match_id FROM matches WHERE status = 'scheduled'")}
+    stamp = db.now()
+    rows = []
+    for r in sched.itertuples():
+        if int(r.match_id) not in live:
+            continue
+        mk = markets(dixon_coles_matrix(r.lh, r.la, r.rho))
+        mk["rho"] = float(r.rho)
+        rows.append((int(r.match_id), version, stamp, str(pd.Timestamp(r.fit_cutoff).date()), mk["p_home"], mk["p_draw"], mk["p_away"],
+                     float(r.lh), float(r.la), db.dumps(mk)))
+    with db.transaction(con):
+        con.execute("DELETE FROM provisional_forecasts")
+        con.executemany("INSERT INTO provisional_forecasts VALUES(?,?,?,?,?,?,?,?,?,?)", rows)
+    return len(rows)
