@@ -362,7 +362,8 @@ else
     private string StatusLabel => match?.Status switch
     {
         "finished" => "Full time",
-        "scheduled" when string.CompareOrdinal(match.MatchDate, DateTime.Today.ToString("yyyy-MM-dd")) < 0 => "Result not yet received",
+        "scheduled" when (UserTime.KickoffUtc(match) ?? DateTime.Parse(match.MatchDate, System.Globalization.CultureInfo.InvariantCulture).AddDays(1)) < DateTime.UtcNow.AddHours(-2) => "Played · result not yet received",
+        "scheduled" when (UserTime.KickoffUtc(match) ?? DateTime.MaxValue) < DateTime.UtcNow => "In progress or just finished",
         "scheduled" => "Not started",
         var other => other ?? ""
     };
