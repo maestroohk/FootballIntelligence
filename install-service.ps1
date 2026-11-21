@@ -44,4 +44,4 @@ Register-ScheduledTask -TaskName $task -Action $action -Trigger @($atBoot, $retr
     -Description "Football Intelligence web app and prediction engine (http://localhost:$Port). Runs on mains power with a network connection; no sign-in needed." | Out-Null
 Start-ScheduledTask -TaskName $task
 Write-Host "Installed. Football Intelligence will run at http://localhost:$Port whenever the laptop is on mains power with a network connection."
-Write-Host "Log: $service\service.log  ·  Remove with: .\install-service.ps1 -Remove"
+Write-Host "Log: $service\service.log. Remove with: .\install-service.ps1 -Remove"
