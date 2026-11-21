@@ -1,7 +1,7 @@
 @inject IWebHostEnvironment Env
 @if (Lookup(Env.WebRootPath, TeamId, Name) is { } crest)
 {
-    <img class="crest @(Large ? "lg" : "")" src="crests/@crest.File" alt="@Name crest" title="@($"{Name} · crest from Wikimedia Commons ({crest.Licence})")" loading="lazy" />
+    <img class="crest @(Large ? "lg" : "")" src="crests/@crest.File" alt="@Name crest" title="@($"{Name} · {crest.Licence}")" loading="lazy" />
 }
 else
 {

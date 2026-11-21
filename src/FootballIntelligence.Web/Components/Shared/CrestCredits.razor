@@ -2,7 +2,7 @@
 
 <div class="card" id="crests">
     <div class="card-head"><h2>Club crests</h2><span class="sub">@(entries.Count == 0 ? "none downloaded on this computer" : $"{entries.Count} crests · {fallback} teams use the generated shield")</span></div>
-    <p class="small dim">Crests are used only when Wikidata links the club to a logo file on Wikimedia Commons whose licence is public domain, CC0, CC BY or CC BY-SA, checked per file by the <span class="mono">fetch_crests</span> job. Files are stored on this computer, never hotlinked and not committed to the repository. Most English and Spanish club crests are not freely licensed, so those clubs keep a shield in their colours. Crests may also be protected as trademarks; they are shown here only to identify the clubs.</p>
+    <p class="small dim">Freely licensed crests come from Wikimedia Commons (public domain, CC0, CC BY or CC BY-SA, checked per file). Clubs without one use the crest from their English Wikipedia article, which is copyrighted and non-free: these are downloaded only when the <span class="mono">fetch_crests</span> job is run with <span class="mono">personal: true</span>, kept on this computer for private use, never committed and must not be published. Crests are trademarks of their clubs and are shown only to identify them.</p>
     @if (entries.Count > 0)
     {
         <details>

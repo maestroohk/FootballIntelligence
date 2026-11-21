@@ -18,9 +18,24 @@ LANGS = "en,de,es,it,fr,nl,pt,el,tr"
 ACCEPTED = re.compile(r"^(pd|cc0|cc-by(-sa)?-[0-9.]+.*|cc-by(-sa)?)$")
 LOGO_WORDS = re.compile(r"logo|crest|wappen|escudo|stemma|emblem|badge|blason|ecusson|embleem|logotipo|simbolo|arma", re.I)
 OUTDATED = re.compile(r"former|avant|ancien|historic|\bold\b|flag|text logo|\((logo,? )?(19\d\d|200\d)\)|logo (19\d\d|200\d)\b", re.I)
+ARTICLES = {
+    "Benfica": "S.L. Benfica", "Porto": "FC Porto", "Sp Braga": "S.C. Braga", "AVS": "AVS Futebol SAD", "Celtic": "Celtic F.C.", "Rangers": "Rangers F.C.",
+    "Hamilton": "Hamilton Academical F.C.", "Partick": "Partick Thistle F.C.", "Raith Rvs": "Raith Rovers F.C.", "Lyon": "Olympique Lyonnais",
+    "Monaco": "AS Monaco FC", "Paris FC": "Paris FC", "Laval": "Stade Lavallois", "Rodez": "Rodez AF", "Ath Bilbao": "Athletic Bilbao",
+    "Sociedad": "Real Sociedad", "Vallecano": "Rayo Vallecano", "Oviedo": "Real Oviedo", "Zaragoza": "Real Zaragoza", "Santander": "Racing de Santander",
+    "Albacete": "Albacete Balompié", "Tenerife": "CD Tenerife", "Cartagena": "FC Cartagena", "Ferrol": "Racing de Ferrol", "Ceuta": "AD Ceuta FC",
+    "Freiburg": "SC Freiburg", "Bielefeld": "Arminia Bielefeld", "Braunschweig": "Eintracht Braunschweig", "Dresden": "Dynamo Dresden",
+    "Cottbus": "FC Energie Cottbus", "Regensburg": "SSV Jahn Regensburg", "Ulm": "SSV Ulm 1846", "Cagliari": "Cagliari Calcio", "Padova": "Calcio Padova",
+    "Heracles": "Heracles Almelo", "Waalwijk": "RKC Waalwijk", "Willem II": "Willem II (football club)", "Standard": "Standard Liège",
+    "St. Gilloise": "Royale Union Saint-Gilloise", "Charleroi": "R. Charleroi S.C.", "Waregem": "S.V. Zulte Waregem", "Bradford": "Bradford City A.F.C.",
+    "Bristol Rvs": "Bristol Rovers F.C.", "Exeter": "Exeter City F.C.", "Peterboro": "Peterborough United F.C.", "Gaziantep": "Gaziantep F.K.",
+    "Ad. Demirspor": "Adana Demirspor", "Buyuksehyr": "İstanbul Başakşehir F.K.", "Karagumruk": "Fatih Karagümrük S.K.", "Erzurumspor": "Erzurumspor F.K.",
+    "Corum": "Çorum FK", "Kifisia": "Kifisia F.C.", "Lamia": "PAS Lamia 1964",
+}
 EXCLUDED_CLUBS = {"Q982889"}
 MIN_SCORE = 0.92
 MIN_SITELINKS = 8
+NOT_FIRST_TEAM = re.compile(r"women|w\.f\.c|wfc|ladies|femen|frauen|femmin|f[eé]minin|vrouwen|kadın|u-?\d\d|under-?\d\d|reserve|academy|youth|juvenil|\bii\b|\bb team", re.I)
 
 
 def _get(url, params, timeout=90, attempts=4):
@@ -56,6 +71,75 @@ def wikidata_clubs(country):
         c["logos"].add(requests.utils.unquote(b["logo"]["value"].rsplit("/", 1)[-1]))
         c["names"].update(n for n in b["names"]["value"].split("|") if n)
     return list(clubs.values())
+
+
+def wikipedia_clubs(country):
+    values = " ".join(f"wd:{q}" for q in COUNTRIES[country])
+    query = f"""SELECT ?club ?title (GROUP_CONCAT(DISTINCT ?name; separator="|") AS ?names) WHERE {{
+        VALUES ?c {{ {values} }} ?club wdt:P31/wdt:P279* wd:Q476028; wdt:P17 ?c; wikibase:sitelinks ?links.
+        FILTER(?links >= {MIN_SITELINKS}) FILTER NOT EXISTS {{ ?club wdt:P576 ?dissolved }}
+        ?article schema:about ?club; schema:isPartOf <https://en.wikipedia.org/>; schema:name ?title.
+        {{ ?club rdfs:label ?name }} UNION {{ ?club skos:altLabel ?name }}
+        FILTER(LANG(?name) IN ("{'","'.join(LANGS.split(','))}")) }} GROUP BY ?club ?title"""
+    rows = _get("https://query.wikidata.org/sparql", {"query": query, "format": "json"}).json()["results"]["bindings"]
+    return [{"qid": b["club"]["value"].rsplit("/", 1)[-1], "title": b["title"]["value"], "names": {n for n in b["names"]["value"].split("|") if n}}
+            for b in rows if b["club"]["value"].rsplit("/", 1)[-1] not in EXCLUDED_CLUBS and not NOT_FIRST_TEAM.search(b["title"]["value"])]
+
+
+def lead_images(titles):
+    out = {}
+    titles = list(titles)
+    for i in range(0, len(titles), 40):
+        r = _get("https://en.wikipedia.org/w/api.php", {"action": "query", "format": "json", "prop": "pageimages", "piprop": "thumbnail|name",
+                                                         "pithumbsize": 160, "pilicense": "any", "redirects": 1, "titles": "|".join(titles[i:i + 40])}).json()
+        back = {x["to"]: x["from"] for x in r["query"].get("redirects", []) + r["query"].get("normalized", [])}
+        for page in r["query"]["pages"].values():
+            if "thumbnail" in page and "pageimage" in page:
+                title = page["title"]
+                while title in back:
+                    title = back[title]
+                out[title] = {"file": page["pageimage"], "thumb": page["thumbnail"]["source"]}
+        time.sleep(1)
+    return out
+
+
+def personal_country(country, group, manifest):
+    missing = [t for t in group if str(t["team_id"]) not in manifest["teams"]]
+    if not missing:
+        return
+    clubs = wikipedia_clubs(country)
+    matched = match_teams([t for t in missing if t["name"] not in ARTICLES], clubs)
+    by_qid = {c["qid"]: c for c in clubs}
+    for t in missing:
+        if t["name"] in ARTICLES:
+            title = ARTICLES[t["name"]]
+            by_qid[title] = {"qid": title, "title": title, "names": {title, t["name"]}}
+            matched[t["team_id"]] = (title, 1.0)
+    images = lead_images({by_qid[q]["title"] for q, _ in matched.values()})
+    for t in missing:
+        if t["team_id"] not in matched:
+            continue
+        qid, score = matched[t["team_id"]]
+        club = by_qid[qid]
+        img = images.get(club["title"])
+        if img is None:
+            continue
+        tokens = set(normalise(img["file"].rsplit(".", 1)[0]).split())
+        named = any(set(normalise(n).split()) & tokens for n in club["names"])
+        if not (LOGO_WORDS.search(img["file"]) or named) or OUTDATED.search(img["file"]):
+            continue
+        name = f"{country.lower()}-{slug(t['name'])}.png"
+        path = OUT / name
+        if not path.exists():
+            path.write_bytes(_get(img["thumb"], None, timeout=60).content)
+            time.sleep(0.5)
+        manifest["rejected"].pop(t["name"], None)
+        manifest["teams"][str(t["team_id"])] = {"file": name, "team": t["name"], "matched_name": club["title"], "wikidata": qid, "match_score": round(score, 3),
+                                                "commons_file": img["file"], "commons_page": f"https://en.wikipedia.org/wiki/File:{img['file']}",
+                                                "licence": "Non-free (English Wikipedia) · personal use only", "author": None, "restrictions": "personal", "personal": True}
+        for a in t["aliases"]:
+            for key in display_keys(a):
+                manifest["aliases"].setdefault(key, name)
 
 
 def match_teams(teams, clubs):
@@ -132,7 +216,7 @@ def active_teams(con, since):
              "aliases": sorted({r["name"], *(r["aliases"] or "").split("|")} - {""})} for r in rows]
 
 
-def fetch(con, since=2024, progress=None):
+def fetch(con, since=2024, progress=None, personal=False):
     OUT.mkdir(parents=True, exist_ok=True)
     teams = active_teams(con, since)
     manifest = {"source": "Wikidata logo image (P154) files on Wikimedia Commons, licence checked per file", "teams": {}, "aliases": {}, "rejected": {}, "errors": {}}
@@ -141,6 +225,8 @@ def fetch(con, since=2024, progress=None):
         group = [t for t in teams if t["country"] == country]
         try:
             fetch_country(country, group, manifest)
+            if personal:
+                personal_country(country, group, manifest)
         except requests.RequestException as exc:
             manifest["errors"][country] = str(exc)[:200]
         if progress:
@@ -151,7 +237,8 @@ def fetch(con, since=2024, progress=None):
             if f.name not in keep:
                 f.unlink()
     (OUT / "manifest.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False), encoding="utf-8")
-    summary = {"teams": len(teams), "with_crest": len(manifest["teams"]), "rejected": len(manifest["rejected"]), "errors": manifest["errors"]}
+    summary = {"teams": len(teams), "with_crest": len(manifest["teams"]), "personal_use": sum(1 for e in manifest["teams"].values() if e.get("personal")),
+               "rejected": len(manifest["rejected"]), "errors": manifest["errors"]}
     db.set_kv(con, "crests", summary)
     return summary
 
@@ -195,6 +282,6 @@ def fetch_country(country, group, manifest):
 
 
 @handler("fetch_crests")
-def fetch_crests(ctx, since=2024):
+def fetch_crests(ctx, since=2024, personal=False):
     ctx.stage("matching clubs to Wikidata and checking Commons licences")
-    return fetch(ctx.con, since, progress=lambda d, t, s: ctx.progress(d, t, s))
+    return fetch(ctx.con, since, progress=lambda d, t, s: ctx.progress(d, t, s), personal=personal)
